@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>data-prep — Dataset Workshop</title>
+<link rel="stylesheet" href="style.css">
+<!-- Self-contained on purpose: no CDN fonts/scripts (GDPR: no third-party IP leak). -->
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div id="app">
+  <!-- ======= Login: slim bar at the top edge (shown until a key is verified) ======= -->
+  <section id="view-login" hidden>
+    <form id="login-form" class="login-bar" novalidate>
+      <h1 class="brand">data-prep</h1>
+      <label for="api-key">API key</label>
+      <input id="api-key" name="api-key" type="password" autocomplete="off"
+             required aria-describedby="login-error login-hint">
+      <button type="submit" id="login-btn" data-i18n="login.signin">Sign in</button>
+      <button type="button" id="lang-btn" class="ghost" data-i18n="lang.toggle">Deutsch</button>
+      <p id="login-error" class="error" role="alert" hidden></p>
+    </form>
+    <p id="login-hint" class="muted login-hint" data-i18n="login.hint">Enter the server's API key
+       to build and refine datasets. If the server runs without a key (local use), you are signed
+       in automatically.</p>
+  </section>
+
+  <!-- ======= App shell ======= -->
+  <div id="view-app" hidden>
+    <header class="topbar">
+      <span class="brand">data-prep <span class="muted" data-i18n="topbar.subtitle">dataset workshop</span></span>
+      <nav aria-label="Sections" data-i18n-aria="nav.sections">
+        <button class="tab" data-tab="guide" aria-current="page" data-i18n="tab.guide">Guide</button>
+        <button class="tab" data-tab="runs" data-i18n="tab.runs">Runs</button>
+        <button class="tab" data-tab="review" data-i18n="tab.review">Review</button>
+        <button class="tab" data-tab="seeds" data-i18n="tab.seeds">Seeds</button>
+        <button class="tab" data-tab="vocabularies" data-i18n="tab.vocabularies">Vocabularies</button>
+        <button class="tab" data-tab="references" data-i18n="tab.references">References</button>
+        <button class="tab" data-tab="refine" data-i18n="tab.refine">Refine</button>
+      </nav>
+      <span id="auth-off-badge" class="muted" hidden data-i18n="topbar.authoff">auth disabled — local use</span>
+      <button id="lang-btn-app" class="ghost" data-i18n="lang.toggle">Deutsch</button>
+      <button id="logout-btn" class="ghost" title="Forget the API key in this tab" data-i18n="topbar.signout">Sign out</button>
+    </header>
+
+    <!-- ======= AI access: per-request OpenAI key + model (open-instance mode) ======= -->
+    <details id="llm-access" class="llm-access">
+      <summary data-i18n="llm.summary">AI access — OpenAI key &amp; model</summary>
+      <form id="llm-form" class="llm-form" novalidate>
+        <p class="muted" data-i18n="llm.intro">Enter your own OpenAI API key and model for the AI
+           features (seed bootstrap, generation, enrichment). They are kept in this browser tab only
+           and sent with each AI request — never stored on the server.</p>
+        <div class="llm-row">
+          <label for="llm-key" data-i18n="llm.key">OpenAI API key</label>
+          <input id="llm-key" type="password" autocomplete="off" spellcheck="false"
+                 placeholder="sk-…" aria-describedby="llm-status">
+        </div>
+        <div class="llm-row">
+          <label for="llm-model" data-i18n="llm.model">Model</label>
+          <input id="llm-model" type="text" autocomplete="off" spellcheck="false"
+                 aria-describedby="llm-model-hint">
+          <span id="llm-model-hint" class="muted" data-i18n="llm.model.hint">Leave empty to use the
+             server's configured model.</span>
+        </div>
+        <div class="llm-actions">
+          <button type="submit" id="llm-save" data-i18n="llm.save">Save</button>
+          <button type="button" id="llm-clear" class="ghost" data-i18n="llm.clear">Clear</button>
+          <span id="llm-status" class="muted" role="status" aria-live="polite"></span>
+        </div>
+      </form>
+    </details>
+
+    <main id="main">
+      <section id="tab-guide" class="tab-panel">
+        <h2 data-i18n="h2.guide">Start here</h2>
+        <p class="muted" data-i18n="guide.intro">This workshop does two things: it
+           <strong>generates</strong> publishable, fully-synthetic datasets from a vocabulary + AI,
+           and it <strong>refines</strong> existing datasets for training. Pick the workflow that
+           matches your situation — you normally move left to right through the tabs.</p>
+
+        <div class="card">
+          <h3 data-i18n="guide.ai.h">1 · Create a dataset with AI only (no own data)</h3>
+          <p data-i18n="guide.ai.body">Best for a fully synthetic, shareable set.
+             <strong>Vocabularies</strong> (load the label list, e.g. Schulfächer) →
+             <strong>Seeds</strong> (build a seed set, leave the reference empty = vocab-only; let the
+             AI bootstrap examples) → <strong>Runs</strong> (dry-run for the cost, then start; add
+             <em>Context / guidance</em> so it knows what the entries are about) →
+             <strong>Review</strong> (approve / discard) → download CSV or push to api_v3.</p>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="guide.hybrid.h">2 · Blend your existing data into an AI set (hybrid)</h3>
+          <p data-i18n="guide.hybrid.body">Best when you have a curated CSV and want synthetic data in
+             its style. <strong>References</strong> (upload the CSV — it is PII-scrubbed on import) →
+             <strong>Seeds</strong> (pick that reference set; seeds are distilled from your rows) →
+             <strong>Runs</strong> → <strong>Review</strong> → export. A leakage filter keeps
+             near-copies of your data out of the result, so the output stays publishable.</p>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="guide.clean.h">3 · Clean up existing data</h3>
+          <p data-i18n="guide.clean.body">Best for tidying a dataset before training. Go to
+             <strong>Refine</strong>: <em>Analyze</em> and <em>Training preflight</em> show what you
+             have and the effective training set; then apply filters (dedupe, length, balance, mask
+             PII, …) — each <em>Apply</em> writes a new dataset, so you can stack steps.
+             <em>Prepare for training</em> makes an honest, text-disjoint holdout split.</p>
+        </div>
+
+        <p class="muted" data-i18n="guide.eval">Reminder: synthetic and enriched rows are for
+           <strong>training only</strong>. Judge quality on a real, text-disjoint holdout — never on
+           the synthetic rows themselves.</p>
+      </section>
+
+      <section id="tab-runs" class="tab-panel" hidden>
+        <h2 data-i18n="h2.runs">Generation runs</h2>
+        <p class="muted"><span data-i18n="intro.runs">Generate synthetic samples from a seed set —
+           vocab-only or hybrid, the seeds decide. Always dry-run first to see the cost
+           estimate.</span> <span data-i18n="intro.runs.models">Configured models:</span>
+           <span id="llm-summary" aria-live="polite">loading…</span></p>
+
+        <details class="help">
+          <summary data-i18n="run.explain.summary">What does a run generate? (fields, label, length)</summary>
+          <p data-i18n="run.explain.fields">Each run produces catalog-style entries for every
+             selected concept of the seed set's vocabulary. Per entry it writes three text
+             fields — <strong>title</strong>, <strong>description</strong>,
+             <strong>keywords</strong> — and one classification label: the concept itself,
+             exported to the vocabulary's metadata field (e.g.
+             <code>properties.ccm:taxonid</code>). These three fields are fixed because they map
+             to the training columns of api_v3.</p>
+          <p data-i18n="run.explain.example"><strong>Example — school subjects:</strong>
+             vocabulary <em>Schulfächer</em> (field <code>taxonid</code>), concept
+             “Mathematik” → title “Bruchrechnung Klasse 6”, a 300–600-character description,
+             keywords “Brüche, kürzen, Hauptnenner”. Length is set by the profile below.</p>
+          <p data-i18n="run.explain.guidance">Use <em>Context / guidance</em> below when the
+             labels alone are not self-explanatory — it steers what the entries are about
+             (e.g. “German school subjects, secondary level; realistic teaching materials”).</p>
+        </details>
+
+        <div class="card">
+          <h3 data-i18n="run.newrun.h">New run</h3>
+          <form id="run-form">
+            <label for="run-seed-set" data-i18n="run.seedset">Seed set</label>
+            <select id="run-seed-set" required></select>
+
+            <fieldset>
+              <legend data-i18n="run.concepts.legend">Concepts</legend>
+              <label class="check"><input type="radio" name="run-mode" value="all" checked> <span data-i18n="run.mode.all">all</span></label>
+              <label class="check"><input type="radio" name="run-mode" value="subtree"> <span data-i18n="run.mode.subtree">subtree of…</span></label>
+              <input id="run-root" type="text" maxlength="500" data-i18n-placeholder="run.root.ph"
+                     placeholder="a concept URI from the vocabulary (not the scheme URL)"
+                     data-i18n-aria="run.root.aria" aria-label="Subtree root URI">
+              <label class="check"><input type="radio" name="run-mode" value="list"> <span data-i18n="run.mode.list">explicit list</span></label>
+              <textarea id="run-uris" rows="3" data-i18n-placeholder="run.uris.ph"
+                        placeholder="one concept URI per line"
+                        data-i18n-aria="run.uris.aria" aria-label="Concept URIs"></textarea>
+            </fieldset>
+
+            <div class="row">
+              <div>
+                <label for="run-per-concept" data-i18n="run.perconcept">Samples per concept</label>
+                <input id="run-per-concept" type="number" min="1" max="2000" value="50" inputmode="numeric">
+              </div>
+              <div>
+                <label for="run-batch" data-i18n="run.batch">Items per LLM call</label>
+                <input id="run-batch" type="number" min="1" max="20" value="8" inputmode="numeric">
+              </div>
+              <div>
+                <label for="run-profile" data-i18n="run.profile">Length profile</label>
+                <select id="run-profile">
+                  <option value="kurz" data-i18n="run.profile.kurz">short (120–300 chars)</option>
+                  <option value="standard" selected data-i18n="run.profile.standard">standard (300–600 chars)</option>
+                  <option value="lang" data-i18n="run.profile.lang">long (800–2000 chars)</option>
+                  <option value="volltext" data-i18n="run.profile.volltext">full text (3000–6000 chars)</option>
+                  <option value="custom" data-i18n="run.profile.custom">custom…</option>
+                </select>
+                <div id="run-custom-range" hidden>
+                  <label for="run-min" data-i18n="run.min">Min chars</label>
+                  <input id="run-min" type="number" min="20" max="20000" value="100" inputmode="numeric">
+                  <label for="run-max" data-i18n="run.max">Max chars</label>
+                  <input id="run-max" type="number" min="50" max="50000" value="600" inputmode="numeric">
+                </div>
+              </div>
+            </div>
+
+            <label for="run-concurrency" data-i18n="run.concurrency">Concurrent LLM calls
+              <span class="muted">(parallel workers — effective max is the number of concepts)</span></label>
+            <input id="run-concurrency" type="number" min="1" max="64" value="20" inputmode="numeric">
+
+            <label for="run-guidance" data-i18n="run.guidance">Context / guidance
+              <span class="muted">(optional — what is this about?)</span></label>
+            <textarea id="run-guidance" rows="3" maxlength="2000" data-i18n-placeholder="run.guidance.ph"
+                      placeholder="e.g. German school subjects (secondary level). Generate realistic teaching-material catalog entries; keep each entry about exactly one subject.">Erzeuge realistische Lernmaterial-Katalogeinträge (digitale Bildungsinhalte) zu deutschen Schulfächern. Jeder Eintrag zu genau einem Fach.</textarea>
+
+            <div class="row">
+              <button type="button" id="run-dry-btn" class="ghost" data-i18n="run.dry.btn">Dry run (cost estimate)</button>
+              <button type="submit" id="run-start-btn" data-i18n="run.start.btn">Start run</button>
+            </div>
+          </form>
+          <p id="run-estimate" class="muted" aria-live="polite" hidden></p>
+        </div>
+
+        <p id="run-error" class="error" role="alert" hidden></p>
+
+        <div class="card">
+          <h3 data-i18n="run.list.h">Runs</h3>
+          <p id="run-empty" class="muted" data-i18n="run.empty">No runs yet — build a seed set, then start here.</p>
+          <ul id="run-list" class="plain-list"></ul>
+          <p id="run-list-note" class="muted" hidden></p>
+          <p id="run-detail" class="muted" aria-live="polite" hidden></p>
+        </div>
+      </section>
+
+      <section id="tab-review" class="tab-panel" hidden>
+        <h2 data-i18n="h2.review">Review</h2>
+        <p class="muted" data-i18n="intro.review">Approve or discard generated samples. Focus a card
+           and press <kbd>a</kbd> to approve or <kbd>d</kbd> to discard. Discarding reopens a slot;
+           <em>Regenerate</em> resumes the run to refill it.</p>
+
+        <div class="card">
+          <div class="row">
+            <div>
+              <label for="review-run" data-i18n="review.run">Run</label>
+              <select id="review-run"></select>
+            </div>
+            <div>
+              <label for="review-status-filter" data-i18n="review.status">Status</label>
+              <select id="review-status-filter">
+                <option value="" data-i18n="review.status.all">all</option>
+                <option value="passed" data-i18n="review.status.passed">passed</option>
+                <option value="approved" data-i18n="review.status.approved">approved</option>
+                <option value="discarded" data-i18n="review.status.discarded">discarded</option>
+              </select>
+            </div>
+            <div>
+              <label for="review-min-sim" data-i18n="review.minsim">Min. similarity</label>
+              <input id="review-min-sim" type="number" min="0" max="1" step="0.05"
+                     inputmode="decimal" placeholder="0.0–1.0">
+            </div>
+          </div>
+          <label for="review-concept" data-i18n="review.concept">Concept URI <span class="muted">(optional)</span></label>
+          <input id="review-concept" type="text" maxlength="500">
+          <div class="row">
+            <button type="button" id="review-apply" data-i18n="review.apply.btn">Apply filters</button>
+            <button type="button" id="review-refresh" class="ghost" data-i18n="review.reload.btn">Reload run list</button>
+            <button type="button" id="review-regenerate" class="ghost" data-i18n="review.regen.btn">Regenerate discarded</button>
+          </div>
+        </div>
+
+        <p id="review-error" class="error" role="alert" hidden></p>
+        <p id="review-status" class="muted" role="status" aria-live="polite"></p>
+
+        <p id="review-empty" class="muted" data-i18n="review.empty">Choose a run to review its samples.</p>
+        <ul id="review-list" class="plain-list"></ul>
+      </section>
+
+      <section id="tab-seeds" class="tab-panel" hidden>
+        <h2 data-i18n="h2.seeds">Seeds</h2>
+        <p class="muted" data-i18n="intro.seeds"><strong>A seed is a short example entry</strong>
+           (title, description, keywords) that shows the AI the kind of material you want for one
+           label. Per concept a handful of seeds steer the later generation so it stays on-topic
+           and varied. You build a <em>seed set</em> here, review and edit it, then a Run generates
+           the full dataset from it.</p>
+
+        <details class="help">
+          <summary data-i18n="seeds.help.summary">Which mode should I use? (walk through the use cases)</summary>
+          <ul>
+            <li data-i18n="seeds.help.vocabonly"><strong>Only AI + vocabulary (vocab-only):</strong>
+                you have no own data, or want a fully synthetic, publishable dataset. Leave
+                <em>Reference set</em> empty. The AI writes the seeds itself from each label and its
+                place in the hierarchy. In the editor you can press <em>Bootstrap</em> to generate
+                seeds for a concept.</li>
+            <li data-i18n="seeds.help.hybrid"><strong>Existing data + AI + vocabulary (hybrid):</strong>
+                you have a curated CSV and want the synthetic data to match its style. First upload
+                the CSV under <em>References</em> (it is PII-scrubbed on import), then pick it as the
+                <em>Reference set</em> here. Seeds are distilled from your real examples; during the
+                Run a leakage filter keeps near-copies of your data out of the output.</li>
+            <li data-i18n="seeds.help.mixed"><strong>Mixed:</strong> subjects that have reference rows
+                are seeded from them; subjects without any are bootstrapped by the AI —
+                automatically, in one seed set.</li>
+          </ul>
+        </details>
+
+        <div class="card">
+          <h3 data-i18n="seeds.build.h">Build a seed set</h3>
+          <form id="seed-build-form">
+            <label for="seed-name" data-i18n="seed.name">Name</label>
+            <input id="seed-name" type="text" maxlength="100" required>
+            <label for="seed-vocab" data-i18n="seed.vocab">Vocabulary</label>
+            <select id="seed-vocab" required></select>
+            <label for="seed-reference" data-i18n="seed.reference">Reference set <span class="muted">(optional — empty = vocab-only)</span></label>
+            <select id="seed-reference"></select>
+            <label for="seed-per-concept" data-i18n="seed.perconcept">Few-shot seeds per concept
+              <span class="muted">(5–10 is enough — the AI's style examples)</span></label>
+            <input id="seed-per-concept" type="number" min="1" max="50" value="6" inputmode="numeric">
+
+            <fieldset>
+              <legend data-i18n="seed.tb.legend">Term bank (from the reference)</legend>
+              <p class="muted" data-i18n="seed.tb.help">Separate from the few-shot seeds: keywords +
+                 entities mined per concept from many reference rows, deduplicated. The run uses them
+                 to steer and vary the content; the AI can refine each concept's list later.</p>
+              <label for="seed-keyword-cols" data-i18n="seed.kwcols">Keyword columns
+                <span class="muted">(optional, comma-separated — default: the reference's keyword column)</span></label>
+              <input id="seed-keyword-cols" type="text" maxlength="500"
+                     placeholder="properties.cclom:general_keyword">
+              <label for="seed-term-cols" data-i18n="seed.termcols">Term/entity columns
+                <span class="muted">(optional — default: title + description)</span></label>
+              <input id="seed-term-cols" type="text" maxlength="500"
+                     placeholder="properties.cclom:title, properties.cclom:general_description">
+              <div class="row">
+                <div>
+                  <label for="seed-terms-rows" data-i18n="seed.tb.rows">Rows per label to mine
+                    <span class="muted">(100–1000)</span></label>
+                  <input id="seed-terms-rows" type="number" min="0" max="20000" value="500" inputmode="numeric">
+                </div>
+                <div>
+                  <label for="seed-terms-topn" data-i18n="seed.tb.topn">Max terms per label</label>
+                  <input id="seed-terms-topn" type="number" min="10" max="500" value="60" inputmode="numeric">
+                </div>
+              </div>
+            </fieldset>
+
+            <button type="submit" id="seed-build-btn" data-i18n="seed.build.btn">Build seed set</button>
+          </form>
+        </div>
+
+        <p id="seed-error" class="error" role="alert" hidden></p>
+
+        <div class="card">
+          <h3 data-i18n="seeds.list.h">Seed sets</h3>
+          <p id="seed-empty" class="muted" data-i18n="seed.empty">None yet — build one above.</p>
+          <ul id="seed-list" class="plain-list"></ul>
+        </div>
+
+        <div id="seed-editor" class="card" hidden>
+          <h3 id="seed-editor-title"></h3>
+          <label for="seed-concept" data-i18n="seed.concept">Concept</label>
+          <select id="seed-concept"></select>
+          <p id="seed-none" class="muted" hidden data-i18n="seed.none">No seeds for this concept yet —
+             add some below or let the AI bootstrap it from the vocabulary context.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th data-i18n="seed.th.title">Title</th><th data-i18n="seed.th.desc">Description</th><th data-i18n="seed.th.keywords">Keywords</th><th data-i18n="seed.th.source">Source</th><th></th></tr></thead>
+              <tbody id="seed-rows"></tbody>
+            </table>
+          </div>
+          <form id="seed-add-form">
+            <label for="seed-add-title" data-i18n="seed.add.title">New seed — title</label>
+            <input id="seed-add-title" type="text" maxlength="300">
+            <label for="seed-add-description" data-i18n="seed.add.desc">Description</label>
+            <input id="seed-add-description" type="text" maxlength="2000">
+            <label for="seed-add-keywords" data-i18n="seed.add.keywords">Keywords</label>
+            <input id="seed-add-keywords" type="text" maxlength="500">
+            <button type="submit" class="ghost" data-i18n="seed.add.btn">Add to list</button>
+          </form>
+          <div class="row">
+            <button type="button" id="seed-save-btn" data-i18n="seed.save.btn">Save concept seeds</button>
+            <button type="button" id="seed-bootstrap-btn" class="ghost" data-i18n="seed.bootstrap.btn">Bootstrap 4 seeds (LLM)</button>
+          </div>
+
+          <fieldset id="seed-terms-wrap">
+            <legend data-i18n="seed.terms.h">Term bank (keywords + entities)</legend>
+            <p class="muted" data-i18n="seed.terms.help">Terms mined from the reference for this
+               concept. The AI can clean the list and add missing on-topic terms; the run uses it to
+               steer and vary the generated content (a rotating subset per batch).</p>
+            <p id="seed-terms" class="muted" aria-live="polite"></p>
+            <label for="seed-terms-context" data-i18n="seed.terms.context">Context for the cleanup
+              <span class="muted">(optional — e.g. school, secondary level)</span></label>
+            <input id="seed-terms-context" type="text" maxlength="2000">
+            <button type="button" id="seed-terms-btn" class="ghost" data-i18n="seed.terms.btn">Refine terms (LLM)</button>
+          </fieldset>
+
+          <p id="seed-usage" class="muted" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="tab-vocabularies" class="tab-panel" hidden>
+        <h2 data-i18n="h2.vocabularies">Vocabularies</h2>
+        <p class="muted" data-i18n="intro.vocab">A vocabulary is the list of labels a dataset can use
+           (e.g. the school subjects). Every seed set and every generated dataset is built on one.
+           Start with a default below, or load any SkoHub vocabulary by URL / file.</p>
+
+        <div class="card">
+          <h3 data-i18n="vocab.presets.h">Default vocabularies (one click)</h3>
+          <p class="muted" data-i18n="vocab.presets.help">The common WLO facets. Click one to fill
+             the fetch form, then press <em>Fetch vocabulary</em>.</p>
+          <p class="muted" data-i18n="vocab.presets.note"><strong>Which field?</strong> The subtitle
+             after each name is the dataset column its labels belong to. <em>Schulfächer</em> and
+             <em>Hochschulfächer</em> both use <code>taxonid</code> but are different value sets — for
+             a school-subjects dataset load <em>Schulfächer</em> (discipline), whose URIs are school
+             subjects only, not university ones.</p>
+          <div class="presets" id="vocab-presets">
+            <button type="button" class="ghost" data-name="educationalContext"
+              data-field="properties.ccm:educationalcontext"
+              data-url="https://vocabs.openeduhub.de/w3id.org/openeduhub/vocabs/educationalContext/index.json">
+              Bildungsstufen<span class="muted"> · educationalcontext</span></button>
+            <button type="button" class="ghost" data-name="discipline"
+              data-field="properties.ccm:taxonid"
+              data-url="https://vocabs.openeduhub.de/w3id.org/openeduhub/vocabs/discipline/index.json">
+              Schulfächer<span class="muted"> · taxonid</span></button>
+            <button type="button" class="ghost" data-name="hochschulfaechersystematik"
+              data-field="properties.ccm:taxonid"
+              data-url="https://vocabs.openeduhub.de/w3id.org/openeduhub/vocabs/hochschulfaechersystematik/index.json">
+              Hochschulfächer<span class="muted"> · taxonid</span></button>
+            <button type="button" class="ghost" data-name="intendedEndUserRole"
+              data-field="properties.ccm:educationalintendedenduserrole"
+              data-url="https://vocabs.openeduhub.de/w3id.org/openeduhub/vocabs/intendedEndUserRole/index.json">
+              Zielgruppe<span class="muted"> · intendedEndUserRole</span></button>
+            <button type="button" class="ghost" data-name="new_lrt"
+              data-field="properties.ccm:oeh_lrt"
+              data-url="https://vocabs.openeduhub.de/w3id.org/openeduhub/vocabs/new_lrt/index.json">
+              Inhaltstyp<span class="muted"> · oeh_lrt</span></button>
+            <button type="button" class="ghost" data-name="new_lrt_aggregated"
+              data-field="properties.ccm:oeh_lrt_aggregated"
+              data-url="https://vocabs.openeduhub.de/w3id.org/openeduhub/vocabs/new_lrt_aggregated/index.json">
+              Inhaltstyp (Gruppen)<span class="muted"> · oeh_lrt_aggregated</span></button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="vocab.url.h">Load from URL</h3>
+          <form id="vocab-fetch-form">
+            <label for="vocab-url" data-i18n="vocab.url">Vocabulary URL <span class="muted">(https, allowed hosts only)</span></label>
+            <input id="vocab-url" type="url" required
+                   placeholder="https://vocabs.openeduhub.de/w3id.org/openeduhub/vocabs/educationalContext/index.json">
+            <label for="vocab-fetch-name" data-i18n="vocab.fetch.name">Name <span class="muted">(optional — derived from the URL if empty)</span></label>
+            <input id="vocab-fetch-name" type="text" maxlength="100">
+            <label for="vocab-field" data-i18n="vocab.field.help">Metadata field <span class="muted">(optional — the dataset
+              column these labels belong to, e.g. properties.ccm:taxonid)</span></label>
+            <input id="vocab-field" type="text" maxlength="200" placeholder="properties.ccm:taxonid">
+            <button type="submit" id="vocab-fetch-btn" data-i18n="vocab.fetch.btn">Fetch vocabulary</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="vocab.upload.h">Upload file</h3>
+          <form id="vocab-upload-form">
+            <label for="vocab-file" data-i18n="vocab.upload.file">Vocabulary file
+              <span class="muted">(SKOS JSON-LD, or SkoHub Turtle .ttl)</span></label>
+            <input id="vocab-file" type="file"
+                   accept=".json,.jsonld,.ttl,.turtle,application/json,text/turtle" required>
+            <label for="vocab-upload-name" data-i18n="vocab.name.opt">Name <span class="muted">(optional — filename if empty)</span></label>
+            <input id="vocab-upload-name" type="text" maxlength="100">
+            <button type="submit" id="vocab-upload-btn" data-i18n="vocab.upload.btn">Upload vocabulary</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="vocab.manual.h">Type it in (manual)</h3>
+          <p class="muted" data-i18n="vocab.manual.help">No SkoHub link or file at hand? Paste the
+             labels — one concept per line. A line is either just a <code>Label</code>, or
+             <code>Label | URI</code> (order does not matter) when you already know the concept's
+             URI. Blank lines and lines starting with <code>#</code> are ignored.</p>
+          <form id="vocab-manual-form">
+            <label for="vocab-manual-name" data-i18n="vocab.name">Name</label>
+            <input id="vocab-manual-name" type="text" maxlength="100" required>
+            <label for="vocab-manual-text" data-i18n="vocab.manual.text">Concepts (one per line)</label>
+            <textarea id="vocab-manual-text" rows="6" required
+                      placeholder="Mathematik&#10;Deutsch&#10;Biologie | http://w3id.org/openeduhub/vocabs/discipline/080"></textarea>
+            <div class="row">
+              <div>
+                <label for="vocab-manual-lang" data-i18n="vocab.manual.lang">Label language</label>
+                <select id="vocab-manual-lang">
+                  <option value="de" selected>de</option>
+                  <option value="en">en</option>
+                </select>
+              </div>
+              <div>
+                <label for="vocab-manual-field" data-i18n="vocab.field.opt">Metadata field <span class="muted">(optional)</span></label>
+                <input id="vocab-manual-field" type="text" maxlength="200"
+                       placeholder="properties.ccm:taxonid">
+              </div>
+            </div>
+            <button type="submit" id="vocab-manual-btn" data-i18n="vocab.manual.btn">Create vocabulary</button>
+          </form>
+        </div>
+
+        <p id="vocab-error" class="error" role="alert" hidden></p>
+
+        <div class="card">
+          <h3><span data-i18n="vocab.loaded.h">Loaded vocabularies</span>
+            <button id="vocab-reload" class="ghost" type="button" data-i18n="btn.reload">Reload</button></h3>
+          <p id="vocab-empty" class="muted" data-i18n="vocab.empty">None yet — fetch or upload one above.</p>
+          <ul id="vocab-list" class="plain-list"></ul>
+          <div id="vocab-detail" hidden>
+            <h3 id="vocab-detail-title"></h3>
+            <ol id="vocab-tree" class="plain-list"></ol>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-references" class="tab-panel" hidden>
+        <h2 data-i18n="h2.references">References</h2>
+        <p class="muted" data-i18n="intro.references">Optional curated reference sets for hybrid runs.
+           Every upload is PII-scrubbed <em>before</em> it is stored (e-mails, phone numbers, URLs,
+           handles are masked). Reference data feeds seeds and the leakage filter — it is never
+           exported.</p>
+
+        <div class="card">
+          <h3 data-i18n="ref.upload.h">Upload reference CSV</h3>
+          <form id="ref-upload-form">
+            <label for="ref-file" data-i18n="ref.file">CSV file <span class="muted">(semicolon-separated, UTF-8)</span></label>
+            <input id="ref-file" type="file" accept=".csv,text/csv" required>
+            <label for="ref-name" data-i18n="ref.name">Name <span class="muted">(optional — filename if empty)</span></label>
+            <input id="ref-name" type="text" maxlength="100">
+            <label for="ref-text-columns" data-i18n="ref.textcols">Text columns
+              <span class="muted">(optional, comma-separated — default: cclom:title, cclom:general_description, cclom:general_keyword)</span></label>
+            <input id="ref-text-columns" type="text" maxlength="500">
+            <label for="ref-label-column" data-i18n="ref.labelcol">Label column
+              <span class="muted">(optional — default: ccm:taxonid)</span></label>
+            <input id="ref-label-column" type="text" maxlength="100">
+            <button type="submit" id="ref-upload-btn" data-i18n="ref.upload.btn">Upload &amp; scrub</button>
+          </form>
+          <p id="ref-result" class="muted" aria-live="polite" hidden></p>
+        </div>
+
+        <p id="ref-error" class="error" role="alert" hidden></p>
+
+        <div class="card">
+          <h3 data-i18n="ref.loaded.h">Loaded reference sets</h3>
+          <p id="ref-empty" class="muted" data-i18n="ref.empty">None yet — hybrid runs are optional;
+             without references the app works vocab-only.</p>
+          <ul id="ref-list" class="plain-list"></ul>
+        </div>
+      </section>
+
+      <section id="tab-refine" class="tab-panel" hidden>
+        <h2 data-i18n="h2.refine">Refine</h2>
+        <p class="muted" data-i18n="intro.refine">Work on existing datasets. Analyze distribution and
+           PII, and run a training preflight that simulates the classification API's data preparation
+           to show the <em>effective</em> training set before you train.</p>
+
+        <div class="card">
+          <h3 data-i18n="refine.upload.h">Upload dataset</h3>
+          <form id="refine-upload-form">
+            <label for="refine-file" data-i18n="refine.file">CSV file <span class="muted">(semicolon-separated, UTF-8; stored as-is)</span></label>
+            <input id="refine-file" type="file" accept=".csv,text/csv" required>
+            <label for="refine-name" data-i18n="refine.name">Name <span class="muted">(optional — filename if empty)</span></label>
+            <input id="refine-name" type="text" maxlength="100">
+            <button type="submit" id="refine-upload-btn" data-i18n="refine.upload.btn">Upload</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="refine.datasets.h">Datasets</h3>
+          <p id="refine-empty" class="muted" data-i18n="refine.empty">None yet — upload one above.</p>
+          <ul id="refine-list" class="plain-list"></ul>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="refine.ops.h">Operations</h3>
+          <p class="muted" data-i18n="refine.ops.help">Operations stack: every <em>Apply</em> writes a
+             <strong>new</strong> dataset and leaves the original untouched. To clean data in several
+             steps, apply one operation, then apply the next to its result — the result is selected
+             automatically, and the list of applied steps is shown below.</p>
+          <label for="refine-dataset" data-i18n="refine.dataset">Dataset</label>
+          <select id="refine-dataset"></select>
+          <p id="refine-ops" class="muted" aria-live="polite" hidden></p>
+          <label for="refine-text-cols" data-i18n="refine.textcols">Text columns <span class="muted">(comma-separated; blank = WLO defaults)</span></label>
+          <input id="refine-text-cols" type="text" maxlength="500"
+                 placeholder="properties.cclom:title, properties.cclom:general_description, properties.cclom:general_keyword">
+          <div class="row">
+            <div>
+              <label for="refine-label-col" data-i18n="refine.labelcol">Label column</label>
+              <input id="refine-label-col" type="text" maxlength="100"
+                     placeholder="properties.ccm:taxonid">
+            </div>
+            <div>
+              <label for="refine-label-filter" data-i18n="refine.labelfilter">Label filter <span class="muted">(substring)</span></label>
+              <input id="refine-label-filter" type="text" maxlength="200">
+            </div>
+            <div>
+              <label for="refine-min-samples" data-i18n="refine.minsamples">Min samples <span class="muted">(preflight; blank = auto)</span></label>
+              <input id="refine-min-samples" type="number" min="1" max="10000" inputmode="numeric">
+            </div>
+          </div>
+          <div class="row">
+            <button type="button" id="refine-analyze-btn" data-i18n="refine.analyze.btn">Analyze</button>
+            <button type="button" id="refine-preflight-btn" class="ghost" data-i18n="refine.preflight.btn">Training preflight</button>
+          </div>
+
+          <fieldset>
+            <legend data-i18n="refine.filter.legend">Filter</legend>
+            <label for="refine-filter" data-i18n="refine.filter.op">Operation</label>
+            <select id="refine-filter">
+              <option value="dedupe_exact" data-i18n="refine.op.dedupe_exact">dedupe — exact duplicate texts</option>
+              <option value="dedupe_semantic" data-i18n="refine.op.dedupe_semantic">dedupe — semantic (embedding similarity)</option>
+              <option value="length" data-i18n="refine.op.length">length corridor</option>
+              <option value="drop_no_label" data-i18n="refine.op.drop_no_label">drop rows without label</option>
+              <option value="label_filter" data-i18n="refine.op.label_filter">keep only labels containing…</option>
+              <option value="cap_per_label" data-i18n="refine.op.cap_per_label">cap rows per label (balance)</option>
+              <option value="markup" data-i18n="refine.op.markup">clean markup in text columns</option>
+              <option value="pii" data-i18n="refine.op.pii">PII — mask or drop</option>
+            </select>
+            <div class="row">
+              <div class="filter-param" data-for="dedupe_semantic" hidden>
+                <label for="refine-threshold" data-i18n="refine.threshold">Similarity threshold</label>
+                <input id="refine-threshold" type="number" min="0" max="1" step="0.01" value="0.95">
+              </div>
+              <div class="filter-param" data-for="length" hidden>
+                <label for="refine-len-min" data-i18n="refine.lenmin">Min chars</label>
+                <input id="refine-len-min" type="number" min="0" value="50">
+                <label for="refine-len-max" data-i18n="refine.lenmax">Max chars</label>
+                <input id="refine-len-max" type="number" min="1" value="6000">
+              </div>
+              <div class="filter-param" data-for="label_filter" hidden>
+                <label for="refine-substr" data-i18n="refine.substr">Label substring</label>
+                <input id="refine-substr" type="text" maxlength="200"
+                       placeholder="http://w3id.org/openeduhub/vocabs/discipline/">
+              </div>
+              <div class="filter-param" data-for="cap_per_label" hidden>
+                <label for="refine-cap" data-i18n="refine.cap">Max per label</label>
+                <input id="refine-cap" type="number" min="1" value="1000">
+              </div>
+              <div class="filter-param" data-for="pii" hidden>
+                <label for="refine-pii-mode" data-i18n="refine.piimode">Mode</label>
+                <select id="refine-pii-mode"><option value="mask" data-i18n="refine.pii.mask">mask</option><option value="drop" data-i18n="refine.pii.drop">drop row</option></select>
+              </div>
+            </div>
+            <label for="refine-target" data-i18n="refine.target">New dataset name <span class="muted">(for Apply)</span></label>
+            <input id="refine-target" type="text" maxlength="100">
+            <div class="row">
+              <button type="button" id="refine-filter-preview" class="ghost" data-i18n="refine.preview.btn">Preview</button>
+              <button type="button" id="refine-filter-apply" data-i18n="refine.apply.btn">Apply → new dataset</button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="refine.combine.legend">Combine datasets</legend>
+            <p class="muted" data-i18n="refine.combine.help">Pick sources in priority order (top wins
+               on duplicate texts), map their columns to the target schema, then merge into a new
+               dataset with a <code>source</code> column.</p>
+            <div id="combine-sources"></div>
+            <div class="row">
+              <button type="button" id="combine-suggest-btn" class="ghost" data-i18n="refine.combine.suggest.btn">Suggest mappings</button>
+            </div>
+            <div id="combine-mappings"></div>
+            <label for="combine-target" data-i18n="refine.combine.target">New dataset name</label>
+            <input id="combine-target" type="text" maxlength="100">
+            <button type="button" id="combine-btn" data-i18n="refine.combine.btn">Combine → new dataset</button>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="refine.prep.legend">Prepare for training</legend>
+            <p class="muted" data-i18n="refine.prep.help">Stratified, text-disjoint holdout split (a
+               holdout text never leaks into training) — honest evaluation. Uses the dataset and
+               columns selected above.</p>
+            <div class="row">
+              <div>
+                <label for="prep-fraction" data-i18n="prep.fraction">Holdout fraction</label>
+                <input id="prep-fraction" type="number" min="0.01" max="0.89" step="0.05" value="0.15">
+              </div>
+              <div>
+                <label for="prep-seed" data-i18n="prep.seed">Seed</label>
+                <input id="prep-seed" type="number" min="0" value="42">
+              </div>
+              <div>
+                <label for="prep-target" data-i18n="prep.target">Output name <span class="muted">(_train / _holdout)</span></label>
+                <input id="prep-target" type="text" maxlength="90">
+              </div>
+            </div>
+            <div class="row">
+              <button type="button" id="prep-split-btn" data-i18n="prep.split.btn">Split → train + holdout</button>
+              <button type="button" id="prep-push-btn" class="ghost" data-i18n="prep.push.btn">Push selected dataset → api_v3</button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="refine.audit.legend">Label audit (second opinion)</legend>
+            <p class="muted" data-i18n="refine.audit.help">Ask a trained api_v3 model to review the
+               labels. Rows where the model confidently disagrees with the gold label are listed for
+               the editorial team — nothing is relabeled automatically.</p>
+            <div class="row">
+              <div>
+                <label for="audit-model" data-i18n="audit.model">api_v3 model name</label>
+                <input id="audit-model" type="text" maxlength="100" placeholder="faecher_ai_cv5">
+              </div>
+              <div>
+                <label for="audit-conf" data-i18n="audit.conf">Confidence ≥</label>
+                <input id="audit-conf" type="number" min="0" max="1" step="0.05" value="0.8">
+              </div>
+              <div>
+                <label for="audit-topk" data-i18n="audit.topk">Gold must be in top-k</label>
+                <input id="audit-topk" type="number" min="1" max="20" value="3">
+              </div>
+            </div>
+            <button type="button" id="audit-btn" data-i18n="audit.btn">Run label audit</button>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="refine.enrich.legend">Enrich (additive, LLM)</legend>
+            <p class="muted" data-i18n="refine.enrich.help">Fill gaps only — never overwrites existing
+               content. Every change is recorded in an <code>enriched_fields</code> column.</p>
+            <div class="row">
+              <div>
+                <label for="enrich-mode" data-i18n="enrich.mode">Mode</label>
+                <select id="enrich-mode">
+                  <option value="keywords" data-i18n="enrich.mode.keywords">add keywords (rows below the minimum)</option>
+                  <option value="description" data-i18n="enrich.mode.description">add description (empty ones)</option>
+                </select>
+              </div>
+              <div>
+                <label for="enrich-min" data-i18n="enrich.min">Min keywords</label>
+                <input id="enrich-min" type="number" min="1" max="20" value="3">
+              </div>
+              <div>
+                <label for="enrich-target" data-i18n="enrich.target">New dataset name</label>
+                <input id="enrich-target" type="text" maxlength="100">
+              </div>
+            </div>
+            <button type="button" id="enrich-btn" data-i18n="enrich.btn">Enrich → new dataset</button>
+          </fieldset>
+        </div>
+
+        <p id="refine-error" class="error" role="alert" hidden></p>
+        <div id="refine-result" class="card" aria-live="polite" hidden></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script src="i18n.js"></script>
+<script src="api.js"></script>
+<script src="vocab.js"></script>
+<script src="references.js"></script>
+<script src="seeds.js"></script>
+<script src="runs.js"></script>
+<script src="review.js"></script>
+<script src="refine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

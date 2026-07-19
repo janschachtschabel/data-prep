@@ -1,0 +1,19 @@
+# Runtime dependencies. openai, model2vec, numpy and pandas join with their
+# milestones (M3/M4), each justified in docs/plan-2026-07-10-synthdata-app.md.
+# requirements.lock is version-pinned (==); hash-pinning (--require-hashes) is pending.
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+pydantic-settings>=2.2
+pyyaml>=6.0
+# M2: guarded vocabulary fetch (also the transport openai reuses from M4 on).
+httpx>=0.27
+# M2: multipart parsing for vocabulary file uploads.
+python-multipart>=0.0.31
+# M3: reference-CSV ingest + all later refine operations work on frames.
+pandas>=2.1
+# M4: async LLM client + structured outputs (seeds/bulk generation, PII gate).
+openai>=1.40
+# M7: CPU static embeddings for the semantic gates (leakage filter, dedupe).
+model2vec>=0.3
+numpy>=1.26

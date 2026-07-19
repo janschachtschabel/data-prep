@@ -1,0 +1,58 @@
+# data-prep configuration — structured, NON-SECRET defaults an operator edits.
+# Secrets stay in environment variables: this file only NAMES the env variable
+# that carries each API key (api_key_env), it never contains a key itself.
+# Missing file or missing sections fall back to these same defaults in code.
+
+llm:
+  # Quality-critical seed work: mini. Bulk generation: nano. Both fully
+  # overridable, including base_url for non-OpenAI-compatible hosts.
+  # The API key here is only a FALLBACK: a request may carry its own key + model
+  # (X-LLM-Key / X-LLM-Model headers, "open instance" mode), which then win over
+  # api_key_env + model below. base_url stays operator-controlled (no per-request
+  # override) so a request can't redirect the server's outbound call (SSRF).
+  seeds:
+    base_url: https://api.openai.com/v1
+    model: gpt-5.4-mini
+    api_key_env: OPENAI_API_KEY
+  bulk:
+    base_url: https://api.openai.com/v1
+    model: gpt-5.4-nano
+    api_key_env: OPENAI_API_KEY
+
+budgets:
+  # Per-run cost caps — a run pauses (never silently continues) when either is
+  # reached. Set effectively unlimited on purpose (budget removed): a run runs to
+  # completion. Lower these again if you want a hard cost ceiling per run.
+  max_llm_calls: 100000000
+  max_tokens_total: 100000000000
+  # Optional process-wide circuit breaker across ALL requests and runs (not
+  # per-run). 0 = disabled (default). Set a positive ceiling to bound total
+  # spend from a leaked key or a runaway retry loop; the process resets it on
+  # restart (single-worker, in-memory).
+  max_cross_request_calls: 0
+  max_cross_request_tokens: 0
+
+api_v3:
+  # Optional: push exports directly to the classification API. Empty url =
+  # push disabled. The key comes from the NAMED env variable, never from here.
+  # Local dev: the api_v3 test server (see .claude/launch.json / port 8021).
+  url: "http://127.0.0.1:8021"
+  api_key_env: DATAPREP_APIV3_KEY
+
+references:
+  # Curated CSVs imported into the reference store on startup (PII-scrubbed),
+  # so they are selectable for hybrid seed sets out of the box. Paths are
+  # config, not code; relative paths resolve against the data-prep folder.
+  # Imported once (idempotent); a missing source is skipped, not fatal.
+  defaults:
+    - name: curated-30k
+      path: ../api_v3/data/data_30k.csv
+
+embeddings:
+  # Static model for the semantic gates (leakage filter, semantic dedupe).
+  # Compact int8 edu distillation; downloaded once from Hugging Face on first use.
+  model: JanSchachtschabel/m2v-gte-256-int8-edu
+  # Reject a sample when cosine vs ANY reference text reaches this (hybrid runs).
+  leakage_threshold: 0.90
+  # Reject a sample when cosine vs an already accepted sample reaches this.
+  dedupe_threshold: 0.95

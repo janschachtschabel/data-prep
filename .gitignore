@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+data/
+runs/
+# Secrets: ignore every .env variant but keep the committed template.
+.env
+.env.*
+!.env.example
+*.egg-info/

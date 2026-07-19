@@ -1,0 +1,55 @@
+# Local run setup. For production, pull the image from GHCR (see the docker
+# workflow) and put a reverse proxy with TLS in front.
+#
+# Quick start:
+#   cp .env.example .env       # set DATAPREP_AUTH_KEY (OPENAI_API_KEY optional)
+#   docker compose up -d
+#   open http://localhost:8110/ui
+#
+# The OpenAI key is OPTIONAL here: leave it empty to run an "open" instance where
+# each user supplies their own key + model in the UI ("KI-Zugang" panel, sent as
+# X-LLM-* headers). Set it only if you want a shared server-wide fallback key.
+#
+# Logs:    docker compose logs -f
+# Stop:    docker compose down
+# Reset:   docker compose down -v   # WARNING: deletes datasets + runs
+
+services:
+  data-prep:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: data-prep:local
+    container_name: data-prep
+    restart: unless-stopped
+    ports:
+      # Bind to localhost only — a reverse proxy (nginx/caddy) should sit in front.
+      - "127.0.0.1:8110:8110"
+    environment:
+      # ---- Auth ----
+      # Unset = auth disabled for LOOPBACK clients only; a non-loopback request
+      # is refused. Behind a proxy the peer is the proxy, so a key is REQUIRED.
+      DATAPREP_AUTH_KEY: ${DATAPREP_AUTH_KEY:?DATAPREP_AUTH_KEY missing — create .env from .env.example}
+
+      # ---- LLM (seed bootstrap, generation, enrichment) ----
+      # OPTIONAL server-wide fallback key. Empty = open instance: users bring
+      # their own key per request via the UI's "KI-Zugang" panel (X-LLM-Key).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+      # ---- Optional: api_v3 push / label audit ----
+      DATAPREP_APIV3_KEY: ${DATAPREP_APIV3_KEY:-}
+
+      # ---- App ----
+      DATAPREP_LOG_LEVEL: ${DATAPREP_LOG_LEVEL:-INFO}
+
+      # ---- Data (persistent volume, see Dockerfile defaults) ----
+      DATAPREP_DATA_DIR: /data/datasets
+      DATAPREP_RUNS_DIR: /data/runs
+    volumes:
+      # Persistent state: datasets, seed sets, vocabularies, generation runs.
+      - data-prep-data:/data
+    # No healthcheck block: the image already defines one (GET /health).
+
+volumes:
+  data-prep-data:
+    driver: local
