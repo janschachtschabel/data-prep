@@ -30,8 +30,8 @@ class LlmEndpoint(BaseModel):
     base_url: str | None = None
     model: str
     api_key_env: str = "OPENAI_API_KEY"
-    verbosity: str | None = None
-    reasoning_effort: str | None = None
+    verbosity: Literal["low", "medium", "high"] | None = None
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
 
 
 class Budgets(BaseModel):

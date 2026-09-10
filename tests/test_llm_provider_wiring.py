@@ -165,3 +165,22 @@ class TestTheRequestOnTheWire:
         _run(LlmEndpoint(model="gpt-5.6-luna", api_key_env="TEST_LLM_KEY"),
              transport, monkeypatch)
         assert "verbosity" not in bodies[0]
+
+
+class TestTuningValuesAreCheckedAtLoadTime:
+    """provider is a Literal and fails when config.yaml is read; verbosity and
+    reasoning_effort were free strings, so a typo surfaced as a 400 on the
+    first LLM call instead. Same field, same moment, same behaviour."""
+
+    def test_a_typo_in_verbosity_is_refused_when_the_config_loads(self):
+        with pytest.raises(ValidationError):
+            LlmEndpoint(model="gpt-5.6-luna", verbosity="lwo")
+
+    def test_a_typo_in_reasoning_effort_is_refused_when_the_config_loads(self):
+        with pytest.raises(ValidationError):
+            LlmEndpoint(model="gpt-5.6-luna", reasoning_effort="lo")
+
+    def test_the_documented_values_are_accepted(self):
+        for value in ("low", "medium", "high"):
+            LlmEndpoint(model="gpt-5.6-luna", verbosity=value, reasoning_effort=value)
+        LlmEndpoint(model="gpt-5.6-luna", reasoning_effort="minimal")
