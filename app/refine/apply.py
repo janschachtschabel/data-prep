@@ -1,22 +1,50 @@
-"""What happens to an operation's result: preview it, or apply and record it.
+"""Run a table operation, then preview or record its result.
 
-Label filters and table operations dispatch differently -- one needs an
-embedding model in its context, the other knows nothing about labels -- but
-what happens afterwards is identical, and it is the part that matters most: the
-operation history is what makes a finished dataset reconstructable.
+Two halves that belong together. :data:`TABLE_OPS` dispatches the operations of
+the table layer, mirroring ``filters.FILTERS`` for the label layer.
+:func:`preview_or_apply` then decides what becomes of the result.
 
-Kept here rather than in either route so the two cannot drift apart. The caller
-runs its own operation and hands over the result, which keeps this module free
-of any operation registry.
+The second half is shared with the label filters, which dispatch through their
+own registry -- they need an embedding model in their context, these know
+nothing about labels -- but what happens AFTERWARDS is identical, and it is the
+part that matters most: the operation history is what makes a finished dataset
+reconstructable. Written twice, the two routes would have drifted.
+
+Routes therefore only translate HTTP; neither registry nor history handling
+lives in them.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 import pandas as pd
 
 from ..security import safe_name
 from ..settings import Settings
+from .columns import drop_columns, rename_columns, select_columns
+from .rules import filter_rows
 from .store import append_op, read_ops, save_dataset, write_ops
+
+# The table layer's operations, mirroring filters.FILTERS for the label layer.
+# Kept beside preview_or_apply so one module answers "run a step, then record
+# it" -- the routes only translate HTTP.
+TABLE_OPS: dict[str, Callable[..., tuple[pd.DataFrame, dict]]] = {
+    "rules": filter_rows,
+    "select_columns": select_columns,
+    "drop_columns": drop_columns,
+    "rename_columns": rename_columns,
+}
+
+
+def run_table_op(name: str, df: pd.DataFrame, params: dict, ctx: dict) -> tuple[pd.DataFrame, dict]:
+    """Dispatch to one table operation; raises ``ValueError`` for an unknown name."""
+    operation = TABLE_OPS.get(name)
+    if operation is None:
+        raise ValueError(
+            f"Unknown operation {name!r}. Available: {', '.join(sorted(TABLE_OPS))}."
+        )
+    return operation(df, params, ctx)
 
 
 def preview_or_apply(
