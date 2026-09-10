@@ -20,7 +20,9 @@ swallowed.
 
 from __future__ import annotations
 
+import operator
 import re
+from typing import TypeGuard
 
 import pandas as pd
 
@@ -31,6 +33,7 @@ OPERATORS = (
 
 _ORDERED = {"lt", "lte", "gt", "gte", "between"}
 _TEXTUAL = {"contains", "starts_with", "ends_with", "regex"}
+_COMPARE = {"lt": operator.lt, "lte": operator.le, "gt": operator.gt, "gte": operator.ge}
 
 # A pattern is caller-controlled input and Python's `re` has no timeout, so an
 # unbounded one can backtrack catastrophically and burn a core. Length is a
@@ -40,7 +43,7 @@ _MAX_PATTERN = 200
 _EXAMPLES = 5
 
 
-def _is_number(value: object) -> bool:
+def _is_number(value: object) -> TypeGuard[int | float]:
     """A JSON number -- not a numeric-looking string.
 
     The distinction is the whole contract: an id of "007" must not be read as
@@ -70,20 +73,11 @@ def _compare(column: pd.Series, rule: dict, op: str) -> pd.Series:
         text = column.fillna("").astype(str)
         return (text >= str(lower)) & (text <= str(upper))
 
+    # One vectorised pass over the column; a dict of all four comparisons
+    # evaluated every one of them eagerly and then picked one.
     if _is_number(value):
-        numbers = _numeric(column)
-        checks = {
-            "lt": numbers < value, "lte": numbers <= value,
-            "gt": numbers > value, "gte": numbers >= value,
-        }
-        return checks[op]
-    text = column.fillna("").astype(str)
-    target = str(value)
-    checks = {
-        "lt": text < target, "lte": text <= target,
-        "gt": text > target, "gte": text >= target,
-    }
-    return checks[op]
+        return _COMPARE[op](_numeric(column), value)
+    return _COMPARE[op](column.fillna("").astype(str), str(value))
 
 
 def _match(column: pd.Series, rule: dict) -> pd.Series:
