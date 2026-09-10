@@ -26,6 +26,24 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Stufe A der Tabellen-Werkbank fertig (2026-09-10).** Plan:
+`docs/plan-2026-09-10-tabellen-werkbank.md`. data-prep kann jetzt eine beliebige
+Tabelle verarbeiten, nicht nur trainingsgeformte: CSV/JSON/JSONL lesen und
+schreiben (auch gzip, Trennzeichen und Encoding waehlbar), verschachteltes JSON
+zu Punktpfad-Spalten flach klopfen, Zeilen ueber eine Regelliste mit fuenfzehn
+Operatoren filtern (UND/ODER, `starts_with` fuer URI-Grundstaemme), Spalten
+behalten/entfernen/umbenennen, Spalten profilieren, Datensatz herunterladen.
+Neue Module: `tabular.py`, `refine/rules.py`, `refine/columns.py`,
+`refine/profile.py`, `refine/apply.py`, `routes/tables.py`. **408 Tests gruen**
+(vorher 243), ruff/mypy sauber, keine Datei ueber 300 Zeilen; `routes/refine.py`
+von 332 auf 304 geschrumpft. An echten WLO-Daten durchgespielt: 3000 Zeilen x 91
+Spalten importiert, per discipline-URI auf 2990 gefiltert, auf zwei Spalten
+reduziert, profiliert, als gzip exportiert.
+**Offen: Stufe B** (Key-Join, Dubletten ueber Schluessel, Zeilen-Viewer mit
+Suche) und **Stufe C** (LLM-Providerwahl openai / b-api-openai /
+b-api-academiccloud mit `gpt-5.6-luna`, UI auf api_v3-Niveau).
+
+
 **M1–M11 fertig (v1) + UX-/i18n-Runde v0.2.0 + Whole-Codebase-Audit abgearbeitet + Deployment-Gerüst (235 Tests grün, ruff/mypy sauber).** Der Audit (`docs/audits/2026-07-12-audit.md`) ist geschlossen: alle Code-Findings behoben (T1, T3, T4, T6, T7, T8, T9, CSP, UI-Fehlerbehandlung, i18n-a11y + Korrektheits-Cluster + Doku-Drift); T5 (unbegrenztes Per-Run-Budget) und CSV-Formel-Injection als bewusste Won't-Fix-Entscheidungen dokumentiert (CHANGELOG). **Deployment vorbereitet:** `Dockerfile` (python:3.12-slim, non-root, healthcheck, single worker, 8110), `.dockerignore`, `docker-compose.yml`, GitHub Actions `.github/workflows/ci.yml` (ruff+mypy+pytest+OpenAPI-Smoke) und `docker.yml` (getakteter GHCR-Build/Push). Optionale Ausbaustufen (v2, im Plan dokumentiert): spaCy-NER-PII, Parquet, LLM-Umschreiben kuratierter Texte, Multi-User/Rollen. Offen (ohne Code, beim Betreiber): Repo anlegen, Image bauen/hochladen, Deployen; Basis-Image vor Prod per Digest pinnen. Dev-Server: `data-prep-ui` (Port **8110**, Key `dev-key`) bzw. `data-prep-ui-noauth` (8111) via `.claude/launch.json`; oder aus `data-prep/`: `.venv\Scripts\python -m app.main`. (8100 kollidierte lokal mit Docker Desktop → auf 8110/8111 verlegt.)
 
 **Erledigt 2026-09-10 — die Notiz war ein Fehlalarm, beide Hälften.** `properties.ccm:taxonid`

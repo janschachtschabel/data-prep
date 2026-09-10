@@ -383,6 +383,31 @@ raus.
 - **C7** `docs/ui-guide.md` und `README.md` nachziehen; `TODO.md`
   fortschreiben.
 
+## Abweichungen in der Umsetzung (Stufe A, 2026-09-10)
+
+Der Plan ist die Quelle der Wahrheit, also stehen die Abweichungen hier statt
+nur in den Commits:
+
+- **`flatten` als Schalter gestrichen.** Verschachtelung wird immer flach
+  geklopft. Gegen eine sehr breite Tabelle steht die Spaltenauswahl, die es nun
+  gibt — ein zweiter Notausgang waere spekulativ gewesen (YAGNI).
+- **`read_table` bekam `filename`.** Ohne den Dateinamen kann `fmt="auto"` die
+  Endung nicht lesen.
+- **`preview_or_apply` ohne `runner`-Rueckruf.** Der Aufrufer fuehrt seine
+  Operation selbst aus und uebergibt das Ergebnis; die Dispatch-Registry
+  `TABLE_OPS` liegt daneben im selben Modul. Einfacher als der geplante
+  Rueckruf, und die beiden Routen brauchen ohnehin unterschiedliche Kontexte.
+- **Das Profil ist ein `GET`, kein `POST`.** Es liest nur und braucht keinen
+  Rumpf.
+- **Der Import zog schon in A4 nach `routes/tables.py` um, nicht erst in A8.**
+  `routes/refine.py` lag mit 332 Zeilen bereits ueber der Grenze; ihn fuer die
+  Formatoptionen weiter wachsen zu lassen war keine Option.
+- **Zusaetzlich behoben, vom Plan nicht erfasst:** `store.load_dataset` las den
+  Speicher ohne `keep_default_na=False` zurueck. Ein als `""` gespeichertes Feld
+  kam als `NaN` wieder, und der Text `"NA"` wurde ein fehlender Wert. Ohne diese
+  Korrektur haette der neue `is_empty`-Operator je nach Zeitpunkt etwas anderes
+  bedeutet.
+
 ## Verification plan
 
 | Anforderung | Wie geprüft | Erfolg sieht so aus |

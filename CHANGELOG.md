@@ -3,6 +3,68 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — the generic table workbench, stage A (2026-09-10)
+
+Design: `docs/plan-2026-09-10-tabellen-werkbank.md`.
+
+Until now every refine operation was training-data shaped: it required text
+columns and a label column. This adds the layer BELOW that — operations that
+treat a table as a table, so an export can be worked on before anyone has
+decided which column is the label.
+
+### Added
+- **Import CSV, JSON or JSONL, plain or gzipped.** `POST /refine/datasets/import`
+  gains `format`, `separator`, `encoding` and `list_separator`. `format=auto`
+  (the default) reads the extension and detects gzip from the file's magic
+  number, so a mislabelled `.csv` that is really gzipped still works.
+- **Nested JSON is flattened into dot-path columns.** A WLO edu-sharing export
+  wraps every property in a list, so `properties.cclom:title` becomes a plain
+  column. Lists of scalars are joined; a list of OBJECTS survives as JSON text
+  rather than being silently dropped (a documented limitation).
+- **Filter rows by column value** — `POST /refine/{name}/op` with `op: "rules"`.
+  Fifteen operators (eq, ne, lt, lte, gt, gte, between, in, not_in, contains,
+  starts_with, ends_with, regex, is_empty, not_empty) over any column, joined by
+  AND or OR. `starts_with` is what makes a URI stem selectable — the case that
+  prompted this, since one `taxonid` field carries two vocabularies and only a
+  prefix tells them apart.
+- **Keep, drop and rename columns**, through the same endpoint. One WLO record
+  expands to well over a hundred columns and few are training material.
+- **`GET /refine/{name}/profile`** — per-column fill rate, cardinality, the
+  values that dominate, and a numeric range where a column holds numbers.
+- **`GET /refine/{name}/download`** — export as CSV, CSV.gz, JSON or JSONL, with
+  a choosable separator. Refine datasets previously had no download at all; the
+  only way out was a push to api_v3.
+- Table operations share the label filters' operation history, so one pipeline
+  can mix both kinds of step and still be reconstructable.
+
+### Changed
+- **The store now reads and writes all-strings consistently.** `load_dataset`
+  read the store back without `keep_default_na=False`, so a cell saved as `""`
+  returned as `NaN` and the literal text `"NA"` became a missing value — the
+  round trip through the store was not stable. That mattered beyond tidiness:
+  the new `is_empty` operator would otherwise have meant different things
+  depending on whether a dataset had just been imported or reloaded.
+- An empty upload now reports "no data rows" instead of a parse failure.
+- `POST /refine/datasets/import` moved to `app/routes/tables.py` (same URL, same
+  behaviour). `app/routes/refine.py` was at 332 lines, past the ~300 the
+  constitution sets; it is now 304 and the table layer has its own module.
+
+### Measured, not adopted
+- An expression language for filters (`jahr >= 2015 and ...`). It needs a parser
+  and its own error messages, and `pandas.query` — the obvious shortcut —
+  evaluates Python, which would turn a filter box into code execution. The rule
+  list covers the same ground and is fully testable.
+- A `flatten` toggle on import. The plan listed one; it was cut as speculative,
+  since the mitigation for a very wide frame is the column-selection operation
+  that now exists.
+
+### Security
+- A caller-supplied regular expression is capped at 200 characters. Python's
+  `re` has no timeout, so an unbounded pattern can backtrack catastrophically.
+- Every rejection in the new operations is a client-safe `ValueError` naming the
+  offending column and listing what is available, so a wrong name is a 400 and
+  never a 500 with a stack trace.
+
 ## [Unreleased] — per-request LLM credentials (open-instance mode, 2026-07-19)
 
 ### Added
