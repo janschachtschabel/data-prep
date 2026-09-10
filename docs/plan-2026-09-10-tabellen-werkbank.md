@@ -408,6 +408,22 @@ nur in den Commits:
   Korrektur haette der neue `is_empty`-Operator je nach Zeitpunkt etwas anderes
   bedeutet.
 
+### Stufe B (2026-09-10)
+
+- **B1 und B2 liegen in `refine/duplicates.py`**, nicht in `profile.py` und
+  `filters.py`. Bericht und Entfernen teilen die Schluesselbildung und sind eine
+  Verantwortung; `filters.py` ist ausserdem die label-zentrierte Schicht.
+- **`refine/keys.py` kam hinzu** (nicht im Plan). Dubletten und Join muessen sich
+  darueber einig sein, was ein Schluessel IST — sonst widerspricht der
+  Dublettenbericht dem Join, der ihm folgt.
+- **`refine/view.py` kam hinzu** (im Plan lag der Viewer in der Route). Suchen
+  und Blaettern ist Logik, und Routen bleiben laut Konstitution duenn.
+- **Die Join-Vorschau liefert die Kardinalitaet, kein materialisiertes
+  Ergebnis.** Fuer einen Join ist das die ehrliche Vorschau: die Groesse ist die
+  gefaehrliche Groesse, und sie zu berechnen kostet nichts.
+- **Unpassende Zeilen werden unabhaengig von der Join-Art gezaehlt**, damit ein
+  Left-Join die verworfenen Rechts-Zeilen nicht verschweigt.
+
 ## Verification plan
 
 | Anforderung | Wie geprüft | Erfolg sieht so aus |

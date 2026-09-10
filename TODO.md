@@ -39,8 +39,15 @@ Neue Module: `tabular.py`, `refine/rules.py`, `refine/columns.py`,
 von 332 auf 304 geschrumpft. An echten WLO-Daten durchgespielt: 3000 Zeilen x 91
 Spalten importiert, per discipline-URI auf 2990 gefiltert, auf zwei Spalten
 reduziert, profiliert, als gzip exportiert.
-**Offen: Stufe B** (Key-Join, Dubletten ueber Schluessel, Zeilen-Viewer mit
-Suche) und **Stufe C** (LLM-Providerwahl openai / b-api-openai /
+**Stufe B fertig (2026-09-10).** Dubletten ueber waehlbare Schluessel (Bericht +
+Entfernen), Join zweier Datensaetze ueber mehrere Schluessel in vier Join-Arten
+mit Kardinalitaets-Vorabbericht und Zeilen-Obergrenze, sowie ein blaetternder,
+durchsuchbarer Zeilen-Viewer. Neue Module: `refine/duplicates.py`,
+`refine/keys.py`, `refine/join.py`, `refine/view.py`. **481 Tests gruen.** An
+echten Daten: 3000 Zeilen ueber `ccm:wwwurl` geteilt und wieder verbunden — 477
+Dublettengruppen, Vorabbericht sagte many-to-many und 4430 Zeilen voraus, der
+Join lieferte 4706 (4430 getroffen + 276 ohne Partner).
+**Offen: Stufe C** (LLM-Providerwahl openai / b-api-openai /
 b-api-academiccloud mit `gpt-5.6-luna`, UI auf api_v3-Niveau).
 
 

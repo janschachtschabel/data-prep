@@ -3,6 +3,56 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — the generic table workbench, stage B (2026-09-10)
+
+Design: `docs/plan-2026-09-10-tabellen-werkbank.md`. Continues stage A below.
+
+### Added
+- **Duplicates over chosen key columns.** `GET /refine/{name}/duplicates?keys=…`
+  reports how many rows share a key and which keys repeat; the `dedupe_keys`
+  operation removes them, keeping the `first` or the `last` of each group. The
+  existing dedupe filters key on the combined TEXT and answer "is this the same
+  material?"; these key on an id or a URL and answer "is this the same record?".
+- **Join two datasets** — `POST /refine/{name}/join`, over one or more key
+  pairs, in all four join types, with column-collision handling (a suffix, or
+  `coalesce` to fill gaps from the right instead of adding a column).
+- **`GET /refine/{name}/rows`** — a paginated, searchable viewer. Only the
+  requested page is serialised, and both `total` and `matched` are returned so
+  "30 of 60" shows a search did what was meant.
+
+### Design decisions worth knowing
+- **A join without a target reports its CARDINALITY, not a materialised
+  preview.** What an operator needs to know first is how many rows it would
+  produce, and a key repeating on both sides multiplies them. Computing that
+  from the key counts costs nothing; materialising it is the very thing worth
+  avoiding. The join then refuses past a 5-million-row ceiling and says how
+  large it would have been.
+- **A key is usable only when every part is filled** (`app/refine/keys.py`).
+  Keying on (url, source) must not merge two rows that merely share a source and
+  both lack a URL. Rows with an incomplete key never match anything, and their
+  number is reported.
+- **Unmatched rows are counted independently of the join type.** A left join
+  silently discards unmatched RIGHT rows; the count makes that loss visible.
+
+### Fixed (found while building, before release)
+- **pandas' `merge` matches missing keys with each other**, unlike SQL. Marking
+  an incomplete key as `None` therefore joined every keyless row on the left to
+  every keyless row on the right — a confident false match. Each now gets a
+  row-unique placeholder.
+- **A right-only row lost its key.** Dropping the right side's key columns
+  before the merge left those rows with no identifying value, so an outer join
+  produced rows nothing could identify and a second join on the same key would
+  have silently lost them. The key columns now travel through the merge.
+- **A composite key with one part missing** was treated as a usable key, which
+  would have merged unrelated rows. Caught by the multi-key test.
+
+### Verified on real data
+3000 rows of `data_30k.csv` split into two files sharing `ccm:wwwurl`: 477
+duplicate groups and 276 rows without a key; the pre-flight predicted
+many-to-many with 4430 rows and `explodes: true`; the join then produced 4706
+rows (4430 matched + 276 unmatched left). The rows without a URL correctly did
+not match each other.
+
 ## [Unreleased] — the generic table workbench, stage A (2026-09-10)
 
 Design: `docs/plan-2026-09-10-tabellen-werkbank.md`.
