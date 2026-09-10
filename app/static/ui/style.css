@@ -5,6 +5,11 @@
   /* spacing scale */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px;
   --radius: 8px;
+  /* Set by the widest thing the app shows: the row viewer, whose columns
+     come from whatever file was imported. At 880px a WLO export was clipped
+     after two columns. Prose keeps its own measure below, so a wider page
+     does not turn help text into long lines. */
+  --page-max: 1200px;
   /* light theme — all pairings meet WCAG AA on their backgrounds */
   --bg: #f4f6f8;
   --surface: #ffffff;
@@ -98,7 +103,7 @@ body {
 }
 .brand { font-weight: 600; margin-right: auto; }
 .topbar nav { display: flex; gap: var(--s-1); flex-wrap: wrap; }
-main { max-width: 880px; margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-6); }
+main { max-width: var(--page-max); margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-6); }
 
 h1 { font-size: 1.4rem; margin: 0 0 var(--s-2); }
 h2 { font-size: 1.2rem; margin: var(--s-2) 0 var(--s-4); }
@@ -199,6 +204,9 @@ details.help {
 }
 details.help summary { cursor: pointer; font-weight: 600; color: var(--accent); }
 details.help[open] summary { margin-bottom: var(--s-2); }
+/* ~72 characters is the readable measure; without this the wider page above
+   would stretch every help sentence across the full 1200px. */
+details.help p, details.help ul, details.help li { max-width: 72ch; }
 details.help ul { margin: 0; padding-left: var(--s-5); }
 details.help li { margin: var(--s-2) 0; }
 #refine-ops { border-left: 3px solid var(--border); padding-left: var(--s-3); }
