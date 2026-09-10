@@ -14,7 +14,10 @@ column name, not an expression.
 from __future__ import annotations
 
 import gzip
+import io
 import json
+
+import pandas as pd
 
 SUPPORTED_READ = ("csv", "csv.gz", "json", "jsonl", "jsonl.gz")
 SUPPORTED_WRITE = ("csv", "csv.gz", "json", "jsonl")
@@ -128,3 +131,143 @@ def sniff_format(filename: str, raw: bytes) -> str:
             inner = b""
         return f"{_sniff_text(inner)}.gz"
     return _sniff_text(raw)
+
+
+def _decompress(raw: bytes) -> bytes:
+    try:
+        return gzip.decompress(raw)
+    except (OSError, EOFError) as exc:
+        raise ValueError(f"File is not readable gzip: {exc.__class__.__name__}.") from exc
+
+
+def _records_to_frame(records: list[dict], list_separator: str) -> pd.DataFrame:
+    """Flattened records into an all-string frame with the union of all keys.
+
+    Two exports rarely carry identical fields, so a key missing from one record
+    becomes an empty cell -- dropping the row or the column instead would lose
+    data the operator can still see and filter.
+    """
+    flat = [flatten_record(record, list_separator=list_separator) for record in records]
+    return pd.DataFrame(flat, dtype=str).fillna("")
+
+
+def _read_json(text: str, list_separator: str) -> pd.DataFrame:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"File is not readable JSON: line {exc.lineno}, {exc.msg}.") from exc
+    if isinstance(payload, dict):
+        payload = [payload]
+    if not isinstance(payload, list):
+        raise ValueError("JSON must be an object or an array of objects.")
+    non_objects = [i for i, item in enumerate(payload) if not isinstance(item, dict)]
+    if non_objects:
+        raise ValueError(f"JSON array must hold objects; item {non_objects[0]} is not one.")
+    return _records_to_frame(payload, list_separator)
+
+
+def _read_jsonl(text: str, list_separator: str) -> pd.DataFrame:
+    records = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue  # blank lines are padding in every export we have seen
+        try:
+            record = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"File is not readable JSONL: line {number}, {exc.msg}.") from exc
+        if not isinstance(record, dict):
+            raise ValueError(f"JSONL line {number} is not an object.")
+        records.append(record)
+    return _records_to_frame(records, list_separator)
+
+
+def _read_csv(raw: bytes, separator: str, encoding: str) -> pd.DataFrame:
+    try:
+        # keep_default_na=False keeps the all-strings promise: without it an
+        # empty cell becomes NaN (a float) and the literal strings "NA"/"null"
+        # become missing values -- both wrong here, where a keyword or taxonid
+        # may legitimately BE the text "NA".
+        return pd.read_csv(
+            io.BytesIO(raw), sep=separator, dtype=str,
+            encoding=encoding, keep_default_na=False,
+        )
+    except pd.errors.EmptyDataError:
+        # An empty file is not a PARSE failure; let the caller's shape check
+        # report "no data rows", which is what actually went wrong.
+        return pd.DataFrame()
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValueError(
+            f"File is not a readable CSV (separator {separator!r}, {encoding}): "
+            f"{exc.__class__.__name__}."
+        ) from exc
+
+
+def read_table(
+    raw: bytes,
+    *,
+    fmt: str = "auto",
+    separator: str = ";",
+    encoding: str = "utf-8",
+    list_separator: str = ",",
+    filename: str = "",
+) -> pd.DataFrame:
+    """Parse an uploaded payload into an all-string DataFrame.
+
+    ``fmt`` is one of :data:`SUPPORTED_READ`, or ``"auto"`` to derive it from
+    ``filename`` and the bytes. Nested JSON is always flattened to dot-path
+    columns -- see :func:`flatten_record`.
+
+    Raises ``ValueError`` with a client-safe message on anything unreadable.
+    """
+    resolved = sniff_format(filename, raw) if fmt == "auto" else fmt
+    if resolved not in SUPPORTED_READ:
+        raise ValueError(
+            f"Unsupported format {resolved!r}. Supported: {', '.join(SUPPORTED_READ)}."
+        )
+
+    payload = _decompress(raw) if resolved.endswith(".gz") else raw
+    base = resolved.removesuffix(".gz")
+
+    if base == "csv":
+        frame = _read_csv(payload, separator, encoding)
+    else:
+        try:
+            text = payload.decode(encoding)
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"File is not readable {encoding} text: {exc.reason}.") from exc
+        frame = _read_json(text, list_separator) if base == "json" else _read_jsonl(text, list_separator)
+
+    if frame.shape[1] == 0 or frame.shape[0] == 0:
+        raise ValueError("File has no data rows or no columns.")
+    return frame
+
+
+def write_table(df: pd.DataFrame, *, fmt: str = "csv", separator: str = ";") -> bytes:
+    """Serialize a frame into one of :data:`SUPPORTED_WRITE`.
+
+    UTF-8 and Unix line endings throughout, so a file written on Windows and
+    one written in the Linux container hash the same.
+
+    Raises ``ValueError`` for an unsupported format.
+    """
+    if fmt not in SUPPORTED_WRITE:
+        raise ValueError(
+            f"Unsupported format {fmt!r}. Supported: {', '.join(SUPPORTED_WRITE)}."
+        )
+    frame = df.fillna("").astype(str)
+
+    if fmt.startswith("csv"):
+        text = frame.to_csv(sep=separator, index=False, lineterminator="\n")
+    elif fmt == "json":
+        text = json.dumps(frame.to_dict("records"), ensure_ascii=False, indent=2)
+    else:
+        text = "".join(
+            json.dumps(record, ensure_ascii=False) + "\n"
+            for record in frame.to_dict("records")
+        )
+
+    raw = text.encode("utf-8")
+    # mtime=0 keeps the output byte-identical between runs, so a re-export can
+    # be compared by hash instead of by parsing it again.
+    return gzip.compress(raw, mtime=0) if fmt.endswith(".gz") else raw
