@@ -131,6 +131,13 @@ it. Past five million rows the join is refused rather than attempted.
 - No pickle. Secrets only from env, never logged, never in `config.yaml`.
 - Uploads are PII-scrubbed on import (references) or handled by an explicit PII
   filter (refine). User-supplied names go through `security.safe_name`.
+- **Table workbench limits.** A gzipped upload is refused once it inflates past
+  ten times `max_upload_mb`, so a decompression bomb is a 400 rather than an
+  out-of-memory. The `regex` rule operator caps a pattern at 200 characters,
+  which bounds its size but **not** its backtracking: `(a+)+$` is six
+  characters, and Python's `re` has no timeout, so a hostile pattern pins one
+  worker thread until it finishes. Accepted because every table endpoint sits
+  behind the operator key; do not expose the rule builder to untrusted users.
 - **Deliberate deviation from api_v3:** HTTPS URL fetch is allowed for
   vocabularies and the api_v3 push/predict — but only to an allowlist (default
   `vocabs.openeduhub.de` + the configured api_v3 host / localhost), with a size
