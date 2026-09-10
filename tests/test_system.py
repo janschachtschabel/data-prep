@@ -46,8 +46,8 @@ def test_config_requires_auth_and_never_leaks_the_key(make_client):
     assert "secret-2" not in r.text
     body = r.json()
     # LLM defaults surface model names and the env var NAME, never a key value.
-    assert body["llm"]["seeds"]["model"] == "gpt-5.4-mini"
-    assert body["llm"]["bulk"]["model"] == "gpt-5.4-nano"
+    assert body["llm"]["seeds"]["model"] == "gpt-5.6-luna"
+    assert body["llm"]["bulk"]["model"] == "gpt-5.6-luna"
     assert body["llm"]["bulk"]["api_key_env"] == "OPENAI_API_KEY"
     assert body["budgets"]["max_llm_calls"] > 0
     # key_configured tells the UI whether a server-wide fallback key exists, so

@@ -4,20 +4,45 @@
 # Missing file or missing sections fall back to these same defaults in code.
 
 llm:
-  # Quality-critical seed work: mini. Bulk generation: nano. Both fully
-  # overridable, including base_url for non-OpenAI-compatible hosts.
+  # Quality-critical seed work and bulk generation both run gpt-5.6-luna on low
+  # verbosity and low reasoning effort: this app extracts and writes short text,
+  # where reasoning tokens cost time and money without improving the answer.
+  #
+  # provider selects the host:
+  #   openai               -> api.openai.com directly
+  #   b-api-openai         -> OpenEduHub's Bildungs-API gateway, forwarding to OpenAI
+  #   b-api-academiccloud  -> the same gateway, forwarding to AcademicCloud/GWDG
+  # The two gateway providers authenticate with X-API-KEY (not a bearer token)
+  # and read their key from the env variable named below -- use B_API_KEY there.
+  # base_url is derived from the provider; set it only for a private gateway,
+  # in which case it wins. It stays operator-controlled (no per-request
+  # override) so a request cannot redirect the server's outbound call (SSRF).
+  #
   # The API key here is only a FALLBACK: a request may carry its own key + model
   # (X-LLM-Key / X-LLM-Model headers, "open instance" mode), which then win over
-  # api_key_env + model below. base_url stays operator-controlled (no per-request
-  # override) so a request can't redirect the server's outbound call (SSRF).
+  # api_key_env + model below.
+  #
+  # verbosity and reasoning_effort apply to the gpt-5 and o-series families
+  # only; they are dropped for any other model, which would answer 400.
   seeds:
-    base_url: https://api.openai.com/v1
-    model: gpt-5.4-mini
+    provider: openai
+    model: gpt-5.6-luna
+    verbosity: low
+    reasoning_effort: low
     api_key_env: OPENAI_API_KEY
   bulk:
-    base_url: https://api.openai.com/v1
-    model: gpt-5.4-nano
+    provider: openai
+    model: gpt-5.6-luna
+    verbosity: low
+    reasoning_effort: low
     api_key_env: OPENAI_API_KEY
+
+# The Bildungs-API gateway both b-api providers route through. Prod by default;
+# https://b-api.staging.openeduhub.net is the staging instance.
+# NOTE: model IDs on the gateway change without announcement (deepseek-v4-flash
+# became deepseek-v4-flash-0731 and the old name now answers 503). Check
+# /api/v1/llm/{provider}/models before pinning one.
+b_api_base_url: https://b-api.prod.openeduhub.net
 
 budgets:
   # Per-run cost caps — a run pauses (never silently continues) when either is

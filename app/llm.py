@@ -21,6 +21,7 @@ import openai
 from pydantic import BaseModel, ValidationError
 
 from .config import Budgets, LlmEndpoint, load_config
+from .llm_providers import auth_headers, capabilities, resolve_base_url
 from .settings import Settings
 
 logger = logging.getLogger("data_prep.llm")
@@ -148,18 +149,11 @@ def session_for(
     if endpoint is None:
         raise LlmError(f"No LLM endpoint configured for purpose {purpose!r} in config.yaml.")
     endpoint, api_key = apply_override(endpoint, override)
+    endpoint = endpoint.model_copy(update={"base_url": resolve_base_url(
+        endpoint.provider, endpoint.base_url, cfg.b_api_base_url)})
     return LlmSession(
         endpoint=endpoint, budgets=cfg.budgets, ledger=process_ledger(cfg.budgets), api_key=api_key
     )
-
-
-def _capabilities(model: str) -> dict:
-    """gpt-5 family: ``max_completion_tokens``, temperature locked to default,
-    strict schema parsing. Everything else (incl. self-hosted OpenAI-compatible
-    servers): classic ``max_tokens`` + temperature + ``json_object``."""
-    if model.startswith("gpt-5"):
-        return {"token_param": "max_completion_tokens", "temperature": False, "strict": True}
-    return {"token_param": "max_tokens", "temperature": True, "strict": False}
 
 
 @dataclass
@@ -190,7 +184,7 @@ class LlmSession:
         Raises :class:`BudgetExceeded` when a cap is hit and :class:`LlmError`
         for auth/transport/validation failures.
         """
-        caps = _capabilities(self.endpoint.model)
+        caps = capabilities(self.endpoint.model)
         params: dict[str, Any] = {caps["token_param"]: max_output_tokens}
         if temperature is not None:
             if caps["temperature"]:
@@ -200,6 +194,11 @@ class LlmSession:
                     "Dropping temperature=%s — %s only supports the default.",
                     temperature, self.endpoint.model,
                 )
+        # Only for the families that accept them; anything else answers 400.
+        for control in ("verbosity", "reasoning_effort"):
+            value = getattr(self.endpoint, control)
+            if value and caps[control]:
+                params[control] = value
         client = self._get_client()
         if caps["strict"]:
             return await self._complete_strict(client, prompt, schema, params)
@@ -220,6 +219,9 @@ class LlmSession:
             http_client = httpx.AsyncClient(transport=self.transport) if self.transport else None
             self._client = openai.AsyncOpenAI(
                 api_key=key,
+                # The gateway wants X-API-KEY; the SDK's own bearer token is
+                # harmless beside it and goes to the same host.
+                default_headers=auth_headers(self.endpoint.provider, key),
                 base_url=self.endpoint.base_url,
                 max_retries=5,  # SDK handles 429/5xx backoff; counts as ONE logical call
                 timeout=120.0,

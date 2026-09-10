@@ -37,8 +37,8 @@ def test_load_config_missing_file_yields_defaults(tmp_path):
     from app.config import load_config
 
     cfg = load_config(tmp_path / "does-not-exist.yaml")
-    assert cfg.llm["seeds"].model == "gpt-5.4-mini"
-    assert cfg.llm["bulk"].model == "gpt-5.4-nano"
+    assert cfg.llm["seeds"].model == "gpt-5.6-luna"
+    assert cfg.llm["bulk"].model == "gpt-5.6-luna"
     assert cfg.budgets.max_llm_calls == 2000
 
 
@@ -55,7 +55,7 @@ def test_load_config_reads_and_merges_partial_files(tmp_path):
     assert cfg.llm["bulk"].model == "my-local-model"
     assert cfg.llm["bulk"].base_url == "https://llm.example.org/v1"
     # Purposes not mentioned in the file keep their defaults.
-    assert cfg.llm["seeds"].model == "gpt-5.4-mini"
+    assert cfg.llm["seeds"].model == "gpt-5.6-luna"
     assert cfg.budgets.max_llm_calls == 5
     assert cfg.budgets.max_tokens_total == 2_000_000
 

@@ -9,17 +9,29 @@ contains a key itself.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ValidationError
 
 
 class LlmEndpoint(BaseModel):
-    """One LLM purpose: where to call, which model, and which env var holds the key."""
+    """One LLM purpose: where to call, which model, and which env var holds the key.
 
-    base_url: str = "https://api.openai.com/v1"
+    ``base_url`` is unset by default so the ``provider`` decides it — a
+    hardcoded default would always win and make the provider choice inert. Set
+    it to point at a private gateway; it then takes precedence.
+
+    ``verbosity`` and ``reasoning_effort`` apply to the gpt-5 and o-series
+    families only and are dropped for models that would answer 400.
+    """
+
+    provider: Literal["openai", "b-api-openai", "b-api-academiccloud"] = "openai"
+    base_url: str | None = None
     model: str
     api_key_env: str = "OPENAI_API_KEY"
+    verbosity: str | None = None
+    reasoning_effort: str | None = None
 
 
 class Budgets(BaseModel):
@@ -75,18 +87,21 @@ class AppConfig(BaseModel):
 
     llm: dict[str, LlmEndpoint] = {}
     budgets: Budgets = Budgets()
+    # The Bildungs-API gateway both b-api providers route through. Prod by
+    # default; point it at staging to test against the other instance.
+    b_api_base_url: str = "https://b-api.prod.openeduhub.net"
     embeddings: EmbeddingsConfig = EmbeddingsConfig()
     api_v3: Api3Target = Api3Target()
     references: ReferencesConfig = ReferencesConfig()
 
 
 def _default_llm() -> dict[str, LlmEndpoint]:
-    # mini for the quality-critical seed work, nano for bulk generation — both
-    # overridable in config.yaml, including base_url for non-OpenAI hosts.
-    return {
-        "seeds": LlmEndpoint(model="gpt-5.4-mini"),
-        "bulk": LlmEndpoint(model="gpt-5.4-nano"),
-    }
+    # gpt-5.6-luna on low verbosity and low reasoning effort for both purposes:
+    # the work here is extraction and short generation, where reasoning tokens
+    # cost time and money without improving the answer. Everything is
+    # overridable in config.yaml, including the provider.
+    default = LlmEndpoint(model="gpt-5.6-luna", verbosity="low", reasoning_effort="low")
+    return {"seeds": default, "bulk": default.model_copy()}
 
 
 def load_config(path: Path) -> AppConfig:
