@@ -243,3 +243,134 @@ class TestDuplicates:
     def test_it_needs_a_key(self, make_client):
         client = _client_with_data(make_client, self.DOPPELT)
         assert client.get("/refine/src/duplicates?keys=url").status_code == 401
+
+
+class TestJoinEndpoint:
+    LINKS = b"id;titel\n1;Bruchrechnen\n2;Photosynthese\n3;Wiener Kongress\n"
+    RECHTS = b"uid;fach\n1;Mathematik\n2;Biologie\n4;Chemie\n"
+    KEYS = [{"left": "id", "right": "uid"}]
+
+    def _both(self, make_client):
+        client = _client_with_data(make_client, self.LINKS, "links")
+        client.post("/refine/datasets/import",
+                    files={"file": ("rechts.csv", self.RECHTS, "text/csv")},
+                    data={"name": "rechts"}, headers=HEADERS)
+        return client
+
+    def test_without_a_target_it_reports_the_cardinality_and_joins_nothing(self, make_client):
+        """A join's meaningful preview is how big it would be, not a
+        materialised result -- that is the whole point of asking first."""
+        client = self._both(make_client)
+        r = client.post("/refine/links/join", headers=HEADERS,
+                        json={"right": "rechts", "keys": self.KEYS, "how": "left"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["preview"] is True
+        assert body["matching_keys"] == 2
+        assert body["estimated_rows"] == 2
+        assert body["explodes"] is False
+
+    def test_with_a_target_it_writes_the_join(self, make_client):
+        client = self._both(make_client)
+        r = client.post("/refine/links/join", headers=HEADERS, json={
+            "right": "rechts", "keys": self.KEYS, "how": "left", "target": "zusammen"})
+        assert r.status_code == 200
+        assert r.json()["after"] == 3
+        assert r.json()["matched_rows"] == 2
+
+    def test_the_result_is_readable_afterwards(self, make_client):
+        client = self._both(make_client)
+        client.post("/refine/links/join", headers=HEADERS, json={
+            "right": "rechts", "keys": self.KEYS, "how": "left", "target": "zusammen"})
+        rows = client.get("/refine/zusammen/rows", headers=HEADERS).json()["rows"]
+        assert rows[0]["fach"] == "Mathematik"
+        assert rows[2]["fach"] == ""
+
+    def test_the_join_is_recorded_in_the_history(self, make_client):
+        client = self._both(make_client)
+        client.post("/refine/links/join", headers=HEADERS, json={
+            "right": "rechts", "keys": self.KEYS, "how": "left", "target": "zusammen"})
+        ops = client.get("/refine/zusammen/ops", headers=HEADERS).json()["ops"]
+        assert ops[0]["filter"] == "join"
+
+    def test_an_unknown_right_dataset_is_a_404(self, make_client):
+        client = self._both(make_client)
+        r = client.post("/refine/links/join", headers=HEADERS,
+                        json={"right": "gibtsnicht", "keys": self.KEYS})
+        assert r.status_code == 404
+
+    def test_an_unknown_key_column_is_a_400(self, make_client):
+        client = self._both(make_client)
+        r = client.post("/refine/links/join", headers=HEADERS, json={
+            "right": "rechts", "keys": [{"left": "nope", "right": "uid"}]})
+        assert r.status_code == 400
+        assert "nope" in r.json()["detail"]
+
+    def test_it_needs_a_key(self, make_client):
+        client = self._both(make_client)
+        assert client.post("/refine/links/join",
+                           json={"right": "rechts", "keys": self.KEYS}).status_code == 401
+
+
+class TestRowViewer:
+    VIELE = b"id;titel;fach\n" + b"".join(
+        f"{i};Titel {i};{'Mathematik' if i % 2 else 'Biologie'}\n".encode()
+        for i in range(1, 61)
+    )
+
+    def test_it_returns_a_page_and_the_total(self, make_client):
+        client = _client_with_data(make_client, self.VIELE)
+        body = client.get("/refine/src/rows", headers=HEADERS).json()
+        assert body["total"] == 60
+        assert len(body["rows"]) == 50   # the default page
+        assert body["offset"] == 0
+
+    def test_paging_walks_forward(self, make_client):
+        client = _client_with_data(make_client, self.VIELE)
+        body = client.get("/refine/src/rows?offset=50&limit=50", headers=HEADERS).json()
+        assert len(body["rows"]) == 10
+        assert body["rows"][0]["id"] == "51"
+
+    def test_an_offset_past_the_end_is_an_empty_page_not_an_error(self, make_client):
+        client = _client_with_data(make_client, self.VIELE)
+        r = client.get("/refine/src/rows?offset=500", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.json()["rows"] == []
+
+    def test_search_matches_case_insensitively_anywhere_in_a_row(self, make_client):
+        client = _client_with_data(make_client, self.VIELE)
+        body = client.get("/refine/src/rows?q=biologie", headers=HEADERS).json()
+        assert body["matched"] == 30
+        assert all(r["fach"] == "Biologie" for r in body["rows"])
+
+    def test_search_reports_the_match_count_beside_the_total(self, make_client):
+        """Both numbers matter: 30 of 60 tells the operator the search worked."""
+        client = _client_with_data(make_client, self.VIELE)
+        body = client.get("/refine/src/rows?q=Titel%205", headers=HEADERS).json()
+        assert body["total"] == 60
+        assert body["matched"] == 11   # 5, 50-59
+
+    def test_the_columns_can_be_narrowed(self, make_client):
+        client = _client_with_data(make_client, self.VIELE)
+        body = client.get("/refine/src/rows?columns=titel&limit=1", headers=HEADERS).json()
+        assert body["columns"] == ["titel"]
+        assert list(body["rows"][0]) == ["titel"]
+
+    def test_an_unknown_column_is_a_400(self, make_client):
+        client = _client_with_data(make_client, self.VIELE)
+        r = client.get("/refine/src/rows?columns=nope", headers=HEADERS)
+        assert r.status_code == 400
+        assert "nope" in r.json()["detail"]
+
+    def test_the_page_size_is_capped(self, make_client):
+        """An unbounded limit would serialise a 400k-row table into one response."""
+        client = _client_with_data(make_client, self.VIELE)
+        assert client.get("/refine/src/rows?limit=100000", headers=HEADERS).status_code == 422
+
+    def test_an_unknown_dataset_is_a_404(self, make_client):
+        client = _client_with_data(make_client, self.VIELE)
+        assert client.get("/refine/nix/rows", headers=HEADERS).status_code == 404
+
+    def test_it_needs_a_key(self, make_client):
+        client = _client_with_data(make_client, self.VIELE)
+        assert client.get("/refine/src/rows").status_code == 401

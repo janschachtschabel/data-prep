@@ -24,8 +24,10 @@ from pydantic import BaseModel, Field
 
 from ..refine.apply import preview_or_apply, run_table_op
 from ..refine.duplicates import duplicate_report
+from ..refine.join import DEFAULT_MAX_ROWS, join_datasets, key_cardinality
 from ..refine.profile import profile_columns
 from ..refine.store import load_dataset, save_dataset
+from ..refine.view import page_rows
 from ..security import read_upload_capped, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..tabular import SUPPORTED_READ, read_table, write_table
@@ -78,6 +80,15 @@ async def import_dataset(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     save_dataset(settings, resolved, df)
     return {"name": resolved, "rows": int(len(df)), "columns": list(df.columns)}
+
+
+class JoinRequest(BaseModel):
+    right: str = Field(max_length=100)
+    keys: list[dict] = Field(default_factory=list)
+    how: str = Field(default="left", max_length=10)
+    suffix: str = Field(default="_right", max_length=20)
+    coalesce: bool = False
+    target: str | None = Field(default=None, max_length=100)  # None = report only
 
 
 class OperationRequest(BaseModel):
@@ -170,3 +181,60 @@ async def duplicates(
         return await asyncio.to_thread(duplicate_report, df, list(keys), examples=examples)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{name}/join", summary="Report a join (no target) or run it (target)")
+async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Match ``right`` onto this dataset over one or more keys.
+
+    Without a target this reports the CARDINALITY rather than a materialised
+    result. That is the honest preview for a join: what an operator needs to
+    know first is how many rows it would produce, and a key that repeats on both
+    sides can multiply them beyond memory. Computing that from the key counts
+    costs nothing, while materialising it is the very thing worth avoiding.
+    """
+    left = _load_or_404(settings, name)
+    right = _load_or_404(settings, req.right)
+    target = safe_name(req.target, "target name") if req.target else None
+    try:
+        if target is None:
+            report = await asyncio.to_thread(key_cardinality, left, right, req.keys)
+            return {**report, "preview": True}
+        new_df, stats = await asyncio.to_thread(
+            join_datasets, left, right, keys=req.keys, how=req.how,
+            suffix=req.suffix, coalesce=req.coalesce, max_rows=DEFAULT_MAX_ROWS,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    params = {"right": req.right, "keys": req.keys, "how": req.how,
+              "suffix": req.suffix, "coalesce": req.coalesce}
+    return preview_or_apply(settings, name, target, "join", params, new_df, stats)
+
+
+@router.get("/{name}/rows", summary="Browse rows, paginated and searchable")
+async def rows(
+    name: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=500),
+    q: str = Query(default="", max_length=200),
+    columns: list[str] = Query(default=[], description="Restrict to these columns"),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """One page of rows, with an optional case-insensitive substring search.
+
+    Only the requested page is serialised: a 400k-row table would otherwise be
+    turned into a single response. ``total`` and ``matched`` are both reported,
+    because "30 of 60" is how an operator sees that a search did what they meant.
+    """
+    df = _load_or_404(settings, name)
+    if columns:
+        unknown = [c for c in columns if c not in df.columns]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown column: {', '.join(map(repr, unknown))}. "
+                       f"Available: {', '.join(map(str, df.columns))}.",
+            )
+    return await asyncio.to_thread(
+        page_rows, df, offset=offset, limit=limit, query=q, columns=list(columns) or None
+    )
