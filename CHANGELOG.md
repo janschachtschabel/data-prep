@@ -3,6 +3,45 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — review remediation of the table workbench (2026-09-10)
+
+A structured review of stages A–C found 3 major, 7 minor and 2 nit issues in
+the workbench. All twelve are resolved, one commit each; the review report is
+in the session history and the reasoning in each commit.
+
+### Fixed
+- **Sniffing the format inside a gzip stream failed past 64 KiB.**
+  `gzip.decompress` needs a complete stream, so the peek raised on every
+  real-sized file and silently fell back to `csv.gz`; a JSONL export named
+  `export.gz` then failed with a CSV error. A streaming decompressor now reads
+  the first bytes from any slice.
+- **A gzipped upload could inflate without limit.** The upload cap bounds the
+  compressed size only, and a 20 MB bomb inflated to ~20 GB inside the single
+  worker. Inflation now stops at ten times `max_upload_mb` and answers 400
+  naming the ceiling.
+- **The rule builder sent `007` as the number 7 for every operator**, so
+  `id is 007` matched `7`, `07` and `7.0` as well — the trap `rules.py`
+  documents, reintroduced one layer up. Only the ordered operators
+  (`<`, `≤`, `>`, `≥`, between) coerce now; `is`, `is not` and the list
+  operators send text.
+- The join ceiling counts the rows a left, right or outer join actually keeps,
+  not only the inner estimate, and its refusal names that number.
+- A typo in `verbosity` or `reasoning_effort` fails when `config.yaml` loads,
+  as `provider` already did, rather than as a 400 on the first LLM call.
+- The row viewer refuses a column named twice; pandas would have returned two
+  columns of one name and `to_dict` kept the last.
+- A JSON key containing a dot that collides with a nested path is refused with
+  the column named, instead of silently overwriting it.
+- `describe()` reuses the dataset list it was just given: an import causes one
+  list fetch instead of three. The profile's numeric range is localised like
+  every other number. A join key or rename pair splits at the first `=` only.
+
+### Changed
+- One vectorised comparison per rule instead of four evaluated eagerly.
+- The README's security model names the decompression ceiling and the
+  accepted regex-backtracking risk — the 200-character cap bounds a pattern's
+  size, not its backtracking, and Python's `re` has no timeout.
+
 ## [Unreleased] — the generic table workbench, stage C (2026-09-10)
 
 Design: `docs/plan-2026-09-10-tabellen-werkbank.md`. Completes stages A and B below.
