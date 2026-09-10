@@ -18,6 +18,7 @@ const TablesOps = (() => {
   ];
   const NEEDS_NO_VALUE = new Set(["is_empty", "not_empty"]);
   const NEEDS_SECOND = new Set(["between"]);
+  const ORDERED = new Set(["lt", "lte", "gt", "gte", "between"]);
 
   let columns = [];
   let datasets = [];
@@ -30,8 +31,11 @@ const TablesOps = (() => {
     return $("#tops-target").value.trim();
   }
 
-  /* A value that looks like a number is SENT as a number, because that is what
-     makes the API compare numerically rather than as text ("9" > "10"). */
+  /* For the ORDERED operators only, a value that looks like a number is sent as
+     one -- that is what makes the API compare numerically ("9" > "10"). For
+     eq/ne it must stay text: an id of "007" is not the number 7, and sending
+     7 would match "7", "07" and "7.0" as well. The backend documents exactly
+     that trap; the UI must not reintroduce it. */
   function coerce(raw) {
     const text = raw.trim();
     if (text === "") return "";
@@ -92,7 +96,7 @@ const TablesOps = (() => {
         const raw = row.querySelector(".rule-value").value;
         rule.value = (op === "in" || op === "not_in")
           ? raw.split(",").map((s) => s.trim()).filter(Boolean)
-          : coerce(raw);
+          : (ORDERED.has(op) ? coerce(raw) : raw.trim());
       }
       if (NEEDS_SECOND.has(op)) rule.value2 = coerce(row.querySelector(".rule-value2").value);
       return rule;
