@@ -38,7 +38,7 @@ class FakeEncoder:
 def _reset_spend_ledger() -> Iterator[None]:
     """The cross-request spend ledger is process-local; clear it between tests so
     counters/caps never leak from one case into another."""
-    from app.llm import reset_ledger
+    from app.llm_budget import reset_ledger
 
     reset_ledger()
     yield

@@ -284,3 +284,27 @@ def test_live_smoke_bulk_endpoint_returns_schema():
     )
     assert len(result.items) == 2
     assert session.usage.calls >= 1 and session.usage.tokens_total > 0
+
+
+def test_budget_exceeded_is_an_llm_error():
+    """Load-bearing, not decoration: five call sites catch LlmError, and a
+    budget stop must land in those handlers rather than escaping as a 500.
+
+    Pinned after a refactor nearly flattened the hierarchy to break an import
+    cycle -- the cycle was real, the right fix was a shared errors module.
+    """
+    from app.llm import BudgetExceeded, LlmConfigError, LlmError
+
+    assert issubclass(BudgetExceeded, LlmError)
+    assert issubclass(LlmConfigError, LlmError)
+
+
+def test_the_llm_entry_point_still_exposes_what_callers_import():
+    """app.llm is the layer's entry point; routes and runs import these names
+    from it. Moving them to their own modules must not change that."""
+    import app.llm as llm
+
+    for name in ("BudgetExceeded", "LlmConfigError", "LlmError", "LlmOverride",
+                 "LlmSession", "SpendLedger", "Usage", "apply_override",
+                 "process_ledger", "session_for"):
+        assert hasattr(llm, name), name
