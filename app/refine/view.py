@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from .keys import require_keys
+
 
 def page_rows(
     df: pd.DataFrame,
@@ -28,7 +30,16 @@ def page_rows(
     ``total`` and ``matched`` are both returned: "30 of 60" is how an operator
     sees that a search did what they meant. An offset past the end yields an
     empty page rather than an error -- paging off the end is normal.
+
+    Raises ``ValueError`` (client-safe) for an unknown or repeated column.
     """
+    if columns:
+        require_keys(df, columns, what="column")
+        repeated = sorted({c for c in columns if columns.count(c) > 1})
+        if repeated:
+            # pandas would return two columns of one name and to_dict would
+            # silently keep the last.
+            raise ValueError(f"Column named twice: {', '.join(map(repr, repeated))}.")
     view = df[columns] if columns else df
     total = int(len(df))
 

@@ -230,14 +230,9 @@ async def rows(
     because "30 of 60" is how an operator sees that a search did what they meant.
     """
     df = _load_or_404(settings, name)
-    if columns:
-        unknown = [c for c in columns if c not in df.columns]
-        if unknown:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown column: {', '.join(map(repr, unknown))}. "
-                       f"Available: {', '.join(map(str, df.columns))}.",
-            )
-    return await asyncio.to_thread(
-        page_rows, df, offset=offset, limit=limit, query=q, columns=list(columns) or None
-    )
+    try:
+        return await asyncio.to_thread(
+            page_rows, df, offset=offset, limit=limit, query=q, columns=list(columns) or None
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

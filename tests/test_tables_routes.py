@@ -374,3 +374,13 @@ class TestRowViewer:
     def test_it_needs_a_key(self, make_client):
         client = _client_with_data(make_client, self.VIELE)
         assert client.get("/refine/src/rows").status_code == 401
+
+
+class TestRowViewerColumnValidation:
+    def test_a_column_named_twice_is_refused(self, make_client):
+        """pandas would return two columns of one name and to_dict would keep
+        the last -- a silent surprise, so it is a 400 like an unknown name."""
+        client = _client_with_data(make_client)
+        r = client.get("/refine/src/rows?columns=id&columns=id", headers=HEADERS)
+        assert r.status_code == 400
+        assert "twice" in r.json()["detail"]
