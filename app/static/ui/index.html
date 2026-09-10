@@ -824,6 +824,99 @@
           <div class="table-wrap"><table id="tables-profile"></table></div>
         </div>
 
+        <div class="card">
+          <h3 data-i18n="tops.h">Change the table</h3>
+          <p class="muted" data-i18n="tops.help">Every <em>Apply</em> writes a <strong>new</strong>
+             dataset and leaves the original untouched, so a wrong step costs nothing. Chain steps by
+             applying the next one to the result — it is selected for you, and the applied steps are
+             listed above. <em>Preview</em> shows what would happen without writing anything.</p>
+          <label for="tops-target" data-i18n="tops.target">Save result as</label>
+          <input id="tops-target" type="text" maxlength="100" data-i18n-placeholder="tops.target.ph" placeholder="e.g. filtered">
+          <p id="tops-status" class="muted" aria-live="polite"></p>
+
+          <fieldset>
+            <legend data-i18n="tops.rules.legend">Filter rows by column value</legend>
+            <div id="tops-rules"></div>
+            <div class="row">
+              <button type="button" id="tops-rule-add" class="ghost" data-i18n="tops.rules.add">Add rule</button>
+              <div>
+                <label for="tops-combine" data-i18n="tops.rules.combine">Combine</label>
+                <select id="tops-combine">
+                  <option value="and" data-i18n="tops.rules.and">all rules must match (AND)</option>
+                  <option value="or" data-i18n="tops.rules.or">any rule may match (OR)</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <button type="button" id="tops-rules-preview" class="ghost" data-i18n="tops.preview">Preview</button>
+              <button type="button" id="tops-rules-apply" data-i18n="tops.apply">Apply</button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="tops.cols.legend">Columns</legend>
+            <label for="tops-cols-mode" data-i18n="tops.cols.mode">What to do</label>
+            <select id="tops-cols-mode">
+              <option value="select_columns" data-i18n="tops.cols.keep">Keep only these columns</option>
+              <option value="drop_columns" data-i18n="tops.cols.drop">Drop these columns</option>
+              <option value="rename_columns" data-i18n="tops.cols.rename">Rename (old=new, comma-separated)</option>
+            </select>
+            <label for="tops-cols-value" data-i18n="tops.cols.value">Columns <span class="muted">(comma-separated)</span></label>
+            <input id="tops-cols-value" type="text" maxlength="1000" autocomplete="off">
+            <p id="tops-cols-available" class="muted"></p>
+            <div class="row">
+              <button type="button" id="tops-cols-preview" class="ghost" data-i18n="tops.preview">Preview</button>
+              <button type="button" id="tops-cols-apply" data-i18n="tops.apply">Apply</button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="tops.dupes.legend">Duplicates over key columns</legend>
+            <label for="tops-dupe-keys" data-i18n="tops.dupes.keys">Key columns <span class="muted">(comma-separated; together they identify a row)</span></label>
+            <input id="tops-dupe-keys" type="text" maxlength="500" autocomplete="off">
+            <div class="row">
+              <div>
+                <label for="tops-dupe-keep" data-i18n="tops.dupes.keep">Keep</label>
+                <select id="tops-dupe-keep">
+                  <option value="first" data-i18n="tops.dupes.first">the first of each group</option>
+                  <option value="last" data-i18n="tops.dupes.last">the last of each group</option>
+                </select>
+              </div>
+              <div class="row-action">
+                <button type="button" id="tops-dupe-report" class="ghost" data-i18n="tops.dupes.report">Count duplicates</button>
+                <button type="button" id="tops-dupe-apply" data-i18n="tops.dupes.remove">Remove duplicates</button>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="tops.join.legend">Join with another dataset</legend>
+            <div class="row">
+              <div>
+                <label for="tops-join-right" data-i18n="tops.join.right">Second dataset</label>
+                <select id="tops-join-right"></select>
+              </div>
+              <div>
+                <label for="tops-join-how" data-i18n="tops.join.how">Kind</label>
+                <select id="tops-join-how">
+                  <option value="left" data-i18n="tops.join.left">keep all rows of this one (left)</option>
+                  <option value="inner" data-i18n="tops.join.inner">only rows present in both (inner)</option>
+                  <option value="right" data-i18n="tops.join.right2">keep all rows of the second (right)</option>
+                  <option value="outer" data-i18n="tops.join.outer">keep everything (outer)</option>
+                </select>
+              </div>
+            </div>
+            <label for="tops-join-keys" data-i18n="tops.join.keys">Keys <span class="muted">(here=there, comma-separated for several)</span></label>
+            <input id="tops-join-keys" type="text" maxlength="500" autocomplete="off" placeholder="id=uid">
+            <label class="check"><input type="checkbox" id="tops-join-coalesce">
+              <span data-i18n="tops.join.coalesce">Fill empty cells from the second dataset instead of adding a second column</span></label>
+            <div class="row">
+              <button type="button" id="tops-join-preview" class="ghost" data-i18n="tops.join.check">Check size first</button>
+              <button type="button" id="tops-join-apply" data-i18n="tops.apply">Apply</button>
+            </div>
+          </fieldset>
+        </div>
+
         <p id="tables-error" class="error" role="alert" hidden></p>
       </section>
     </main>
@@ -839,6 +932,7 @@
 <script src="review.js"></script>
 <script src="refine.js"></script>
 <script src="tables.js"></script>
+<script src="tables-ops.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

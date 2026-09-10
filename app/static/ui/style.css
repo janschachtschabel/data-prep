@@ -119,7 +119,11 @@ h2 { font-size: 1.2rem; margin: var(--s-2) 0 var(--s-4); }
 .empty-state p:first-child { margin-top: 0; }
 
 label { display: block; font-weight: 600; margin: var(--s-3) 0 var(--s-1); }
-label.check { display: flex; gap: var(--s-2); align-items: center; font-weight: 400; }
+/* The LABEL is the real target -- clicking it toggles the box -- but it came
+   out at 23px, one under the 24x24 minimum (WCAG 2.2 SC 2.5.8). The native
+   13px box itself is exempt as a user-agent control; the label is not. */
+label.check { display: flex; gap: var(--s-2); align-items: center; font-weight: 400;
+              min-height: 24px; }
 /* select MUST be in this list — without an inherited colour a native select
    keeps the system default (dark) text, which is unreadable on the dark theme. */
 input, button, textarea, select { font: inherit; color: inherit; }
