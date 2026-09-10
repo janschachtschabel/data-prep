@@ -191,3 +191,55 @@ def test_every_writable_format_has_a_media_type():
     from app.tabular import SUPPORTED_WRITE
 
     assert set(_MEDIA_TYPES) == set(SUPPORTED_WRITE)
+
+
+class TestDuplicates:
+    DOPPELT = (
+        b"url;titel\n"
+        b"a.de;Erst\n"
+        b"b.de;Zwei\n"
+        b"a.de;Drei\n"
+        b";Vier\n"
+        b";Fuenf\n"
+    )
+
+    def test_the_report_counts_groups_and_what_is_removable(self, make_client):
+        client = _client_with_data(make_client, self.DOPPELT)
+        r = client.get("/refine/src/duplicates?keys=url", headers=HEADERS)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["duplicate_groups"] == 1
+        assert body["removable_rows"] == 1
+        assert body["empty_key_rows"] == 2
+
+    def test_several_keys_are_passed_as_repeated_parameters(self, make_client):
+        client = _client_with_data(make_client, self.DOPPELT)
+        r = client.get("/refine/src/duplicates?keys=url&keys=titel", headers=HEADERS)
+        assert r.json()["keys"] == ["url", "titel"]
+        assert r.json()["duplicate_groups"] == 0
+
+    def test_removing_duplicates_runs_through_the_operation_endpoint(self, make_client):
+        client = _client_with_data(make_client, self.DOPPELT)
+        r = client.post("/refine/src/op", headers=HEADERS, json={
+            "op": "dedupe_keys", "target": "ohne", "params": {"keys": ["url"]}})
+        assert r.status_code == 200
+        assert r.json()["removed"] == 1
+        assert r.json()["after"] == 4  # both empty-URL rows survive
+
+    def test_an_unknown_key_is_a_400(self, make_client):
+        client = _client_with_data(make_client, self.DOPPELT)
+        r = client.get("/refine/src/duplicates?keys=nope", headers=HEADERS)
+        assert r.status_code == 400
+        assert "nope" in r.json()["detail"]
+
+    def test_no_key_is_a_400(self, make_client):
+        client = _client_with_data(make_client, self.DOPPELT)
+        assert client.get("/refine/src/duplicates", headers=HEADERS).status_code == 400
+
+    def test_an_unknown_dataset_is_a_404(self, make_client):
+        client = _client_with_data(make_client, self.DOPPELT)
+        assert client.get("/refine/nix/duplicates?keys=url", headers=HEADERS).status_code == 404
+
+    def test_it_needs_a_key(self, make_client):
+        client = _client_with_data(make_client, self.DOPPELT)
+        assert client.get("/refine/src/duplicates?keys=url").status_code == 401

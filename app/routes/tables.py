@@ -23,6 +23,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ..refine.apply import preview_or_apply, run_table_op
+from ..refine.duplicates import duplicate_report
 from ..refine.profile import profile_columns
 from ..refine.store import load_dataset, save_dataset
 from ..security import read_upload_capped, require_key, safe_name
@@ -150,3 +151,22 @@ async def download_dataset(
         # otherwise render a multi-megabyte CSV as a wall of text.
         headers={"Content-Disposition": f'attachment; filename="{safe}.{format}"'},
     )
+
+
+@router.get("/{name}/duplicates", summary="How many rows share a key, and which")
+async def duplicates(
+    name: str,
+    keys: list[str] = Query(default=[], description="Key columns; repeat for a composite key"),
+    examples: int = Query(default=5, ge=0, le=50),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Non-destructive count of rows sharing a key.
+
+    ``removable_rows`` is exactly what the ``dedupe_keys`` operation would drop,
+    so the report and the removal can never disagree.
+    """
+    df = _load_or_404(settings, name)
+    try:
+        return await asyncio.to_thread(duplicate_report, df, list(keys), examples=examples)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

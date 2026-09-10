@@ -23,6 +23,7 @@ import pandas as pd
 from ..security import safe_name
 from ..settings import Settings
 from .columns import drop_columns, rename_columns, select_columns
+from .duplicates import dedupe_keys
 from .rules import filter_rows
 from .store import append_op, read_ops, save_dataset, write_ops
 
@@ -34,6 +35,7 @@ TABLE_OPS: dict[str, Callable[..., tuple[pd.DataFrame, dict]]] = {
     "select_columns": select_columns,
     "drop_columns": drop_columns,
     "rename_columns": rename_columns,
+    "dedupe_keys": dedupe_keys,
 }
 
 
