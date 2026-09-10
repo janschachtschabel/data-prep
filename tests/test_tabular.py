@@ -242,3 +242,21 @@ class TestWriteTable:
     def test_an_unsupported_write_format_is_rejected_by_name(self):
         with pytest.raises(ValueError, match="jsonl.gz"):
             write_table(read_table(CSV_BYTES, fmt="csv"), fmt="jsonl.gz")
+
+
+def test_sniffing_inside_gzip_works_past_the_peek_window():
+    """`gzip.decompress` needs a COMPLETE stream. Sniffing on a truncated slice
+    therefore raised for every real-sized file and silently fell back to csv.gz,
+    so a large JSONL export named `export.gz` failed with a CSV parse error.
+    The tiny fixture above never crossed the window and never saw it."""
+    import random
+
+    rng = random.Random(1)
+    # Poorly compressible on purpose: the stream must stay well over 64 KiB.
+    lines = "".join(
+        json.dumps({"id": rng.random(), "t": rng.randbytes(40).hex()}) + "\n"
+        for _ in range(20_000)
+    ).encode("utf-8")
+    raw = gzip.compress(lines)
+    assert len(raw) > 65_536, "fixture must exceed the peek window to test anything"
+    assert sniff_format("export.gz", raw) == "jsonl.gz"

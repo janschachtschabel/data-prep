@@ -16,6 +16,7 @@ from __future__ import annotations
 import gzip
 import io
 import json
+import zlib
 
 import pandas as pd
 
@@ -123,14 +124,23 @@ def sniff_format(filename: str, raw: bytes) -> str:
             return fmt
 
     if compressed:
-        try:
-            inner = gzip.decompress(raw[: _PEEK * 16])
-        except (OSError, EOFError):
-            # A truncated peek is normal -- we only need the first bytes, and
-            # the reader will report a genuinely corrupt file with its own error.
-            inner = b""
-        return f"{_sniff_text(inner)}.gz"
+        return f"{_sniff_text(_peek_gzip(raw))}.gz"
     return _sniff_text(raw)
+
+
+def _peek_gzip(raw: bytes) -> bytes:
+    """The first uncompressed bytes of a gzip stream, without the whole stream.
+
+    ``gzip.decompress`` demands a COMPLETE stream and raises on a slice, so a
+    truncated peek failed for every real-sized file and the sniff fell back to
+    CSV. A streaming decompressor yields what it can from the bytes it is given.
+    A genuinely corrupt file still surfaces in the reader with its own error.
+    """
+    try:
+        # 16 + MAX_WBITS: accept the gzip header, not a bare zlib stream.
+        return zlib.decompressobj(16 + zlib.MAX_WBITS).decompress(raw[: _PEEK * 4], _PEEK)
+    except zlib.error:
+        return b""
 
 
 def _decompress(raw: bytes) -> bytes:
