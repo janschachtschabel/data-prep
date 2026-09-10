@@ -6,7 +6,6 @@ as-is (PII handling is an explicit filter operation, not an import side effect).
 
 from __future__ import annotations
 
-import io
 import json
 from pathlib import Path
 
@@ -14,6 +13,7 @@ import pandas as pd
 
 from ..security import safe_name
 from ..settings import Settings
+from ..tabular import read_table
 
 
 def refine_dir(settings: Settings) -> Path:
@@ -27,26 +27,22 @@ def dataset_path(settings: Settings, name: str) -> Path:
 
 
 def read_csv(raw: bytes, *, separator: str = ";") -> pd.DataFrame:
-    """Parse an uploaded/stored CSV (semicolon, UTF-8) as all-strings.
+    """Parse a stored or uploaded CSV as all-strings.
 
-    Raises ``ValueError`` (client-safe message) on unreadable or empty files.
+    Thin delegate to :func:`app.tabular.read_table`, which owns every format
+    this app reads. Kept as a named function because "read the store's CSV" is
+    a different intent from "read whatever the operator uploaded".
     """
-    try:
-        df = pd.read_csv(io.BytesIO(raw), sep=separator, dtype=str, encoding="utf-8")
-    except ValueError as exc:
-        raise ValueError(
-            f"File is not a readable CSV (semicolon-separated, UTF-8): {exc.__class__.__name__}."
-        ) from exc
-    if df.shape[1] == 0 or df.shape[0] == 0:
-        raise ValueError("CSV has no data rows or no columns.")
-    return df
+    return read_table(raw, fmt="csv", separator=separator)
 
 
 def load_dataset(settings: Settings, name: str) -> pd.DataFrame | None:
     path = dataset_path(settings, name)
     if not path.exists():
         return None
-    return pd.read_csv(path, sep=";", dtype=str, encoding="utf-8")
+    # keep_default_na=False mirrors the reader: an empty cell saved as ""
+    # must load as "", and a cell holding the text "NA" must stay text.
+    return pd.read_csv(path, sep=";", dtype=str, encoding="utf-8", keep_default_na=False)
 
 
 def save_dataset(settings: Settings, name: str, df: pd.DataFrame) -> None:
