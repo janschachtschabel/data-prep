@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..apiv3 import PushError, predict_batch, push_csv
@@ -25,12 +24,11 @@ from ..refine.store import (
     delete_dataset,
     list_datasets,
     load_dataset,
-    read_csv,
     read_ops,
     save_dataset,
     write_ops,
 )
-from ..security import llm_override, read_upload_capped, require_key, safe_name
+from ..security import llm_override, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..textnorm import split_labels
 
@@ -123,22 +121,6 @@ def _load_or_404(settings: Settings, name: str):
 @router.get("/datasets", summary="List refine datasets")
 async def datasets(settings: Settings = Depends(get_settings)) -> dict:
     return {"datasets": list_datasets(settings)}
-
-
-@router.post("/datasets/import", summary="Upload a working CSV (stored raw, not scrubbed)")
-async def import_dataset(
-    file: UploadFile,
-    name: str | None = Form(default=None, max_length=100),
-    settings: Settings = Depends(get_settings),
-) -> dict:
-    payload = await read_upload_capped(file, settings.max_upload_mb * 1024 * 1024)
-    resolved = safe_name(name or Path(file.filename or "dataset").stem, "dataset name")
-    try:
-        df = read_csv(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    save_dataset(settings, resolved, df)
-    return {"name": resolved, "rows": int(len(df)), "columns": list(df.columns)}
 
 
 @router.post("/{name}/analyze", summary="Distribution, duplicates and PII overview")
