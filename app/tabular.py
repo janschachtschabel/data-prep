@@ -88,6 +88,9 @@ def flatten_record(obj: dict, *, list_separator: str = ",") -> dict[str, str]:
     scalars are joined; lists of objects survive as JSON text. An empty object
     or list yields an empty cell rather than disappearing, so the column still
     exists and the row count never depends on how full a record was.
+
+    Raises ``ValueError`` when a key containing a dot collides with a nested
+    path, since the two would otherwise share one column.
     """
     out: dict[str, str] = {}
 
@@ -96,6 +99,14 @@ def flatten_record(obj: dict, *, list_separator: str = ",") -> dict[str, str]:
             for key, value in node.items():
                 walk(value, f"{prefix}.{key}" if prefix else str(key))
         else:
+            if prefix in out:
+                # Only a key that itself contains "." can reach a path twice,
+                # e.g. {"a.b": 1, "a": {"b": 2}}. Last-wins would lose a value
+                # silently; naming the column lets the operator fix the source.
+                raise ValueError(
+                    f"Ambiguous column {prefix!r}: a key containing a dot collides "
+                    f"with a nested path."
+                )
             out[prefix] = _scalar(node, list_separator)
 
     walk(obj, "")

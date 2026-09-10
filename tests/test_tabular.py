@@ -278,3 +278,15 @@ def test_the_decompression_ceiling_defaults_generously():
     header, rows = CSV_BYTES.split(b"\n", 1)
     payload = gzip.compress(header + b"\n" + rows * 2000)   # ~100 KiB, 4000 rows
     assert len(read_table(payload, fmt="csv.gz")) == 4000
+
+
+def test_a_dotted_key_that_collides_with_a_nested_path_is_refused():
+    """{"a.b": ..., "a": {"b": ...}} would flatten to ONE column with the last
+    value winning -- silent data loss. Refusing names the column instead."""
+    with pytest.raises(ValueError, match="a.b"):
+        flatten_record({"a.b": "1", "a": {"b": "2"}})
+
+
+def test_a_dotted_key_without_a_collision_is_fine():
+    """Dots in keys are legal on their own; only the ambiguity is the problem."""
+    assert flatten_record({"a.b": "1", "c": "2"}) == {"a.b": "1", "c": "2"}
