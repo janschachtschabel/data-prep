@@ -142,3 +142,15 @@ class TestEmptyCellsSurviveTheStore:
         assert r.status_code == 200
         rows = client.get("/refine/datasets", headers=HEADERS).json()["datasets"]
         assert [d for d in rows if d["name"] == "src"][0]["rows"] == 1
+
+
+class TestDecompressionCeiling:
+    def test_a_gzip_bomb_is_a_400_not_an_oom(self, make_client):
+        """Through the real endpoint: the ceiling is ten times the upload cap,
+        so with a 1 MB cap a payload inflating past 10 MB must be refused."""
+        bomb = gzip.compress(b"\x00" * (16 * 1024 * 1024))   # 16 MiB -> ~16 KiB
+        # The fixture forwards kwargs as DATAPREP_* env vars and clears the
+        # settings cache -- the only override the app actually reads.
+        r = _import(make_client(max_upload_mb="1"), bomb, filename="harmlos.csv.gz")
+        assert r.status_code == 400
+        assert "ceiling" in r.json()["detail"]

@@ -260,3 +260,21 @@ def test_sniffing_inside_gzip_works_past_the_peek_window():
     raw = gzip.compress(lines)
     assert len(raw) > 65_536, "fixture must exceed the peek window to test anything"
     assert sniff_format("export.gz", raw) == "jsonl.gz"
+
+
+def test_a_decompression_bomb_is_refused_not_inflated():
+    """The upload cap bounds the COMPRESSED size only. gzip reaches 1000:1, so a
+    20 MB upload of zeros would inflate to ~20 GB inside the single worker.
+    Refusing past a ceiling is the difference between a 400 and an OOM."""
+    bomb = gzip.compress(b"\0" * (8 * 1024 * 1024))   # 8 MiB of zeros -> ~8 KiB
+    assert len(bomb) < 20_000, "fixture must be small while inflating large"
+    with pytest.raises(ValueError, match="larger than|too large|exceeds"):
+        read_table(bomb, fmt="csv.gz", max_bytes=1024 * 1024)
+
+
+def test_the_decompression_ceiling_defaults_generously():
+    """A legitimate gzipped export must not trip the ceiling: the default has to
+    be well above what real data reaches, or the guard breaks the feature."""
+    header, rows = CSV_BYTES.split(b"\n", 1)
+    payload = gzip.compress(header + b"\n" + rows * 2000)   # ~100 KiB, 4000 rows
+    assert len(read_table(payload, fmt="csv.gz")) == 4000

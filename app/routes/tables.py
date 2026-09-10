@@ -74,6 +74,9 @@ async def import_dataset(
         df = read_table(
             payload, fmt=format, separator=separator, encoding=encoding,
             list_separator=list_separator, filename=file.filename or "",
+            # Ten times the compressed cap: real exports inflate 5-10x, a bomb
+            # a thousandfold. The setting an operator already tunes bounds both.
+            max_bytes=settings.max_upload_mb * 1024 * 1024 * 10,
         )
     except (ValueError, LookupError) as exc:
         # LookupError: an unknown encoding name is the caller's mistake, not ours.

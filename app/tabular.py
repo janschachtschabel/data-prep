@@ -43,6 +43,12 @@ _EXTENSIONS = {
 # without decompressing a whole export just to name its format.
 _PEEK = 4096
 
+# Ceiling on what a gzip payload may inflate to. The upload cap bounds the
+# COMPRESSED size only, and gzip reaches 1000:1 on repetitive input, so a
+# 20 MB upload of zeros would otherwise inflate to ~20 GB inside the single
+# worker. Callers that know the upload cap pass a multiple of it instead.
+DEFAULT_MAX_DECOMPRESSED = 256 * 1024 * 1024
+
 
 def _scalar(value: object, list_separator: str) -> str:
     """One JSON value as one cell.
@@ -143,11 +149,25 @@ def _peek_gzip(raw: bytes) -> bytes:
         return b""
 
 
-def _decompress(raw: bytes) -> bytes:
+def _decompress(raw: bytes, max_bytes: int) -> bytes:
+    """Inflate a gzip payload, refusing past ``max_bytes`` instead of trying.
+
+    A streaming decompressor stops at the ceiling rather than allocating the
+    whole result first -- the point is never to hold the bomb in memory.
+    """
+    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
     try:
-        return gzip.decompress(raw)
-    except (OSError, EOFError) as exc:
-        raise ValueError(f"File is not readable gzip: {exc.__class__.__name__}.") from exc
+        # One byte past the ceiling is enough to tell "exactly at" from "over".
+        out = inflater.decompress(raw, max_bytes + 1)
+    except zlib.error as exc:
+        raise ValueError(f"File is not readable gzip: {exc}.") from exc
+    if len(out) > max_bytes or inflater.unconsumed_tail:
+        raise ValueError(
+            f"Decompressed file is larger than the {max_bytes // (1024 * 1024)} MB ceiling."
+        )
+    if not inflater.eof:
+        raise ValueError("File is not readable gzip: the stream ends early.")
+    return out
 
 
 def _records_to_frame(records: list[dict], list_separator: str) -> pd.DataFrame:
@@ -221,12 +241,16 @@ def read_table(
     encoding: str = "utf-8",
     list_separator: str = ",",
     filename: str = "",
+    max_bytes: int = DEFAULT_MAX_DECOMPRESSED,
 ) -> pd.DataFrame:
     """Parse an uploaded payload into an all-string DataFrame.
 
     ``fmt`` is one of :data:`SUPPORTED_READ`, or ``"auto"`` to derive it from
     ``filename`` and the bytes. Nested JSON is always flattened to dot-path
     columns -- see :func:`flatten_record`.
+
+    ``max_bytes`` caps what a gzip payload may inflate to; see
+    :data:`DEFAULT_MAX_DECOMPRESSED` for why that ceiling exists.
 
     Raises ``ValueError`` with a client-safe message on anything unreadable.
     """
@@ -236,7 +260,7 @@ def read_table(
             f"Unsupported format {resolved!r}. Supported: {', '.join(SUPPORTED_READ)}."
         )
 
-    payload = _decompress(raw) if resolved.endswith(".gz") else raw
+    payload = _decompress(raw, max_bytes) if resolved.endswith(".gz") else raw
     base = resolved.removesuffix(".gz")
 
     if base == "csv":
