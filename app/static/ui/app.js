@@ -56,8 +56,17 @@
     try {
       cfg = await Api.get("/config");
       const ownModel = Api.getLlmModel();
-      const shown = { seeds: ownModel || cfg.llm.seeds.model, bulk: ownModel || cfg.llm.bulk.model };
-      target.textContent = I18n.t("js.app.models", shown);
+      // The provider is named only when it is NOT plain OpenAI. For the default
+      // it would be noise; for the b-api gateway it says where the data goes,
+      // which is the one thing a reader of this line needs to know. It is set in
+      // config.yaml and deliberately not changeable from here: a request that
+      // could redirect the server's outbound call would be an SSRF pivot.
+      const label = (p) => {
+        const model = ownModel || cfg.llm[p].model;
+        const provider = cfg.llm[p].provider;
+        return provider && provider !== "openai" ? `${model} (${provider})` : model;
+      };
+      target.textContent = I18n.t("js.app.models", { seeds: label("seeds"), bulk: label("bulk") });
     } catch {
       target.textContent = I18n.t("js.app.cfgUnavailable");
     }
