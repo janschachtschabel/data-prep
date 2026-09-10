@@ -424,6 +424,27 @@ nur in den Commits:
 - **Unpassende Zeilen werden unabhaengig von der Join-Art gezaehlt**, damit ein
   Left-Join die verworfenen Rechts-Zeilen nicht verschweigt.
 
+### Stufe C (2026-09-10)
+
+- **`app/llm_budget.py` und `app/llm_errors.py` kamen hinzu** (im Plan stand nur
+  `llm_providers.py`). `llm.py` lag bei 317 Zeilen; der Plan hatte zugesagt, sie
+  zu verkleinern. Die Fehlertypen brauchen ein eigenes Modul, weil beide Hälften
+  sie werfen und jeder Import der jeweils anderen ein Zyklus wäre.
+- **`b_api_base_url` liegt auf oberster Ebene**, nicht unter `llm:` wie im Plan
+  gezeichnet. `llm` ist ein Dict von Zwecken; ein Skalar daneben wäre ein
+  Validierungsfehler.
+- **Der Tabellen-Tab besteht aus zwei JS-Modulen** (`tables.js`, `tables-ops.js`),
+  nicht einem. Ansehen und Ändern sind verschiedene Aufgaben mit verschiedenen
+  Fehlerbildern; zusammen wären es rund 570 Zeilen.
+- **Keine Provider-Auswahl und keine Live-`/models`-Liste in der UI.** Begründung
+  im CHANGELOG: eine Auswahl pro Request würde genau die SSRF-Grenze aufweichen,
+  hinter der der Provider steht; die Modellliste bräuchte einen Proxy-Endpunkt
+  und den Gateway auf der Fetch-Allowlist.
+- **Zusätzlich behoben, vom Plan nicht erfasst:** alle Datei-Felder (23px) und
+  alle Checkbox-Labels (23px) lagen unter dem 24px-Ziel aus WCAG 2.2 SC 2.5.8,
+  und der i18n-Paritätstest hatte eine fest verdrahtete Modulliste, die neue
+  Module stillschweigend nicht prüfte.
+
 ## Verification plan
 
 | Anforderung | Wie geprüft | Erfolg sieht so aus |

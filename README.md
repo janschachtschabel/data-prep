@@ -89,6 +89,38 @@ image by digest (see the note at the top of the `Dockerfile`).
 The default test run is offline (LLM/embeddings/api_v3 mocked). One marked live
 smoke touches the real LLM: `pytest -m live` (needs `OPENAI_API_KEY`).
 
+## The table workbench
+
+Beside the training-data tools, data-prep works on a table as a table — before
+anything has been decided about which column is the label. All of it is in the
+**Tables** tab and under `/refine/*`:
+
+| What | Endpoint |
+|---|---|
+| Import CSV, JSON, JSONL (plain or gzipped), nested JSON flattened to dot-path columns | `POST /refine/datasets/import` |
+| Browse rows, paginated and searchable | `GET /refine/{name}/rows` |
+| Per-column fill rate, cardinality, common values, numeric range | `GET /refine/{name}/profile` |
+| Filter rows by column value; keep/drop/rename columns; remove duplicates by key | `POST /refine/{name}/op` |
+| Count duplicates over key columns (non-destructive) | `GET /refine/{name}/duplicates` |
+| Join two datasets on one or more keys | `POST /refine/{name}/join` |
+| Export as CSV (any separator), CSV.gz, JSON or JSONL | `GET /refine/{name}/download` |
+
+Two behaviours are worth knowing before relying on them:
+
+- **Comparisons follow the rule's value, not the column.** The store is
+  all-strings, so `"9" > "10"` would be true. A rule comparing against a JSON
+  *number* compares numerically; against a *string*, as text. So `jahr >= 2015`
+  does arithmetic and `datum >= "2026-01-01"` does the lexicographic comparison
+  an ISO date wants. Cells that are not numbers never match a numeric rule, and
+  the response reports how many there were.
+- **A key is usable only when every part is filled.** Keying on `(url, source)`
+  never merges two rows that merely share a source and both lack a URL — for
+  duplicates and for joins alike.
+
+A join without a `target` returns its **cardinality**, not a result: how the key
+sets relate and how many rows the join would produce, computed without building
+it. Past five million rows the join is refused rather than attempted.
+
 ## Security model
 
 - Single operator key via `X-API-Key` on every data endpoint; `/health` and the

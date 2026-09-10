@@ -3,6 +3,67 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — the generic table workbench, stage C (2026-09-10)
+
+Design: `docs/plan-2026-09-10-tabellen-werkbank.md`. Completes stages A and B below.
+
+### Added
+- **LLM provider selection** — `openai`, `b-api-openai` or `b-api-academiccloud`
+  per purpose in `config.yaml`. The two gateway providers route through
+  OpenEduHub's Bildungs-API, which is OpenAI-compatible in its wire format but
+  authenticates with **`X-API-KEY`** rather than a bearer token. No new
+  dependency: the existing client serves all three, and with it the budgets,
+  the spend ledger, the retries and the test seam.
+- **A Tables tab** making the stage A and B endpoints usable. Import with format
+  options, a paginated searchable row viewer, the column profile, a rule builder
+  for row filters, column keep/drop/rename, duplicate counting and removal over
+  key columns, a join with a size check first, and export in four formats.
+  German and English throughout.
+
+### Changed
+- **Default model is now `gpt-5.6-luna` with `verbosity` and `reasoning_effort`
+  on `low`** (previously `gpt-5.4-mini` / `gpt-5.4-nano`). This app extracts and
+  writes short text, where reasoning tokens cost time and money without
+  improving the answer. Both controls are dropped for models that would answer
+  400 — every vLLM-hosted AcademicCloud model takes the classic `max_tokens`
+  body instead.
+- `base_url` is unset by default so the provider derives it. Set it explicitly
+  to point at a private gateway; it then wins.
+- **The page is 1200px wide**, matching api_v3, because the row viewer's columns
+  come from whatever file was imported. Help text keeps its own 72ch measure, so
+  the wider page does not stretch prose.
+
+### Fixed
+- **Every file input was 23px tall and every checkbox label 24px-minus-one** —
+  both a pixel under the WCAG 2.2 SC 2.5.8 target minimum. api_v3 had already
+  fixed the file inputs; data-prep had not. Measured in the browser, and the two
+  rules fix all four uploads and all five checkboxes, not only the new ones.
+- **The i18n parity test carried a hardcoded list of eight JS modules**, so it
+  passed without ever checking a ninth. It now derives the list from
+  `index.html`'s script tags. Sabotage-verified: removing one German key makes it
+  fail naming that key.
+
+### Not built, and why
+- **A provider *selector* in the UI.** The plan asked for one, but a control
+  that sets the provider per request would contradict the boundary the provider
+  exists behind: it decides which host the server calls out to, and a caller who
+  can redirect that has an SSRF pivot. It stays in `config.yaml`, like
+  `base_url`. The UI names the provider when it is not plain OpenAI, which is
+  the part a reader actually needs.
+- **A live `/models` list.** It would need an outbound proxy endpoint and the
+  gateway on the fetch allowlist — real attack surface for a convenience, whose
+  value was to catch the gateway's unannounced model renames. A 503 already
+  reports those at the moment they matter.
+
+### Refactored
+- `llm.py` was at 317 lines, past the ~300 the constitution sets. Spend
+  accounting moved to `llm_budget.py` and the exception types to `llm_errors.py`
+  — the latter because both halves raise them and either importing the other
+  would be a cycle. `llm.py` is now 247 lines. The first attempt at this split
+  flattened `BudgetExceeded` from `LlmError` to `Exception` to break the cycle,
+  which would have sent budget stops out as 500s past five `except LlmError`
+  handlers; a test now pins the hierarchy.
+
 ## [Unreleased] — the generic table workbench, stage B (2026-09-10)
 
 Design: `docs/plan-2026-09-10-tabellen-werkbank.md`. Continues stage A below.

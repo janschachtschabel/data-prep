@@ -47,7 +47,21 @@ durchsuchbarer Zeilen-Viewer. Neue Module: `refine/duplicates.py`,
 echten Daten: 3000 Zeilen ueber `ccm:wwwurl` geteilt und wieder verbunden — 477
 Dublettengruppen, Vorabbericht sagte many-to-many und 4430 Zeilen voraus, der
 Join lieferte 4706 (4430 getroffen + 276 ohne Partner).
-**Offen: Stufe C** (LLM-Providerwahl openai / b-api-openai /
+**Stufe C fertig (2026-09-10).** LLM-Providerwahl (`openai`, `b-api-openai`,
+`b-api-academiccloud`) mit `gpt-5.6-luna` auf `low`/`low` als Vorgabe; Seitenbreite
+auf 1200px wie api_v3; neuer Reiter **Tabellen**, der die Endpunkte aus A und B
+bedienbar macht (Import mit Formatoptionen, Zeilen-Viewer mit Suche, Spaltenprofil,
+Regelbau, Spaltenoperationen, Dubletten, Join mit Größenprüfung, Export). Neue
+Module: `llm_providers.py`, `llm_budget.py`, `llm_errors.py`, `static/ui/tables.js`,
+`static/ui/tables-ops.js`. **519 Tests grün**, ruff/mypy sauber; `llm.py` von 317 auf
+247 Zeilen. Im laufenden Programm geprüft: Import von verschachteltem JSON, Filter
+120→21 Zeilen numerisch, Kette `rules → drop_columns`, Dublettenbericht,
+Join-Vorabprüfung meldet many-to-many vor der Ausführung. Barrierefreiheit gemessen:
+keine unbeschrifteten Felder, nichts unter 24px, nichts per Tastatur unerreichbar.
+**Nicht gebaut (begründet im CHANGELOG):** Provider-*Auswahl* in der UI und die
+Live-`/models`-Liste — beide würden die SSRF-Grenze aufweichen bzw. Angriffsfläche
+für eine Bequemlichkeit schaffen.
+**Offen:** (LLM-Providerwahl openai / b-api-openai /
 b-api-academiccloud mit `gpt-5.6-luna`, UI auf api_v3-Niveau).
 
 

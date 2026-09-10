@@ -103,6 +103,81 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   Vorhandene Inhalte werden **nie** überschrieben; jede Ergänzung wird in einer
   Spalte `enriched_fields` vermerkt.
 
+## Beliebige Tabellen bearbeiten (Reiter „Tabellen")
+
+Der Reiter **Refine** setzt voraus, dass schon feststeht, welche Spalte das Label
+ist. **Tabellen** ist die Schicht darunter: eine Tabelle als Tabelle, bevor
+darüber entschieden wurde.
+
+### Einlesen
+
+CSV, JSON oder JSONL, roh oder gepackt (`.gz`). „Automatisch erkennen" liest das
+Format aus der Endung und erkennt gzip an den Bytes — eine als `.csv` benannte,
+tatsächlich gepackte Datei funktioniert also trotzdem. Trennzeichen und
+Zeichensatz sind für CSV frei wählbar.
+
+**Verschachteltes JSON wird flach geklopft.** Ein WLO-Export verpackt jede
+Eigenschaft in eine Liste; daraus wird `properties.cclom:title` als ganz normale
+Spalte. Listen einfacher Werte werden zusammengeführt. Eine Liste von *Objekten*
+bleibt als JSON-Text stehen — dafür gibt es keine sinnvolle Spalte, und
+stillschweigend zu verwerfen wäre schlimmer als eine hässliche Zelle.
+
+Ein solcher Export hat leicht über hundert Spalten. Der übliche nächste Schritt
+ist deshalb „Nur diese Spalten behalten".
+
+### Ansehen
+
+Die Zeilenansicht blättert in Seiten zu 50 und durchsucht die **sichtbaren**
+Spalten. Die Statuszeile nennt beides — „Zeige 1–50 von 30 passenden Zeilen (120
+insgesamt)" —, damit erkennbar ist, ob die Suche das getroffen hat, was gemeint
+war.
+
+**Spaltenprofil** beantwortet „was ist hier eigentlich drin": Füllgrad,
+Kardinalität, die häufigsten Werte und bei Zahlenspalten deren Wertebereich. Eine
+Spalte gilt als numerisch, wenn 80 % ihrer gefüllten Zellen sich als Zahl lesen
+lassen; wie viele das waren, steht daneben.
+
+### Ändern
+
+Jedes **Anwenden** schreibt einen **neuen** Datensatz und lässt das Original
+unberührt — ein falscher Schritt kostet also nichts. Das Ergebnis wird
+ausgewählt, sodass der nächste Schritt darauf aufsetzt; die angewandten Schritte
+stehen über den Karten. **Vorschau** zeigt, was passieren würde, ohne zu
+schreiben.
+
+**Zeilen filtern.** Regeln aus Spalte, Vergleich und Wert, verknüpft mit UND oder
+ODER. Wichtig zu wissen: der Speicher ist reiner Text, `"9"` wäre also größer als
+`"10"`. Deshalb entscheidet der **Wert der Regel** — eine Zahl vergleicht
+numerisch, ein Text vergleicht als Text. `jahr ≥ 2015` rechnet, `datum ≥
+2026-01-01` vergleicht buchstabenweise, was ein ISO-Datum genau will. Zellen, die
+sich nicht als Zahl lesen lassen, passen nie auf eine Zahlenregel; wie viele das
+waren, meldet die Statuszeile. Das ist der Hinweis darauf, dass eine Regel auf
+der falschen Spalte sitzt.
+
+`beginnt mit` ist der Weg zu einem URI-Grundstamm — im `taxonid`-Feld stecken
+zwei Vokabulare, und nur das Präfix trennt Schul- von Hochschulfächern.
+
+**Spalten** behalten, entfernen oder umbenennen (`alt=neu`). Die angegebene
+Reihenfolge wird die neue Spaltenreihenfolge der Ausgabe.
+
+**Dubletten** über eine oder mehrere Schlüsselspalten. „Dubletten zählen" ist
+zerstörungsfrei und nennt genau die Zeilenzahl, die „Dubletten entfernen" wegnähme.
+Eine Zeile mit **unvollständigem** Schlüssel gilt nie als Dublette: fehlt bei
+`(url, quelle)` die URL, wäre sonst jede Zeile derselben Quelle betroffen. Wie
+viele Zeilen so aussehen, wird mitgemeldet — meist ein Zeichen für einen
+schlechten Schlüssel.
+
+**Verbinden** zweier Datensätze über `hier=dort`. **Erst Größe prüfen** rechnet
+aus, wie groß das Ergebnis würde, *ohne* es zu bauen: wiederholt sich der
+Schlüssel auf beiden Seiten, vervielfachen sich die Zeilen, und genau das ist die
+Falle. Die Prüfung sagt es vorher; oberhalb von fünf Millionen Zeilen wird der
+Join abgelehnt statt versucht.
+
+### Ausgeben
+
+CSV mit wählbarem Trennzeichen, gepackt, JSON oder JSONL. Die Vorgabe ist die
+Semikolon-CSV, die api_v3 liest.
+
 ## Wichtig zur Auswertung
 
 Synthetische und angereicherte Zeilen sind **nur zum Training** gedacht. Bewerte
