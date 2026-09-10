@@ -207,6 +207,11 @@ details.help[open] summary { margin-bottom: var(--s-2); }
 /* ~72 characters is the readable measure; without this the wider page above
    would stretch every help sentence across the full 1200px. */
 details.help p, details.help ul, details.help li { max-width: 72ch; }
+
+/* A file input is excluded from the field padding above, which leaves it at
+   23px -- one pixel under the 24x24 target minimum (WCAG 2.2 SC 2.5.8).
+   Measured in the browser, not guessed. Applies to every upload field. */
+input[type="file"] { min-height: 24px; padding: var(--s-1) 0; }
 details.help ul { margin: 0; padding-left: var(--s-5); }
 details.help li { margin: var(--s-2) 0; }
 #refine-ops { border-left: 3px solid var(--border); padding-left: var(--s-3); }

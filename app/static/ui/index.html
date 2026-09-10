@@ -39,6 +39,7 @@
         <button class="tab" data-tab="vocabularies" data-i18n="tab.vocabularies">Vocabularies</button>
         <button class="tab" data-tab="references" data-i18n="tab.references">References</button>
         <button class="tab" data-tab="refine" data-i18n="tab.refine">Refine</button>
+        <button class="tab" data-tab="tables" data-i18n="tab.tables">Tables</button>
       </nav>
       <span id="auth-off-badge" class="muted" hidden data-i18n="topbar.authoff">auth disabled — local use</span>
       <button id="lang-btn-app" class="ghost" data-i18n="lang.toggle">Deutsch</button>
@@ -716,6 +717,115 @@
         <p id="refine-error" class="error" role="alert" hidden></p>
         <div id="refine-result" class="card" aria-live="polite" hidden></div>
       </section>
+
+      <section id="tab-tables" class="tab-panel" hidden>
+        <h2 data-i18n="h2.tables">Tables</h2>
+        <p class="muted" data-i18n="intro.tables">Work on a table as a table — before anything has been
+           decided about which column is the label. Read CSV, JSON or JSONL (plain or gzipped), look
+           at the rows, filter by column value, drop columns, find duplicates, join two files, and
+           export in the format you need.</p>
+
+        <div class="card">
+          <h3 data-i18n="tables.import.h">Import a table</h3>
+          <form id="tables-import-form">
+            <label for="tables-file" data-i18n="tables.file">File <span class="muted">(CSV, JSON, JSONL — also .gz)</span></label>
+            <input id="tables-file" type="file" accept=".csv,.json,.jsonl,.ndjson,.gz" required>
+            <div class="row">
+              <div>
+                <label for="tables-format" data-i18n="tables.format">Format</label>
+                <select id="tables-format">
+                  <option value="auto" data-i18n="tables.format.auto">Detect automatically</option>
+                  <option value="csv">CSV</option>
+                  <option value="csv.gz">CSV (gzip)</option>
+                  <option value="json">JSON</option>
+                  <option value="jsonl">JSONL</option>
+                  <option value="jsonl.gz">JSONL (gzip)</option>
+                </select>
+              </div>
+              <div>
+                <label for="tables-separator" data-i18n="tables.separator">Separator <span class="muted">(CSV)</span></label>
+                <input id="tables-separator" type="text" maxlength="3" value=";" size="3">
+              </div>
+              <div>
+                <label for="tables-encoding" data-i18n="tables.encoding">Encoding</label>
+                <input id="tables-encoding" type="text" maxlength="20" value="utf-8">
+              </div>
+            </div>
+            <label for="tables-name" data-i18n="tables.name">Name <span class="muted">(optional — filename if empty)</span></label>
+            <input id="tables-name" type="text" maxlength="100">
+            <button type="submit" id="tables-import-btn" data-i18n="tables.import.btn">Import</button>
+          </form>
+          <details class="help">
+            <summary data-i18n="tables.import.helpsum">About nested JSON</summary>
+            <p data-i18n="tables.import.help">Nested objects become columns with dot paths, so
+               <code>properties.cclom:title</code> is a plain column you can filter on. Lists of simple
+               values are joined; a list of objects is kept as JSON text, because there is no sensible
+               column for it. Whatever you import is stored as semicolon CSV, so every later step works
+               the same way regardless of where the data came from.</p>
+          </details>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="tables.dataset.h">Dataset</h3>
+          <label for="tables-dataset" data-i18n="tables.dataset">Dataset</label>
+          <select id="tables-dataset"></select>
+          <p id="tables-empty" class="muted" data-i18n="tables.empty" hidden>No datasets yet — import one above.</p>
+          <p id="tables-shape" class="muted" aria-live="polite"></p>
+          <p id="tables-chain" class="muted" aria-live="polite" hidden></p>
+          <div class="row">
+            <div>
+              <label for="tables-export-format" data-i18n="tables.export.format">Export as</label>
+              <select id="tables-export-format">
+                <option value="csv" data-i18n="tables.export.csv">CSV, semicolon (api_v3)</option>
+                <option value="csv.gz" data-i18n="tables.export.csvgz">CSV, semicolon, gzip</option>
+                <option value="json">JSON</option>
+                <option value="jsonl">JSONL</option>
+              </select>
+            </div>
+            <div>
+              <label for="tables-export-separator" data-i18n="tables.export.separator">Separator <span class="muted">(CSV)</span></label>
+              <input id="tables-export-separator" type="text" maxlength="3" value=";" size="3">
+            </div>
+            <div class="row-action">
+              <button type="button" id="tables-download-btn" data-i18n="tables.download.btn">Download</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="tables.view.h">Rows</h3>
+          <div class="row">
+            <div>
+              <label for="tables-search" data-i18n="tables.search">Search <span class="muted">(any visible column)</span></label>
+              <input id="tables-search" type="search" maxlength="200" autocomplete="off">
+            </div>
+            <div>
+              <label for="tables-columns" data-i18n="tables.columns">Show columns <span class="muted">(comma-separated; blank = all)</span></label>
+              <input id="tables-columns" type="text" maxlength="500" autocomplete="off">
+            </div>
+            <div class="row-action">
+              <button type="button" id="tables-view-btn" data-i18n="tables.view.btn">Show rows</button>
+            </div>
+          </div>
+          <p id="tables-view-status" class="muted" aria-live="polite"></p>
+          <div class="table-wrap"><table id="tables-rows"></table></div>
+          <div class="row">
+            <button type="button" id="tables-prev" class="ghost" data-i18n="tables.prev" disabled>Previous</button>
+            <button type="button" id="tables-next" class="ghost" data-i18n="tables.next" disabled>Next</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 data-i18n="tables.profile.h">Column profile</h3>
+          <p class="muted" data-i18n="tables.profile.help">How full each column is, how many different
+             values it holds, which ones dominate, and — where a column holds numbers — its range.</p>
+          <button type="button" id="tables-profile-btn" data-i18n="tables.profile.btn">Profile columns</button>
+          <p id="tables-profile-status" class="muted" aria-live="polite"></p>
+          <div class="table-wrap"><table id="tables-profile"></table></div>
+        </div>
+
+        <p id="tables-error" class="error" role="alert" hidden></p>
+      </section>
     </main>
   </div>
 </div>
@@ -728,6 +838,7 @@
 <script src="runs.js"></script>
 <script src="review.js"></script>
 <script src="refine.js"></script>
+<script src="tables.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

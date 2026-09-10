@@ -32,9 +32,15 @@ def test_every_js_i18n_t_key_has_en_and_de_translation(make_client):
     en_keys = set(re.findall(r'"([\w.-]+)":', en_block))
     de_keys = set(re.findall(r'"([\w.-]+)":', de_block))
 
+    # Derived from index.html rather than hardcoded: a fixed list silently stops
+    # covering new modules, and this test then passes without checking them.
+    # tables.js was added while the list still named eight files.
+    html = client.get("/ui/").text
+    modules = re.findall(r'<script src="([\w.-]+\.js)"', html)
+    assert len(modules) >= 8, f"expected the UI's script tags, found {modules}"
+
     used: set[str] = set()
-    for module in ("api.js", "app.js", "vocab.js", "references.js", "seeds.js",
-                   "runs.js", "review.js", "refine.js"):
+    for module in modules:
         src = client.get(f"/ui/{module}").text
         used |= set(re.findall(r'I18n\.t\(\s*"([\w.-]+)"', src))
     assert used, "no I18n.t keys found — did the wiring regress?"
@@ -169,3 +175,19 @@ def test_ui_offers_vocabulary_presets_with_metadata_fields(make_client):
                   "properties.ccm:educationalintendedenduserrole"):
         assert field in html, f"missing preset field: {field}"
     assert 'id="vocab-field"' in html  # the fetch form has a metadata-field input
+
+
+def test_every_column_kind_the_profile_returns_has_a_translation(make_client):
+    """tables.js builds these keys dynamically (`js.tables.kind.${c.kind}`), so
+    the regex-based parity test above cannot see them. They are enumerated here
+    against the values profile_columns can actually return, which ties the UI's
+    labels to the backend rather than to a guess."""
+    client = make_client(auth_key="secret-1")
+    js_i18n = client.get("/ui/i18n.js").text
+    en_block = js_i18n.split("en: {", 1)[1].split("de: {", 1)[0]
+    de_block = js_i18n.split("de: {", 1)[1]
+
+    for kind in ("numeric", "text", "empty"):
+        key = f'"js.tables.kind.{kind}"'
+        assert key in en_block, f"{key} missing English"
+        assert key in de_block, f"{key} missing German"
