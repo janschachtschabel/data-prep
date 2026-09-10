@@ -191,3 +191,25 @@ class TestRightOnlyRowsKeepTheirKey:
     def test_matched_rows_keep_the_left_key(self):
         new, _ = join_datasets(LEFT, RIGHT, keys=KEYS, how="outer")
         assert new.loc[new["titel"] == "Bruchrechnen", "id"].iloc[0] == "1"
+
+
+class TestCeilingFollowsJoinType:
+    """The ceiling exists to stop a runaway result. estimated_rows is the INNER
+    size; left/right/outer add their unmatched rows on top, and the refusal
+    message has to name the number the caller would actually get."""
+
+    LEFT = pd.DataFrame({"k": ["a", "b", "c"], "v": ["1", "2", "3"]})
+    RIGHT = pd.DataFrame({"k": ["d", "e", "f"], "w": ["4", "5", "6"]})
+    KEYS = [{"left": "k", "right": "k"}]
+
+    def test_an_inner_join_of_disjoint_keys_fits_a_tiny_ceiling(self):
+        new, _ = join_datasets(self.LEFT, self.RIGHT, keys=self.KEYS, how="inner", max_rows=5)
+        assert len(new) == 0
+
+    def test_an_outer_join_counts_its_unmatched_rows_against_the_ceiling(self):
+        with pytest.raises(ValueError, match="6 rows"):
+            join_datasets(self.LEFT, self.RIGHT, keys=self.KEYS, how="outer", max_rows=5)
+
+    def test_a_left_join_counts_only_the_left_side(self):
+        with pytest.raises(ValueError, match="3 rows"):
+            join_datasets(self.LEFT, self.RIGHT, keys=self.KEYS, how="left", max_rows=2)

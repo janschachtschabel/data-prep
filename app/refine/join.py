@@ -149,9 +149,16 @@ def join_datasets(
         raise ValueError(f"Unknown join type {how!r}. Use one of: {', '.join(HOW)}.")
 
     report = key_cardinality(left, right, keys)
-    if report["estimated_rows"] > max_rows:
+    # estimated_rows is the INNER size. The other join types keep their unmatched
+    # rows too, and the refusal must name the number the caller would get.
+    expected = report["estimated_rows"]
+    if how in ("left", "outer"):
+        expected += report["left_unmatched_rows"]
+    if how in ("right", "outer"):
+        expected += report["right_unmatched_rows"]
+    if expected > max_rows:
         raise ValueError(
-            f"This join would produce about {report['estimated_rows']} rows "
+            f"This join would produce about {expected} rows "
             f"(limit {max_rows}). The key repeats up to {report['left_max_repeat']} "
             f"times on the left and {report['right_max_repeat']} on the right — "
             f"add a key column so it identifies a row."
