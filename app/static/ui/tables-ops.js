@@ -107,6 +107,14 @@ const TablesOps = (() => {
     return value.split(",").map((s) => s.trim()).filter(Boolean);
   }
 
+  /* "a=b=c" is left "a", right "b=c": everything after the first "=" belongs to
+     the right-hand side rather than being dropped. */
+  function splitPair(pair) {
+    const at = pair.indexOf("=");
+    if (at < 0) return [pair.trim(), ""];
+    return [pair.slice(0, at).trim(), pair.slice(at + 1).trim()];
+  }
+
   /* One submit path for every operation: no target means preview. */
   async function run(op, params, button, labelKey, apply) {
     const source = Tables.current();
@@ -182,7 +190,7 @@ const TablesOps = (() => {
   function joinKeys() {
     // "id=uid, jahr=year" -> the pairs the API expects.
     return splitList($("#tops-join-keys").value).map((pair) => {
-      const [left, right] = pair.split("=").map((s) => s.trim());
+      const [left, right] = splitPair(pair);
       return { left, right: right || left };
     });
   }
@@ -236,7 +244,7 @@ const TablesOps = (() => {
     if (mode === "rename_columns") {
       const mapping = {};
       for (const pair of splitList(raw)) {
-        const [from, to] = pair.split("=").map((s) => s.trim());
+        const [from, to] = splitPair(pair);
         if (from && to) mapping[from] = to;
       }
       return [mode, { mapping }];
