@@ -86,6 +86,7 @@ const Tables = (() => {
       }
       await describe();
       if (typeof TablesOps !== "undefined") TablesOps.datasetsChanged(datasets);
+      if (typeof TablesJoin !== "undefined") TablesJoin.datasetsChanged(datasets);
     } catch (err) {
       showError(err.message || I18n.t("js.tables.errDatasets"));
     }
