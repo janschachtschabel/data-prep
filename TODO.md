@@ -28,7 +28,17 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 **M1–M11 fertig (v1) + UX-/i18n-Runde v0.2.0 + Whole-Codebase-Audit abgearbeitet + Deployment-Gerüst (235 Tests grün, ruff/mypy sauber).** Der Audit (`docs/audits/2026-07-12-audit.md`) ist geschlossen: alle Code-Findings behoben (T1, T3, T4, T6, T7, T8, T9, CSP, UI-Fehlerbehandlung, i18n-a11y + Korrektheits-Cluster + Doku-Drift); T5 (unbegrenztes Per-Run-Budget) und CSV-Formel-Injection als bewusste Won't-Fix-Entscheidungen dokumentiert (CHANGELOG). **Deployment vorbereitet:** `Dockerfile` (python:3.12-slim, non-root, healthcheck, single worker, 8110), `.dockerignore`, `docker-compose.yml`, GitHub Actions `.github/workflows/ci.yml` (ruff+mypy+pytest+OpenAPI-Smoke) und `docker.yml` (getakteter GHCR-Build/Push). Optionale Ausbaustufen (v2, im Plan dokumentiert): spaCy-NER-PII, Parquet, LLM-Umschreiben kuratierter Texte, Multi-User/Rollen. Offen (ohne Code, beim Betreiber): Repo anlegen, Image bauen/hochladen, Deployen; Basis-Image vor Prod per Digest pinnen. Dev-Server: `data-prep-ui` (Port **8110**, Key `dev-key`) bzw. `data-prep-ui-noauth` (8111) via `.claude/launch.json`; oder aus `data-prep/`: `.venv\Scripts\python -m app.main`. (8100 kollidierte lokal mit Docker Desktop → auf 8110/8111 verlegt.)
 
-Notiert für später: Das öffentliche discipline-Vokabular (SkoHub index.json) führt nur 70 Konzepte, die 30k-Daten nutzen ~180 Fach-URIs — für vocab-only-Läufe über alle Fächer volles Vokabular als Datei-Upload einplanen. Außerdem dort 04013 = „Wirtschaft und Verwaltung" — beim M10-Label-Audit die DISPLAYNAME-Konsistenz gegen die Trainingsdaten prüfen.
+**Erledigt 2026-09-10 — die Notiz war ein Fehlalarm, beide Hälften.** `properties.ccm:taxonid`
+führt **zwei Vokabulare in einem Feld**: Schulfächer (`discipline`) und Hochschulfächer
+(`hochschulfaechersystematik`). Ohne URI-Filter zählt man beide zusammen, was die frühere
+Zahl „~180 Fach-URIs" erklärt. Mit Filter stimmt es: in `data_30k.csv` stehen **69
+discipline-Konzepte** (+ 1 hochschulfaechersystematik) gegen 70 im öffentlichen SkoHub-
+Vokabular — kein Datei-Upload nötig. Zum Vergleich derselbe Mechanismus in
+`data_hochschule_combined.csv`: 285 hochschulfaechersystematik-Konzepte, 0 discipline.
+Auch `04013` ist geklärt: ein **discipline**-Konzept mit dem Anzeigenamen „Wirtschaft und
+Verwaltung", übereinstimmend mit dem Vokabular — die DISPLAYNAME-Konsistenz ist gegeben.
+**Konsequenz für die App:** bei jeder Konzeptzählung über `taxonid` zuerst nach Vokabular-URI
+filtern, sonst mischt jede Statistik zwei Fachsystematiken.
 
 ## Verlauf
 
