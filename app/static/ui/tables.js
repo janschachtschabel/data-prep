@@ -15,6 +15,9 @@ const Tables = (() => {
 
   let offset = 0;
   let matched = 0;
+  // The last dataset list fetched, so describe() never refetches what
+  // refreshDatasets() just loaded.
+  let datasets = [];
 
   function showError(message) {
     const box = $("#tables-error");
@@ -38,6 +41,11 @@ const Tables = (() => {
   function busy(button, on, labelKey) {
     button.disabled = on;
     button.textContent = on ? I18n.t("js.tables.working") : I18n.t(labelKey);
+  }
+
+  // The profile reports null for a NaN, which toLocaleString would throw on.
+  function number(value) {
+    return value == null ? "" : value.toLocaleString(I18n.current());
   }
 
   function renderTable(table, headers, rows) {
@@ -70,13 +78,14 @@ const Tables = (() => {
     select.replaceChildren(new Option(I18n.t("js.tables.phDataset"), ""));
     try {
       const res = await Api.get("/refine/datasets");
-      $("#tables-empty").hidden = res.datasets.length > 0;
-      for (const ds of res.datasets) select.add(new Option(ds.name, ds.name));
+      datasets = res.datasets;
+      $("#tables-empty").hidden = datasets.length > 0;
+      for (const ds of datasets) select.add(new Option(ds.name, ds.name));
       if (previous && [...select.options].some((o) => o.value === previous)) {
         select.value = previous;
       }
-      describe();
-      if (typeof TablesOps !== "undefined") TablesOps.datasetsChanged(res.datasets);
+      await describe();
+      if (typeof TablesOps !== "undefined") TablesOps.datasetsChanged(datasets);
     } catch (err) {
       showError(err.message || I18n.t("js.tables.errDatasets"));
     }
@@ -92,8 +101,7 @@ const Tables = (() => {
     chain.hidden = true;
     if (!name) return;
     try {
-      const res = await Api.get("/refine/datasets");
-      const ds = res.datasets.find((d) => d.name === name);
+      const ds = datasets.find((d) => d.name === name);
       if (ds) {
         shape.textContent = I18n.t("js.tables.shape")
           .replace("{rows}", ds.rows.toLocaleString(I18n.current()))
@@ -128,8 +136,6 @@ const Tables = (() => {
     try {
       const res = await Api.postForm("/refine/datasets/import", form);
       await refreshDatasets(res.name);
-      $("#tables-dataset").value = res.name;
-      await describe();
       // A wide import is the moment to say so: a WLO export flattens to well
       // over a hundred columns, and the next step is usually dropping most.
       $("#tables-view-status").textContent = I18n.t("js.tables.imported")
@@ -202,7 +208,7 @@ const Tables = (() => {
           c.distinct.toLocaleString(I18n.current()),
           I18n.t(`js.tables.kind.${c.kind}`),
           c.top_values.slice(0, 3).map((t) => `${t.value} (${t.count})`).join(", "),
-          c.numeric ? `${c.numeric.min} … ${c.numeric.max}` : "",
+          c.numeric ? `${number(c.numeric.min)} … ${number(c.numeric.max)}` : "",
         ]),
       );
       status.textContent = I18n.t("js.tables.profiled")
