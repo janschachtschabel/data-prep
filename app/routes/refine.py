@@ -13,6 +13,7 @@ from ..config import load_config
 from ..embeddings import get_encoder
 from ..llm import BudgetExceeded, LlmError, LlmOverride, session_for
 from ..refine.analyze import _combined_texts, analyze, training_preflight
+from ..refine.apply import preview_or_apply
 from ..refine.combine import combine_datasets, suggest_mapping
 from ..refine.enrich import enrich_dataset
 from ..refine.filters import run_filter
@@ -26,7 +27,6 @@ from ..refine.store import (
     load_dataset,
     read_ops,
     save_dataset,
-    write_ops,
 )
 from ..security import llm_override, require_key, safe_name
 from ..settings import Settings, get_settings
@@ -171,17 +171,7 @@ async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Dep
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if target is None:
-        return {**stats, "preview": True}
-
-    save_dataset(settings, target, new_df)
-    # Carry the source provenance forward, then append this operation.
-    write_ops(settings, target, read_ops(settings, safe_name(name, "dataset name")))
-    append_op(settings, target, {"filter": req.filter, "params": req.params,
-                                 "source": name, "before": stats["before"],
-                                 "after": stats["after"], "removed": stats["removed"],
-                                 "changed": stats["changed"]})
-    return {**stats, "preview": False, "target": target}
+    return preview_or_apply(settings, name, target, req.filter, req.params, new_df, stats)
 
 
 @router.post("/{name}/split", summary="Stratified text-disjoint holdout split (train + holdout)")
