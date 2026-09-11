@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from ..atomic import write_text_atomic
 from ..fetch import FetchError, fetch_json
-from ..security import read_upload_capped, refuse_existing, require_key, safe_name
+from ..security import MAX_NAME_BYTES, read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..vocab import Vocabulary, parse_vocabulary
 from ..vocab_formats import manual_to_jsonld
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/vocabs", tags=["Vocabularies"], dependencies=[Depend
 
 class FetchRequest(BaseModel):
     url: str = Field(max_length=2000)
-    name: str | None = Field(default=None, max_length=100)
+    name: str | None = Field(default=None, max_length=MAX_NAME_BYTES)
     # Optional WLO metadata field these labels belong to (e.g. the taxonid /
     # educationalcontext column). Recorded now, useful downstream for mapping
     # the vocabulary's concepts to a dataset column.
@@ -38,7 +38,7 @@ class FetchRequest(BaseModel):
 class ManualRequest(BaseModel):
     """A vocabulary typed/pasted by hand — one concept per line."""
 
-    name: str = Field(max_length=100)
+    name: str = Field(max_length=MAX_NAME_BYTES)
     text: str = Field(max_length=200_000)
     lang: str = Field(default="de", max_length=10)
     title: str | None = Field(default=None, max_length=200)
@@ -128,7 +128,7 @@ async def list_vocabs(settings: Settings = Depends(get_settings)) -> dict:
 @router.post("/import", summary="Upload a vocabulary file (SKOS JSON-LD or SkoHub Turtle)")
 async def import_vocab(
     file: UploadFile,
-    name: str | None = Form(default=None, max_length=100),
+    name: str | None = Form(default=None, max_length=MAX_NAME_BYTES),
     label_field: str | None = Form(default=None, max_length=200),
     overwrite: bool = Form(default=False),
     settings: Settings = Depends(get_settings),

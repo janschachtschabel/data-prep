@@ -28,7 +28,7 @@ from ..refine.store import (
     save_dataset,
     write_ops,
 )
-from ..security import llm_override, refuse_existing, require_key, safe_name
+from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..textnorm import split_labels
 
@@ -63,7 +63,7 @@ class PreflightRequest(AnalyzeRequest):
 class FilterRequest(BaseModel):
     filter: str = Field(max_length=40)
     params: dict = Field(default_factory=dict)
-    target: str | None = Field(default=None, max_length=100)  # None = preview only
+    target: str | None = Field(default=None, max_length=MAX_NAME_BYTES)  # None = preview only
     overwrite: bool = False
     text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS))
     label_column: str = DEFAULT_LABEL_COLUMN
@@ -76,14 +76,14 @@ class SuggestRequest(BaseModel):
 
 
 class CombineSource(BaseModel):
-    name: str = Field(max_length=100)
+    name: str = Field(max_length=MAX_NAME_BYTES)
     label: str = Field(max_length=60)
     mapping: dict[str, str | None]
 
 
 class CombineRequest(BaseModel):
     sources: list[CombineSource] = Field(min_length=1, max_length=20)
-    target: str = Field(max_length=100)
+    target: str = Field(max_length=MAX_NAME_BYTES)
     overwrite: bool = False
     target_columns: list[str] = Field(default_factory=lambda: [*DEFAULT_TEXT_COLUMNS, DEFAULT_LABEL_COLUMN])
     text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS))
@@ -92,7 +92,7 @@ class CombineRequest(BaseModel):
 class SplitRequest(AnalyzeRequest):
     holdout_fraction: float = Field(default=0.15, gt=0.0, lt=0.9)
     seed: int = Field(default=42, ge=0)
-    target: str = Field(max_length=100)
+    target: str = Field(max_length=MAX_NAME_BYTES)
     overwrite: bool = False
 
 
@@ -105,7 +105,7 @@ class LabelAuditRequest(AnalyzeRequest):
 
 class EnrichRequest(BaseModel):
     mode: Literal["keywords", "description"]
-    target: str = Field(max_length=100)
+    target: str = Field(max_length=MAX_NAME_BYTES)
     overwrite: bool = False
     title_column: str = "properties.cclom:title"
     description_column: str = "properties.cclom:general_description"

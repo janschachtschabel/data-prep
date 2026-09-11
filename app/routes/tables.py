@@ -28,7 +28,7 @@ from ..refine.join import DEFAULT_MAX_ROWS, join_datasets, key_cardinality
 from ..refine.profile import profile_columns
 from ..refine.store import dataset_path, load_dataset, save_dataset, write_ops
 from ..refine.view import page_rows
-from ..security import read_upload_capped, refuse_existing, require_key, safe_name
+from ..security import MAX_NAME_BYTES, read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..tabular import SUPPORTED_READ, read_table, write_table
 
@@ -47,7 +47,7 @@ router = APIRouter(prefix="/refine", tags=["Refine"], dependencies=[Depends(requ
 @router.post("/datasets/import", summary="Upload a table (stored raw, not scrubbed)")
 async def import_dataset(
     file: UploadFile,
-    name: str | None = Form(default=None, max_length=100),
+    name: str | None = Form(default=None, max_length=MAX_NAME_BYTES),
     format: str = Form(default="auto", max_length=20),
     separator: str = Form(default=";", max_length=3),
     encoding: str = Form(default="utf-8", max_length=20),
@@ -97,19 +97,19 @@ async def import_dataset(
 
 
 class JoinRequest(BaseModel):
-    right: str = Field(max_length=100)
+    right: str = Field(max_length=MAX_NAME_BYTES)
     keys: list[dict] = Field(default_factory=list)
     how: str = Field(default="left", max_length=10)
     suffix: str = Field(default="_right", max_length=20)
     coalesce: bool = False
-    target: str | None = Field(default=None, max_length=100)  # None = report only
+    target: str | None = Field(default=None, max_length=MAX_NAME_BYTES)  # None = report only
     overwrite: bool = False  # replace an existing target other than this dataset
 
 
 class OperationRequest(BaseModel):
     op: str = Field(max_length=40)
     params: dict = Field(default_factory=dict)
-    target: str | None = Field(default=None, max_length=100)  # None = preview only
+    target: str | None = Field(default=None, max_length=MAX_NAME_BYTES)  # None = preview only
     overwrite: bool = False  # replace an existing target other than this dataset
 
 

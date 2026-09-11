@@ -328,3 +328,18 @@ def test_unknown_seed_set_and_concept_yield_404_and_400(make_client):
                    json={"concept_uri": "https://example.org/vocab/unknown",
                          "seeds": []}, headers=headers)
     assert r.status_code == 400
+
+
+def test_a_vocabulary_named_after_a_long_file_can_seed_a_set(make_client):
+    """Imported without a typed name, a vocabulary is named after its file, and
+    that name may exceed 100 characters -- which the seed build's `vocab` field
+    refused (422) although the vocabulary itself loaded fine."""
+    client = make_client()
+    headers = {"X-API-Key": "test-key"}
+    long_name = "wlo-vocabulary-export-" + "x" * 110
+    r = client.post("/vocabs/import", headers=headers,
+                    files={"file": (f"{long_name}.json", json.dumps(NESTED).encode(), "application/json")})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == long_name
+    r = client.post("/seeds/build", json={"name": "s", "vocab": long_name}, headers=headers)
+    assert r.status_code == 200, r.text

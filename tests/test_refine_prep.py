@@ -141,6 +141,29 @@ def test_a_dataset_with_a_long_legacy_name_stays_reachable(make_client, tmp_path
     assert client.delete(f"/refine/{legacy}", headers=HEADERS).status_code == 200
 
 
+def test_every_field_that_names_a_dataset_accepts_what_the_store_allows(make_client, tmp_path):
+    """A 105-character name loaded and deleted, but the body fields that NAME a
+    dataset still capped at 100 characters: it could not be worked on in place,
+    joined as the right side or combined (422, review finding)."""
+    client = make_client()
+    _import(client, _dataset())
+    legacy = "L" * 105
+    refine = tmp_path / "data" / "refine"
+    (refine / f"{legacy}.csv").write_bytes((refine / "src.csv").read_bytes())
+    rule = {"op": "rules", "params": {"rules": [{"column": LABEL, "op": "ne", "value": "zzz"}]}}
+
+    r = client.post(f"/refine/{legacy}/op", json={**rule, "target": legacy}, headers=HEADERS)
+    assert r.status_code == 200, r.text
+    r = client.post("/refine/src/join", headers=HEADERS,
+                    json={"right": legacy, "keys": [{"left": LABEL, "right": LABEL}]})
+    assert r.status_code == 200, r.text
+    mapping = {col: col for col in [*COLS, LABEL]}
+    r = client.post("/refine/combine", headers=HEADERS, json={
+        "sources": [{"name": legacy, "label": "L", "mapping": mapping}], "target": "c" * 105,
+        "target_columns": [*COLS, LABEL], "text_columns": COLS})
+    assert r.status_code == 200, r.text
+
+
 # -------------------------------------------------------------- push route ----
 
 

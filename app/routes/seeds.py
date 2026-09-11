@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, session_for
 from ..reference import load_reference
-from ..security import llm_override, refuse_existing, require_key, safe_name
+from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..seeds import (
     SeedItem,
     bootstrap_concept,
@@ -31,9 +31,9 @@ router = APIRouter(prefix="/seeds", tags=["Seeds"], dependencies=[Depends(requir
 
 
 class BuildRequest(BaseModel):
-    name: str = Field(max_length=100)
-    vocab: str = Field(max_length=100)
-    reference: str | None = Field(default=None, max_length=100)
+    name: str = Field(max_length=MAX_NAME_BYTES)
+    vocab: str = Field(max_length=MAX_NAME_BYTES)
+    reference: str | None = Field(default=None, max_length=MAX_NAME_BYTES)
     # Few-shot example seeds per concept (5-10 is plenty); this is NOT the term
     # bank scope, which is controlled separately below.
     per_concept: int = Field(default=6, ge=1, le=50)

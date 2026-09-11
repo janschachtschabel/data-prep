@@ -12,7 +12,7 @@ from ..config import load_config
 from ..llm import LlmOverride
 from ..planning import build_plan, estimate, resolve_corridor
 from ..runs import run_manager
-from ..security import llm_override, require_key, safe_name
+from ..security import MAX_NAME_BYTES, llm_override, require_key, safe_name
 from ..seeds import load_seed_set
 from ..settings import Settings, get_settings
 from ..vocab import Vocabulary, parse_vocabulary
@@ -33,7 +33,7 @@ class LengthProfileIn(BaseModel):
 
 
 class RunRequest(BaseModel):
-    seed_set: str = Field(max_length=100)
+    seed_set: str = Field(max_length=MAX_NAME_BYTES)
     selection: Selection = Selection()
     per_concept: int = Field(default=50, ge=1, le=2000)
     batch_size: int = Field(default=8, ge=1, le=20)

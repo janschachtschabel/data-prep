@@ -19,7 +19,7 @@ from ..reference import (
     references_dir,
     store_reference,
 )
-from ..security import read_upload_capped, refuse_existing, require_key, safe_name
+from ..security import MAX_NAME_BYTES, read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 
 router = APIRouter(prefix="/references", tags=["References"], dependencies=[Depends(require_key)])
@@ -54,7 +54,7 @@ async def list_references(settings: Settings = Depends(get_settings)) -> dict:
 @router.post("/import", summary="Upload a reference CSV (input PII scrub applied)")
 async def import_reference(
     file: UploadFile,
-    name: str | None = Form(default=None, max_length=100),
+    name: str | None = Form(default=None, max_length=MAX_NAME_BYTES),
     text_columns: str | None = Form(default=None, max_length=500),
     label_column: str | None = Form(default=None, max_length=100),
     overwrite: bool = Form(default=False),

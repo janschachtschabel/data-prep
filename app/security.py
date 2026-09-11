@@ -85,10 +85,11 @@ def _is_loopback_client(request: Request) -> bool:
 
 
 # Counted in UTF-8 BYTES, because that is what the filesystem counts: Linux
-# refuses a file name over 255 bytes (ENAMETOOLONG, a 500). The stores append
-# up to 23 bytes (".meta.json" plus atomic.py's ".<8 hex>.tmp"), so 200 leaves room -- and
-# still admits the 108-character names split derives from a 100-character
-# body field. A character cap got both wrong: 70 emoji are 280 bytes.
+# refuses a file name over 255 bytes (ENAMETOOLONG, a 500). The stores append up
+# to 23 bytes (".meta.json" plus atomic.py's ".<8 hex>.tmp"), so 200 leaves room.
+# A character cap got it wrong both ways: it refused the longer names split
+# derives from a target, and let 70 emoji (280 bytes) through. Every body field
+# that carries a name uses this as its character cap; this check is the real one.
 MAX_NAME_BYTES = 200
 
 
