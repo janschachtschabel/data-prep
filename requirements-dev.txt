@@ -3,3 +3,6 @@ httpx>=0.27
 ruff>=0.4
 mypy>=1.9
 types-PyYAML>=6.0
+# Supply-chain gate: checks requirements.lock against the advisory database in
+# CI (audit 2026-09-11, D1). Dev-only; never installed into the image.
+pip-audit>=2.7

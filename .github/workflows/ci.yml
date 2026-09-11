@@ -49,6 +49,10 @@ jobs:
       - name: Tests (pytest)
         run: python -m pytest tests -q
 
+      - name: Vulnerabilities (pip-audit)
+        # The lock is the full pinned tree, so no resolution is needed (--no-deps).
+        run: python -m pip_audit -r requirements.lock --no-deps --progress-spinner off
+
       - name: OpenAPI smoke
         # The app must import cleanly and register its core routers.
         run: |
