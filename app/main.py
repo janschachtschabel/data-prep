@@ -93,6 +93,25 @@ def create_app() -> FastAPI:
     app.add_exception_handler(Exception, _unhandled_exception_handler)
 
     @app.middleware("http")
+    async def body_size_cap(request: Request, call_next):
+        """Uploads stream against max_upload_mb (security.read_upload_capped);
+        every other body -- the JSON routes -- had no cap at all, neither
+        FastAPI nor uvicorn imposes one. The same cap applies here by
+        Content-Length, before anything is read. Multipart is exempt so an
+        upload of exactly the cap is not refused for its envelope.
+        simplify: a chunked body without Content-Length is not capped here;
+        browsers and httpx always send the header for JSON."""
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and not request.headers.get("content-type", "").startswith("multipart/"):
+            cap = settings.max_upload_mb * 1024 * 1024
+            if int(length) > cap:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": f"Request body exceeds {settings.max_upload_mb} MB limit."},
+                )
+        return await call_next(request)
+
+    @app.middleware("http")
     async def security_headers(request: Request, call_next):
         """Baseline hardening headers on every response. /ui always revalidates
         (304 when unchanged): browsers otherwise keep executing a stale app.js

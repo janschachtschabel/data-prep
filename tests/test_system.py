@@ -138,3 +138,27 @@ def test_every_route_except_health_requires_the_key(make_client):
             assert res.status_code == 401, (method, path, res.status_code)
             checked.append((method, path))
     assert len(checked) >= 40, checked
+
+
+def test_an_oversized_json_body_is_refused_before_it_is_read(make_client):
+    """Uploads stream against max_upload_mb; JSON bodies had no cap at all
+    (neither FastAPI nor uvicorn imposes one). The same cap now applies to
+    any non-multipart body by Content-Length (audit 2026-09-11, API2)."""
+    client = make_client(auth_key="test-key", max_upload_mb="1")
+    body = b'{"op": "rules", "params": {"pad": "' + b"x" * (1024 * 1024 + 64) + b'"}}'
+    res = client.post("/refine/x/op", content=body,
+                      headers={"X-API-Key": "test-key", "Content-Type": "application/json"})
+    assert res.status_code == 413
+    assert "1 MB" in res.json()["detail"]
+
+
+def test_a_multipart_upload_keeps_its_streamed_cap(make_client):
+    """The Content-Length check must not touch uploads: a file of exactly the
+    cap is accepted by the streamed reader although the multipart envelope
+    makes the request body a little larger than the cap."""
+    client = make_client(auth_key="test-key", max_upload_mb="1")
+    exact = b"a\n" + b"1\n" * (1024 * 1024 // 2 - 1)
+    assert len(exact) == 1024 * 1024
+    res = client.post("/refine/datasets/import", files={"file": ("t.csv", exact, "text/csv")},
+                      headers={"X-API-Key": "test-key"})
+    assert res.status_code == 200, res.text
