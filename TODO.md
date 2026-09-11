@@ -32,7 +32,7 @@ ueberschreibt mehr ungefragt (409 + `overwrite`, UI fragt nach), Namensgrenze
 in Bytes statt Zeichen (die 100-Zeichen-Grenze aus dem Audit hatte Split-Namen
 und lange Altnamen unerreichbar gemacht), Historie bei Wiederverwendung eines
 Namens korrekt, Push-409 von api_v3 als 409 mit Hinweis, eindeutige
-Temp-Namen. **581 Tests gruen.** `routes/refine.py` ist auf 328 Zeilen
+Temp-Namen. Danach ein unabhaengiges Review (0 kritisch/schwer, 4 kleinere, 5 Kleinigkeiten), bis auf zwei begruendete Ausnahmen umgesetzt. **596 Tests gruen.** `routes/refine.py` ist auf 342 Zeilen
 gewachsen — Aufteilung (Split/Enrich/Push/Combine in ein eigenes Router-Modul)
 steht als naechster Strukturschritt an.
 

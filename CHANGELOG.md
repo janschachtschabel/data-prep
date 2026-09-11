@@ -33,6 +33,27 @@ below. One commit each, test-first.
 - Two writers to one name no longer share a temp file (startup reference
   import racing an upload of the same name raised `FileNotFoundError`).
 
+### Fixed after an independent review of the above
+- The 409 check is repeated at the write with no await in between, so a
+  name taken while a request parsed, ran an op, fetched or waited for the
+  LLM is still refused. The reference store checks and writes under a lock,
+  so the startup import of a default reference never replaces an upload
+  that finished first.
+- Every body and form field that names a dataset, vocabulary, reference or
+  seed set allows what the byte bound allows (200); a 105-character dataset
+  from a split could not be worked on in place, joined or combined, and a
+  vocabulary named after a long upload file could not seed a set.
+- A push or prediction api_v3 refuses relays api_v3's reason (for example a
+  name too long for api_v3) instead of a bare status code.
+- Seed bootstrap and term refinement apply their LLM result to the set as it
+  is after the call: an edit made meanwhile is kept, a set deleted meanwhile
+  stays deleted (404). Not new in this series.
+- Split and enrich read the source history before writing or paying for the
+  LLM; re-splitting `p_train` as `p` counts as working in place.
+- Startup deletes temp files an interrupted write left behind.
+- The split-history test now fails if split drops the source's steps (it
+  passed for the wrong reason).
+
 ## [Unreleased] — audit remediation (2026-09-11)
 
 The 2026-09-11 code audit (`docs/audits/2026-09-11-audit.md`, overall 75
