@@ -27,6 +27,12 @@ async def lifespan(app: FastAPI):
     background thread so a large curated file never blocks readiness."""
     settings = get_settings()
     settings.ensure_dirs()
+    # Before anything else writes: every staged temp file is an orphan now.
+    from .atomic import sweep_stale_temps
+
+    swept = sweep_stale_temps(settings.data_dir, settings.runs_dir)
+    if swept:
+        logger.warning("Removed %d temp file(s) left by an interrupted write", swept)
     if not settings.auth_enabled:
         logger.warning("auth disabled (DATAPREP_AUTH_KEY unset) — local use only")
 

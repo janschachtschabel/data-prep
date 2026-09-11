@@ -151,3 +151,23 @@ class TestReferenceStore:
         assert stored.count("\n") == 3, stored
         assert client.get("/references/r").json()["row_count"] == 2
         assert _no_tmp_left(tmp_path / "data")
+
+
+def test_startup_sweeps_temp_files_a_killed_write_left_behind(make_client, tmp_path):
+    """Each atomic write stages under its own random name now; a write killed
+    mid-way (power loss, OOM kill) leaves that file behind for good, where the
+    old fixed name was at least reused by the next write. Nothing writes during
+    startup (single worker), so every *.tmp in the stores is an orphan then."""
+    orphans = [
+        tmp_path / "data" / "refine" / "d.csv.0a1b2c3d.tmp",
+        tmp_path / "data" / "seeds" / "s.json.tmp",
+        tmp_path / "runs" / "r1" / "state.json.9f8e7d6c.tmp",
+    ]
+    keep = tmp_path / "data" / "refine" / "d.csv"
+    for path in [*orphans, keep]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x", encoding="utf-8")
+
+    make_client()
+    assert not [p for p in orphans if p.exists()]
+    assert keep.exists()

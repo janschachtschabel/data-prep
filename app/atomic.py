@@ -34,6 +34,23 @@ def replace_atomically(path: Path, write: Callable[[Path], object]) -> None:
         tmp.unlink(missing_ok=True)
 
 
+def sweep_stale_temps(*directories: Path) -> int:
+    """Delete ``*.tmp`` files below ``directories``; returns how many.
+
+    A write killed mid-way (power loss, OOM kill) leaves its uniquely named
+    temp file behind for good -- the next write picks a new name. Call this at
+    startup only, when no write can be in flight (single-worker design)."""
+    removed = 0
+    for directory in directories:
+        if not directory.exists():
+            continue
+        for path in directory.rglob("*.tmp"):
+            if path.is_file():
+                path.unlink(missing_ok=True)
+                removed += 1
+    return removed
+
+
 def write_text_atomic(path: Path, text: str) -> None:
     """UTF-8 text through :func:`replace_atomically` -- the common case."""
     replace_atomically(path, lambda tmp: tmp.write_text(text, encoding="utf-8"))
