@@ -71,7 +71,10 @@ async def import_dataset(
             detail=f"Unsupported format {format!r}. Supported: auto, {', '.join(SUPPORTED_READ)}.",
         )
     try:
-        df = read_table(
+        # Offloaded like the operations below: inflating and parsing up to
+        # max_bytes inline would stall /health and run polling for the duration.
+        df = await asyncio.to_thread(
+            read_table,
             payload, fmt=format, separator=separator, encoding=encoding,
             list_separator=list_separator, filename=file.filename or "",
             # Ten times the compressed cap: real exports inflate 5-10x, a bomb

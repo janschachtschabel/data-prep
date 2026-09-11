@@ -6,6 +6,7 @@ report, group counts). Listing keys off the meta files.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -67,8 +68,11 @@ async def import_reference(
     )
     safe = safe_name(resolved, "reference name")  # may 400 — before any work
     try:
-        df, meta = ingest_reference(
-            payload, name=resolved, text_columns=columns, label_column=label_column or DEFAULT_LABEL_COLUMN
+        # Parsing plus the per-cell PII scrub of a 20 MB upload is CPU work;
+        # inline it would block every other request on the single loop.
+        df, meta = await asyncio.to_thread(
+            ingest_reference,
+            payload, name=resolved, text_columns=columns, label_column=label_column or DEFAULT_LABEL_COLUMN,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

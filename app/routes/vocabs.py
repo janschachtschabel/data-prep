@@ -6,6 +6,7 @@ demand (SkoHub files are small). Validation runs BEFORE anything is written.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from urllib.parse import urlparse
@@ -155,7 +156,9 @@ async def manual_vocab(req: ManualRequest, settings: Settings = Depends(get_sett
 @router.post("/fetch", summary="Fetch a vocabulary from an allowed HTTPS URL")
 async def fetch_vocab(req: FetchRequest, settings: Settings = Depends(get_settings)) -> dict:
     try:
-        raw = fetch_json(req.url, settings)
+        # fetch_json is synchronous (httpx.Client, up to fetch_timeout_seconds);
+        # a slow upstream must not hold the event loop for that long.
+        raw = await asyncio.to_thread(fetch_json, req.url, settings)
     except FetchError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _store(settings, req.name or _name_from_url(req.url), raw, req.label_field)
