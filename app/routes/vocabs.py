@@ -73,7 +73,12 @@ def _display_title(vocab: Vocabulary) -> str:
     return next(iter(vocab.title.values()), "")
 
 
-def _store(settings: Settings, name: str, raw: dict, label_field: str | None = None) -> dict:
+def _store(
+    settings: Settings, name: str, raw: dict, label_field: str | None = None, *, overwrite: bool
+) -> dict:
+    # The routes check before their work; this repeats it at the write, with no
+    # await in between -- a fetch waits on the network for up to its timeout.
+    _refuse_taken(settings, name, overwrite)
     try:
         vocab = parse_vocabulary(raw)
     except ValueError as exc:
@@ -137,7 +142,7 @@ async def import_vocab(
             raw = turtle_to_jsonld(payload.decode("utf-8"))
         except (UnicodeDecodeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=f"Invalid Turtle: {exc}") from exc
-        return _store(settings, resolved, raw, label_field)
+        return _store(settings, resolved, raw, label_field, overwrite=overwrite)
     if suffix in (".json", ".jsonld", ""):  # no extension -> treat as JSON (back-compat)
         try:
             raw = json.loads(payload.decode("utf-8"))
@@ -145,7 +150,7 @@ async def import_vocab(
             raise HTTPException(status_code=400, detail="File is not valid JSON.") from exc
         if not isinstance(raw, dict):
             raise HTTPException(status_code=400, detail="File is not a JSON object.")
-        return _store(settings, resolved, raw, label_field)
+        return _store(settings, resolved, raw, label_field, overwrite=overwrite)
     raise HTTPException(
         status_code=400,
         detail=f"Unsupported file type {suffix!r}. Use .json, .jsonld or .ttl.",
@@ -161,7 +166,7 @@ async def manual_vocab(req: ManualRequest, settings: Settings = Depends(get_sett
         raw = manual_to_jsonld(req.text, title=req.title or req.name, lang=req.lang, base_uri=base_uri)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _store(settings, name, raw, req.label_field)
+    return _store(settings, name, raw, req.label_field, overwrite=req.overwrite)
 
 
 @router.post("/fetch", summary="Fetch a vocabulary from an allowed HTTPS URL")
@@ -174,7 +179,7 @@ async def fetch_vocab(req: FetchRequest, settings: Settings = Depends(get_settin
         raw = await asyncio.to_thread(fetch_json, req.url, settings)
     except FetchError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _store(settings, name, raw, req.label_field)
+    return _store(settings, name, raw, req.label_field, overwrite=req.overwrite)
 
 
 @router.get("/{name}", summary="Vocabulary details with concept tree")

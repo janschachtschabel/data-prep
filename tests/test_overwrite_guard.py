@@ -165,3 +165,113 @@ def test_rebuilding_a_seed_set_keeps_its_edits_unless_told_otherwise(make_client
     assert client.post("/seeds/build", json=build, headers=H).status_code == 409
     assert client.get("/seeds/s", headers=H).json()["concepts"][uri]["seeds"][0]["title"] == "Handarbeit"
     assert client.post("/seeds/build", json={**build, "overwrite": True}, headers=H).status_code == 200
+
+
+# ------------------------------------------- a name taken while working ----
+# The 409 check runs before the parse / LLM / fetch await and the write after
+# it, so a name created in between was replaced without asking (review
+# finding). The check is repeated at the write, with no await in between.
+# Each test lets the heavy function create the name itself, mid-way: the
+# interleaving is deterministic instead of a race.
+
+
+def _settings():
+    from app.settings import get_settings
+
+    return get_settings()  # the instance the app under test reads
+
+
+def test_an_import_refuses_a_name_taken_while_it_parsed(client, monkeypatch):
+    import app.routes.tables as tables_route
+    from app.refine.store import save_dataset
+
+    real = tables_route.read_table
+
+    def racing(*args, **kwargs):
+        save_dataset(_settings(), "raced", KEEP)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(tables_route, "read_table", racing)
+    assert _import(client, pd.DataFrame({"a": ["late"]}), "raced").status_code == 409
+    assert _rows(client, "raced") == [{"a": "important"}]
+
+
+def test_a_step_refuses_a_target_taken_while_it_ran(client, monkeypatch):
+    import app.routes.tables as tables_route
+    from app.refine.store import save_dataset
+
+    assert _import(client, pd.DataFrame({"a": ["x"]}), "src").status_code == 200
+    real = tables_route.run_table_op
+
+    def racing(*args):
+        save_dataset(_settings(), "raced", KEEP)
+        return real(*args)
+
+    monkeypatch.setattr(tables_route, "run_table_op", racing)
+    r = client.post("/refine/src/op", json={**RULE, "target": "raced"}, headers=H)
+    assert r.status_code == 409
+    assert _rows(client, "raced") == [{"a": "important"}]
+
+
+def test_enrich_refuses_a_target_taken_during_its_llm_calls(client, monkeypatch):
+    import app.routes.refine as refine_route
+    from app.refine.store import save_dataset
+
+    src = pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, KEYW])
+    assert _import(client, src, "src").status_code == 200
+    session = _mock_session({"keywords": "Optik, Licht, Physik"}, monkeypatch)
+    monkeypatch.setattr(refine_route, "session_for", lambda purpose, settings, override=None: session)
+    real = refine_route.enrich_dataset
+
+    async def racing(*args, **kwargs):
+        save_dataset(_settings(), "raced", KEEP)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(refine_route, "enrich_dataset", racing)
+    r = client.post("/refine/src/enrich", headers=H, json={
+        "mode": "keywords", "title_column": TITLE, "description_column": DESC,
+        "keyword_column": KEYW, "min_keywords": 3, "target": "raced"})
+    assert r.status_code == 409
+    assert _rows(client, "raced") == [{"a": "important"}]
+
+
+def test_a_vocabulary_fetch_refuses_a_name_taken_while_it_fetched(client, monkeypatch):
+    def racing(url, settings):
+        vocabs = settings.data_dir / "vocabs"
+        vocabs.mkdir(parents=True, exist_ok=True)
+        (vocabs / "v.json").write_text(json.dumps(NESTED), encoding="utf-8")
+        return {"@context": {}, "id": "https://x/other", "type": "ConceptScheme",
+                "title": {"de": "Andere"}, "hasTopConcept": [{"id": "https://x/other/a", "prefLabel": {"de": "A"}}]}
+
+    monkeypatch.setattr("app.routes.vocabs.fetch_json", racing)
+    fetch = {"url": "https://vocabs.openeduhub.de/x/index.json", "name": "v"}
+    assert client.post("/vocabs/fetch", json=fetch, headers=H).status_code == 409
+    assert client.get("/vocabs/v", headers=H).json()["concept_count"] > 1, "still the raced one"
+
+
+def test_the_startup_reference_import_never_replaces_an_upload_that_landed_meanwhile(tmp_path, monkeypatch):
+    """The default references are imported in a thread at startup, an upload
+    under the same name runs on the event loop; whichever stored second used to
+    win silently. The upload finishing first must survive the late seeder."""
+    from app import reference
+    from app.config import DefaultReference
+    from app.settings import Settings
+    from tests.test_reference import _sample_csv
+
+    settings = Settings(auth_key=None, data_dir=tmp_path / "data")
+    source = tmp_path / "curated.csv"
+    source.write_bytes(_sample_csv())  # 4 rows
+    upload_df, upload_meta = reference.ingest_reference(
+        (b"properties.cclom:title;properties.cclom:general_description;"
+         b"properties.cclom:general_keyword;properties.ccm:taxonid\nT;D;K;u\n"), name="curated")
+    real = reference.ingest_reference
+
+    def racing(raw, **kwargs):
+        out = real(raw, **kwargs)
+        reference.store_reference(settings, "curated", upload_df, upload_meta)  # the upload, done first
+        return out
+
+    monkeypatch.setattr(reference, "ingest_reference", racing)
+    added = reference.seed_default_references(settings, [DefaultReference(name="curated", path=str(source))])
+    assert added == []
+    assert reference.load_reference(settings, "curated")[1]["row_count"] == 1, "the upload survives"

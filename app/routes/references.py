@@ -79,7 +79,12 @@ async def import_reference(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    store_reference(settings, safe, df, meta)
+    try:
+        # Check and write under the store lock: the startup import of a default
+        # reference may have claimed the name while this upload was scrubbed.
+        store_reference(settings, safe, df, meta, replace=overwrite)
+    except FileExistsError:
+        refuse_existing(True, "Reference set", safe, overwrite=False)
     return meta
 
 

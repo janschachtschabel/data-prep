@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -53,13 +54,27 @@ def load_reference(settings: Settings, name: str) -> tuple[pd.DataFrame, dict] |
     return df, meta
 
 
-def store_reference(settings: Settings, name: str, df: pd.DataFrame, meta: dict) -> None:
+# "Absent, so store" must be one step: the default references are imported by
+# a startup thread while an upload under the same name runs on the event loop.
+_store_lock = threading.Lock()
+
+
+def store_reference(
+    settings: Settings, name: str, df: pd.DataFrame, meta: dict, *, replace: bool = False
+) -> None:
     """Write a (scrubbed) reference set: the CSV first, then the meta file that
     makes it listable -- so a crash between the two leaves an unlisted CSV, not
-    a listing that points at a missing table. Each file lands whole."""
+    a listing that points at a missing table. Each file lands whole.
+
+    Raises ``FileExistsError`` when the set exists and ``replace`` is false;
+    checked under the store lock, so a writer that finished first is never
+    replaced by one that merely started first."""
     base = references_dir(settings)
-    replace_atomically(base / f"{name}.csv", lambda tmp: df.to_csv(tmp, sep=";", index=False, encoding="utf-8"))
-    write_text_atomic(base / f"{name}.meta.json", json.dumps(meta, ensure_ascii=False))
+    with _store_lock:
+        if not replace and (base / f"{name}.meta.json").exists():
+            raise FileExistsError(name)
+        replace_atomically(base / f"{name}.csv", lambda tmp: df.to_csv(tmp, sep=";", index=False, encoding="utf-8"))
+        write_text_atomic(base / f"{name}.meta.json", json.dumps(meta, ensure_ascii=False))
 
 
 def ingest_reference(
@@ -144,6 +159,10 @@ def seed_default_references(settings: Settings, defaults: list[DefaultReference]
         try:
             df, meta = ingest_reference(source.read_bytes(), name=name)
             store_reference(settings, name, df, meta)
+        except FileExistsError:
+            # An upload under this name landed while we ingested: it wins.
+            logger.info("Default reference %r: uploaded meanwhile — kept the upload", name)
+            continue
         except (ValueError, OSError) as exc:
             logger.warning("Default reference %r failed to import: %s", name, exc)
             continue

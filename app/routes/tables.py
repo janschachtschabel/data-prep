@@ -86,6 +86,9 @@ async def import_dataset(
     except (ValueError, LookupError) as exc:
         # LookupError: an unknown encoding name is the caller's mistake, not ours.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Again at the write, with no await in between: the name may have been
+    # taken while this request parsed, fetched or waited for the LLM.
+    refuse_existing(dataset_path(settings, resolved).exists(), "Dataset", resolved, overwrite)
     save_dataset(settings, resolved, df)
     # A fresh import has no steps yet; without this, re-importing under a used
     # name kept the previous table's history.
@@ -137,6 +140,8 @@ async def run_operation(
         new_df, stats = await asyncio.to_thread(run_table_op, req.op, df, req.params, {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if target:  # again at the write: the op ran in a thread meanwhile
+        refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     return preview_or_apply(settings, name, target, req.op, req.params, new_df, stats)
 
 
@@ -225,6 +230,8 @@ async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_set
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     params = {"right": req.right, "keys": req.keys, "how": req.how,
               "suffix": req.suffix, "coalesce": req.coalesce}
+    # Again at the write: the join ran in a thread meanwhile.
+    refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     return preview_or_apply(settings, name, target, "join", params, new_df, stats)
 
 

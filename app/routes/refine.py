@@ -176,7 +176,8 @@ async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Dep
         new_df, stats = await asyncio.to_thread(run_filter, req.filter, df, req.params, ctx)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
+    if target:  # again at the write: the filter ran in a thread meanwhile
+        refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     return preview_or_apply(settings, name, target, req.filter, req.params, new_df, stats)
 
 
@@ -186,9 +187,12 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
     target = safe_name(req.target, "target name")
     # Both derived names up front: checked at save time, "_train" could land
     # and "_holdout" then fail the bound, leaving half a split behind.
-    for suffix in ("_train", "_holdout"):
-        derived = safe_name(f"{target}{suffix}", "target name")
-        refuse_existing(dataset_path(settings, derived).exists(), "Dataset", derived, req.overwrite)
+    def check_outputs() -> None:
+        for suffix in ("_train", "_holdout"):
+            derived = safe_name(f"{target}{suffix}", "target name")
+            refuse_existing(dataset_path(settings, derived).exists(), "Dataset", derived, req.overwrite)
+
+    check_outputs()
     try:
         train, holdout, stats = await asyncio.to_thread(
             holdout_split, df, req.text_columns, req.label_column,
@@ -201,6 +205,7 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
         )
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=f"Split failed: {exc}") from exc
+    check_outputs()  # again at the write: the split ran in a thread meanwhile
     save_dataset(settings, f"{target}_train", train)
     save_dataset(settings, f"{target}_holdout", holdout)
     op = {"op": "holdout_split", "source": name, "holdout_fraction": req.holdout_fraction,
@@ -262,6 +267,8 @@ async def enrich(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except LlmError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    # Again at the write: the LLM calls can take minutes.
+    refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     save_dataset(settings, target, new_df)
     write_ops(settings, target, [*read_ops(settings, name), {
         "op": "enrich", "mode": req.mode, "source": name,
@@ -304,6 +311,8 @@ async def combine(req: CombineRequest, settings: Settings = Depends(get_settings
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Again at the write: the combination ran in a thread meanwhile.
+    refuse_existing(dataset_path(settings, target).exists(), "Dataset", target, req.overwrite)
     save_dataset(settings, target, combined)
     # A new table made from several: no single source's history describes it,
     # so the history starts with this step (the op names the sources).
