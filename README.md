@@ -113,8 +113,14 @@ anything has been decided about which column is the label. All of it is in the
 | Join two datasets on one or more keys | `POST /refine/{name}/join` |
 | Export as CSV (any separator), CSV.gz, JSON or JSONL | `GET /refine/{name}/download` |
 
-Two behaviours are worth knowing before relying on them:
+Three behaviours are worth knowing before relying on them:
 
+- **Nothing is replaced silently.** Every endpoint that stores something under a
+  name — imports, `target` of op/filter/join/split/enrich/combine, references,
+  vocabularies, seed sets — answers **409** when the name is taken, and
+  replaces it only with `overwrite: true` (a form field for uploads). Naming
+  the dataset you are working on as its own target is working in place and
+  needs no flag. The UI asks before resending with the flag.
 - **Comparisons follow the rule's value, not the column.** The store is
   all-strings, so `"9" > "10"` would be true. A rule comparing against a JSON
   *number* compares numerically; against a *string*, as text. So `jahr >= 2015`

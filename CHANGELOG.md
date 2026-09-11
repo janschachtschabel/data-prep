@@ -3,6 +3,36 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — duplicate names (2026-09-11)
+
+A check for problems with reused names found seven, all reproduced against
+the running app before fixing; two were introduced by the audit remediation
+below. One commit each, test-first.
+
+### Changed
+- **No write replaces an existing name unless asked to.** All twelve writers
+  (table import; `target` of op, filter, join, split, enrich, combine;
+  reference import; vocabulary import, manual, fetch; seed-set build) answer
+  409 for a taken name and replace only with `overwrite: true`. Working in
+  place (target equals source) needs no flag. The UI asks with the native
+  confirm dialog and resends. Before this, a mistyped target destroyed
+  another dataset, and rebuilding a seed set discarded its hand-edited and
+  LLM-paid seeds.
+
+### Fixed
+- Names are bounded in UTF-8 bytes (200), not characters. The 100-character
+  cap from the audit fix refused the 108-character names split derives from
+  a valid target, made datasets already stored under such names impossible
+  to load or delete, and still let 70 emoji (280 bytes, `ENAMETOOLONG` on
+  Linux) through. Split checks both derived names before writing anything.
+- A reused name no longer inherits the previous table's operation history:
+  import starts empty, split and enrich carry the source's steps, combine
+  starts with its own step.
+- A push under a name api_v3 already has answers 409 with what to do, not
+  502 "rejected the upload".
+- Two writers to one name no longer share a temp file (startup reference
+  import racing an upload of the same name raised `FileNotFoundError`).
+
 ## [Unreleased] — audit remediation (2026-09-11)
 
 The 2026-09-11 code audit (`docs/audits/2026-09-11-audit.md`, overall 75

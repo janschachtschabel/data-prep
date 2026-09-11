@@ -26,6 +26,16 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Doppelte Namen abgesichert (2026-09-11).** Sieben Probleme gefunden und
+vorher gegen die laufende App reproduziert, je ein Commit: kein Schreibweg
+ueberschreibt mehr ungefragt (409 + `overwrite`, UI fragt nach), Namensgrenze
+in Bytes statt Zeichen (die 100-Zeichen-Grenze aus dem Audit hatte Split-Namen
+und lange Altnamen unerreichbar gemacht), Historie bei Wiederverwendung eines
+Namens korrekt, Push-409 von api_v3 als 409 mit Hinweis, eindeutige
+Temp-Namen. **581 Tests gruen.** `routes/refine.py` ist auf 328 Zeilen
+gewachsen — Aufteilung (Split/Enrich/Push/Combine in ein eigenes Router-Modul)
+steht als naechster Strukturschritt an.
+
 **Audit 2026-09-11 abgearbeitet (2026-09-11).** Bericht:
 `docs/audits/2026-09-11-audit.md` (Gesamt 75 gewichtet, Urteil "Conditional",
 kein Critical/High; Juli neu gewichtet: 71). Alle Befunde bis Medium je ein

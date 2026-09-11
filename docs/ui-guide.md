@@ -145,6 +145,15 @@ ausgewählt, sodass der nächste Schritt darauf aufsetzt; die angewandten Schrit
 stehen über den Karten. **Vorschau** zeigt, was passieren würde, ohne zu
 schreiben.
 
+**Nichts wird ungefragt überschrieben.** Ist der Zielname schon vergeben,
+fragt die App nach: „… existiert bereits. Überschreiben?". Bei *Abbrechen*
+bleibt alles, wie es war. Das gilt überall, wo etwas unter einem Namen
+gespeichert wird — Import, Anwenden, Aufteilen, Anreichern, Zusammenführen,
+Referenzen, Vokabulare und Seed-Sets. Nur wer als Ziel denselben Datensatz
+wählt, auf dem er gerade arbeitet, wird nicht gefragt: das ist Weiterarbeiten,
+kein Überschreiben. Beim Neuaufbau eines Seed-Sets lohnt die Frage besonders,
+denn dabei gehen alle von Hand gepflegten und per KI erzeugten Seeds verloren.
+
 **Zeilen filtern.** Regeln aus Spalte, Vergleich und Wert, verknüpft mit UND oder
 ODER. Wichtig zu wissen: der Speicher ist reiner Text, `"9"` wäre also größer als
 `"10"`. Deshalb entscheidet der **Wert der Regel** — eine Zahl vergleicht
