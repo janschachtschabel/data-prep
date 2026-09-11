@@ -25,7 +25,7 @@ from ..settings import Settings
 from .columns import drop_columns, rename_columns, select_columns
 from .duplicates import dedupe_keys
 from .rules import filter_rows
-from .store import append_op, read_ops, save_dataset, write_ops
+from .store import read_ops, save_dataset, write_ops
 
 # The table layer's operations, mirroring filters.FILTERS for the label layer.
 # Kept beside preview_or_apply so one module answers "run a step, then record
@@ -73,9 +73,13 @@ def preview_or_apply(
     # Read the source's history BEFORE writing, so that naming the source as the
     # target (working in place) keeps one history instead of duplicating it.
     history = read_ops(settings, safe_name(source, "dataset name"))
+    # Dataset first, history second, and the history in ONE write. Each write is
+    # atomic on its own, so the only window a crash can leave is "new dataset,
+    # stale history" -- a valid state whose provenance is merely behind. Written
+    # as history-then-append, a failure between the two left the SOURCE's steps
+    # under the target's name: a history that lied about how the dataset was made.
     save_dataset(settings, target, new_df)
-    write_ops(settings, target, history)
-    append_op(settings, target, {
+    write_ops(settings, target, [*history, {
         "filter": op_name,
         "params": params,
         "source": source,
@@ -83,5 +87,5 @@ def preview_or_apply(
         "after": stats["after"],
         "removed": stats["removed"],
         "changed": stats["changed"],
-    })
+    }])
     return {**stats, "preview": False, "target": target}

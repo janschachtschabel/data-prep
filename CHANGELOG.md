@@ -36,6 +36,8 @@ in the session history and the reasoning in each commit.
   list fetch instead of three. The profile's numeric range is localised like
   every other number. A join key or rename pair splits at the first `=` only.
 
+- **A refine write is all or nothing.** The dataset and its operation history were written in place, so a crash or a full disk mid-write left a half file behind. Both now go through a sibling .tmp and os.replace, as run_store already did, and the history is one write instead of write-then-append -- so a failure can no longer leave the source steps under the target name, a history that lied about how the dataset was made.
+
 ### Changed
 - One vectorised comparison per rule instead of four evaluated eagerly.
 - The README's security model names the decompression ceiling and the
