@@ -343,3 +343,86 @@ def test_a_vocabulary_named_after_a_long_file_can_seed_a_set(make_client):
     assert r.json()["name"] == long_name
     r = client.post("/seeds/build", json={"name": "s", "vocab": long_name}, headers=headers)
     assert r.status_code == 200, r.text
+
+
+# ------------------------------------------ edits while the LLM is working ----
+# bootstrap and terms loaded the set BEFORE their LLM call and saved that copy
+# after it: an edit made meanwhile was reverted, and a set deleted meanwhile
+# came back (review finding). Each test lets the LLM step make the change.
+
+
+class _FakeSession:
+    class usage:  # noqa: N801 - mirrors LlmSession.usage
+        @staticmethod
+        def as_dict() -> dict:
+            return {"calls": 1}
+
+
+def _pure(client) -> dict:
+    headers = {"X-API-Key": "test-key"}
+    _setup_inputs(client)
+    r = client.post("/seeds/build", json={"name": "pure", "vocab": "nested", "per_concept": 2}, headers=headers)
+    assert r.status_code == 200, r.text
+    return headers
+
+
+def test_a_bootstrap_keeps_an_edit_made_while_the_llm_worked(make_client, monkeypatch):
+    import app.routes.seeds as seeds_route
+    from app.seeds import load_seed_set, save_seed_set
+    from app.settings import get_settings
+
+    client = make_client()
+    headers = _pure(client)
+
+    async def racing(session, vocab, uri, n):
+        payload = load_seed_set(get_settings(), "pure")
+        payload["concepts"][URI_ARTS]["seeds"] = [
+            {"title": "Handarbeit", "description": "manuell", "keywords": "k", "source": "manual"}]
+        save_seed_set(get_settings(), "pure", payload)  # the editor, meanwhile
+        return [{"title": "Neu", "description": "vom LLM", "keywords": "k", "source": "llm"}]
+
+    monkeypatch.setattr(seeds_route, "session_for", lambda purpose, settings, override=None: _FakeSession())
+    monkeypatch.setattr(seeds_route, "bootstrap_concept", racing)
+    r = client.post("/seeds/pure/bootstrap", json={"concept_uri": URI_OPTICS, "n": 1}, headers=headers)
+    assert r.status_code == 200, r.text
+    concepts = client.get("/seeds/pure", headers=headers).json()["concepts"]
+    assert concepts[URI_ARTS]["seeds"][0]["title"] == "Handarbeit", "the edit survives"
+    assert concepts[URI_OPTICS]["seeds"][-1]["title"] == "Neu", "and the new seeds land"
+
+
+def test_a_bootstrap_does_not_bring_back_a_set_deleted_meanwhile(make_client, monkeypatch):
+    import app.routes.seeds as seeds_route
+    from app.seeds import delete_seed_set
+    from app.settings import get_settings
+
+    client = make_client()
+    headers = _pure(client)
+
+    async def racing(session, vocab, uri, n):
+        delete_seed_set(get_settings(), "pure")
+        return [{"title": "Neu", "description": "vom LLM", "keywords": "k", "source": "llm"}]
+
+    monkeypatch.setattr(seeds_route, "session_for", lambda purpose, settings, override=None: _FakeSession())
+    monkeypatch.setattr(seeds_route, "bootstrap_concept", racing)
+    r = client.post("/seeds/pure/bootstrap", json={"concept_uri": URI_OPTICS, "n": 1}, headers=headers)
+    assert r.status_code == 404
+    assert client.get("/seeds/pure", headers=headers).status_code == 404
+
+
+def test_refining_terms_does_not_bring_back_a_set_deleted_meanwhile(make_client, monkeypatch):
+    import app.routes.seeds as seeds_route
+    from app.seeds import delete_seed_set
+    from app.settings import get_settings
+
+    client = make_client()
+    headers = _pure(client)
+
+    async def racing(session, vocab, uri, terms, *, context, n):
+        delete_seed_set(get_settings(), "pure")
+        return ["Brechung", "Linse"]
+
+    monkeypatch.setattr(seeds_route, "session_for", lambda purpose, settings, override=None: _FakeSession())
+    monkeypatch.setattr(seeds_route, "refine_concept_terms", racing)
+    r = client.post("/seeds/pure/terms", json={"concept_uri": URI_OPTICS, "n": 5}, headers=headers)
+    assert r.status_code == 404
+    assert client.get("/seeds/pure", headers=headers).status_code == 404

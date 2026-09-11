@@ -77,6 +77,22 @@ def _load_or_404(settings: Settings, name: str) -> dict:
     return payload
 
 
+def _current_concept(settings: Settings, name: str, uri: str) -> tuple[dict, dict]:
+    """The set and one concept as they are NOW, for applying an LLM result.
+
+    Loaded again after the LLM call rather than reusing the copy from before it:
+    saving that copy reverted every edit made in the meantime, and brought back
+    a set that had been deleted. A set deleted meanwhile is a 404; one rebuilt
+    without this concept is a conflict."""
+    payload = _load_or_404(settings, name)
+    concept = payload["concepts"].get(uri)
+    if concept is None:
+        raise HTTPException(
+            status_code=409, detail="The seed set was rebuilt without this concept meanwhile."
+        )
+    return payload, concept
+
+
 @router.get("", summary="List seed sets")
 async def list_sets(settings: Settings = Depends(get_settings)) -> dict:
     return {"seed_sets": list_seed_sets(settings)}
@@ -142,7 +158,8 @@ async def bootstrap(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except LlmError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    payload["concepts"][req.concept_uri]["seeds"].extend(seeds)
+    payload, concept = _current_concept(settings, name, req.concept_uri)
+    concept["seeds"].extend(seeds)
     save_seed_set(settings, name, payload)
     return {"added": len(seeds), "usage": session.usage.as_dict()}
 
@@ -171,6 +188,7 @@ async def refine_terms(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except LlmError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    payload, concept = _current_concept(settings, name, req.concept_uri)
     concept["terms"] = terms
     save_seed_set(settings, name, payload)
     return {"terms": terms, "usage": session.usage.as_dict()}
