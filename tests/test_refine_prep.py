@@ -176,6 +176,23 @@ def test_push_route_uploads_refine_dataset(make_client, tmp_path, monkeypatch):
     assert b"disc/A" in captured["body"]
 
 
+def test_push_of_a_name_api_v3_already_has_is_a_conflict_not_a_gateway_error(
+    make_client, tmp_path, monkeypatch
+):
+    """api_v3 refuses an existing dataset name with 409. Relayed as 502
+    "rejected the upload", the operator could not tell a taken name from a
+    broken server; it is the same conflict here, with what to do about it."""
+    import app.apiv3 as apiv3
+
+    client = _client_with_push(make_client, tmp_path, monkeypatch, "http://127.0.0.1:8021")
+    monkeypatch.setattr(apiv3, "_test_transport", httpx.MockTransport(
+        lambda request: httpx.Response(409, json={"detail": "Dataset 'src.csv' already exists."})))
+    r = client.post("/refine/src/push", headers=HEADERS)
+    assert r.status_code == 409
+    assert "src.csv" in r.json()["detail"]
+    assert "already" in r.json()["detail"]
+
+
 def test_push_route_rejects_foreign_host(make_client, tmp_path, monkeypatch):
     client = _client_with_push(make_client, tmp_path, monkeypatch, "https://evil.example.org")
     r = client.post("/refine/src/push", headers=HEADERS)

@@ -64,6 +64,13 @@ async def push_csv(settings: Settings, csv_text: str, filename: str) -> dict:
             response.raise_for_status()
             return response.json()
     except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 409:
+            # api_v3 never overwrites a dataset. A taken name is a conflict the
+            # operator resolves, not a broken upstream -- say which and how.
+            raise PushError(
+                f"api_v3 already has a dataset named {filename!r}. Delete it there, "
+                "or push a copy saved under another name.", 409,
+            ) from exc
         raise PushError(f"api_v3 rejected the upload (HTTP {exc.response.status_code}).", 502) from exc
     except httpx.HTTPError as exc:
         raise PushError(f"api_v3 push failed: {exc.__class__.__name__}.", 502) from exc
