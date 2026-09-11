@@ -47,15 +47,21 @@ def test_a_reimport_starts_a_fresh_history(make_client):
 
 
 def test_split_carries_the_source_history_not_the_targets(make_client):
+    """The source has a step of its own: with an empty source history, a split
+    that dropped it (writing only its own step) passed this test too."""
     client = make_client()
     _import(client, _dataset(), "src")
+    r = client.post("/refine/src/op", headers=HEADERS, json={
+        "op": "rules", "target": "src",
+        "params": {"rules": [{"column": LABEL, "op": "ne", "value": "zzz"}]}})
+    assert r.status_code == 200, r.text
     _with_unrelated_history(client, "p_train")
     r = client.post("/refine/src/split", headers=HEADERS,
                     json={"text_columns": COLS, "label_column": LABEL, "holdout_fraction": 0.25,
                           "target": "p", "overwrite": True})
     assert r.status_code == 200, r.text
-    assert _history(client, "p_train") == ["holdout_split"]
-    assert _history(client, "p_holdout") == ["holdout_split"]
+    assert _history(client, "p_train") == ["rules", "holdout_split"]
+    assert _history(client, "p_holdout") == ["rules", "holdout_split"]
 
 
 def test_enrich_carries_the_source_history_not_the_targets(make_client, monkeypatch):
