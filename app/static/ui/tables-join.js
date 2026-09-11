@@ -43,7 +43,7 @@ const TablesJoin = (() => {
         coalesce: $("#tops-join-coalesce").checked,
       };
       if (apply) body.target = target;
-      const res = await Api.post(`/refine/${encodeURIComponent(source)}/join`, body);
+      const res = await Api.postGuarded(`/refine/${encodeURIComponent(source)}/join`, body, target);
       if (res.preview) {
         // The size BEFORE the join is the number that matters: a key repeating
         // on both sides multiplies rows, and that is the trap worth naming.

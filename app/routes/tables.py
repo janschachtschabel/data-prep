@@ -22,13 +22,13 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from ..refine.apply import preview_or_apply, run_table_op
+from ..refine.apply import preview_or_apply, replaces_another, run_table_op
 from ..refine.duplicates import duplicate_report
 from ..refine.join import DEFAULT_MAX_ROWS, join_datasets, key_cardinality
 from ..refine.profile import profile_columns
-from ..refine.store import load_dataset, save_dataset, write_ops
+from ..refine.store import dataset_path, load_dataset, save_dataset, write_ops
 from ..refine.view import page_rows
-from ..security import read_upload_capped, require_key, safe_name
+from ..security import read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..tabular import SUPPORTED_READ, read_table, write_table
 
@@ -52,6 +52,7 @@ async def import_dataset(
     separator: str = Form(default=";", max_length=3),
     encoding: str = Form(default="utf-8", max_length=20),
     list_separator: str = Form(default=",", max_length=3),
+    overwrite: bool = Form(default=False),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     """Import CSV, JSON or JSONL, plain or gzipped.
@@ -65,6 +66,7 @@ async def import_dataset(
     """
     payload = await read_upload_capped(file, settings.max_upload_mb * 1024 * 1024)
     resolved = safe_name(name or Path(file.filename or "dataset").stem, "dataset name")
+    refuse_existing(dataset_path(settings, resolved).exists(), "Dataset", resolved, overwrite)
     if format != "auto" and format not in SUPPORTED_READ:
         raise HTTPException(
             status_code=400,
@@ -98,12 +100,14 @@ class JoinRequest(BaseModel):
     suffix: str = Field(default="_right", max_length=20)
     coalesce: bool = False
     target: str | None = Field(default=None, max_length=100)  # None = report only
+    overwrite: bool = False  # replace an existing target other than this dataset
 
 
 class OperationRequest(BaseModel):
     op: str = Field(max_length=40)
     params: dict = Field(default_factory=dict)
     target: str | None = Field(default=None, max_length=100)  # None = preview only
+    overwrite: bool = False  # replace an existing target other than this dataset
 
 
 def _load_or_404(settings: Settings, name: str) -> pd.DataFrame:
@@ -125,6 +129,8 @@ async def run_operation(
     """
     df = _load_or_404(settings, name)
     target = safe_name(req.target, "target name") if req.target else None
+    if target:
+        refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     try:
         # Offload: these run over the whole frame, which would otherwise block
         # the event loop for health checks and progress polling.
@@ -205,6 +211,8 @@ async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_set
     left = _load_or_404(settings, name)
     right = _load_or_404(settings, req.right)
     target = safe_name(req.target, "target name") if req.target else None
+    if target:
+        refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     try:
         if target is None:
             report = await asyncio.to_thread(key_cardinality, left, right, req.keys)

@@ -102,8 +102,8 @@ class TestVocabularyStore:
         first = client.post("/vocabs/manual", json={"name": "v", "text": "Alpha\nBeta"})
         assert first.status_code == 200, first.text
         _fail_partway_write_text(monkeypatch, "v.json")
-        with pytest.raises(OSError):
-            client.post("/vocabs/manual", json={"name": "v", "text": "Gamma"})
+        with pytest.raises(OSError):  # an explicit replace that dies mid-write
+            client.post("/vocabs/manual", json={"name": "v", "text": "Gamma", "overwrite": True})
         detail = client.get("/vocabs/v").json()
         assert detail["concept_count"] == 2
         assert _no_tmp_left(tmp_path / "data")
@@ -122,8 +122,9 @@ class TestReferenceStore:
         assert first.json()["row_count"] == 2
         _fail_partway_to_csv(monkeypatch)
         longer = (csv + "T3;D3;K3;http://x/2\n").encode()
-        with pytest.raises(OSError):
-            client.post("/references/import", files={"file": ("r.csv", longer, "text/csv")})
+        with pytest.raises(OSError):  # an explicit replace that dies mid-write
+            client.post("/references/import", files={"file": ("r.csv", longer, "text/csv")},
+                        data={"overwrite": "true"})
         # The CSV itself, not the meta file: written in place, the failed
         # write truncated the table while the meta beside it still said 2 rows.
         stored = (tmp_path / "data" / "references" / "r.csv").read_text(encoding="utf-8")

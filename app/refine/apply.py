@@ -25,7 +25,7 @@ from ..settings import Settings
 from .columns import drop_columns, rename_columns, select_columns
 from .duplicates import dedupe_keys
 from .rules import filter_rows
-from .store import read_ops, save_dataset, write_ops
+from .store import dataset_path, read_ops, save_dataset, write_ops
 
 # The table layer's operations, mirroring filters.FILTERS for the label layer.
 # Kept beside preview_or_apply so one module answers "run a step, then record
@@ -47,6 +47,14 @@ def run_table_op(name: str, df: pd.DataFrame, params: dict, ctx: dict) -> tuple[
             f"Unknown operation {name!r}. Available: {', '.join(sorted(TABLE_OPS))}."
         )
     return operation(df, params, ctx)
+
+
+def replaces_another(settings: Settings, source: str, target: str) -> bool:
+    """True when writing ``target`` would replace a dataset OTHER than ``source``.
+
+    Naming the source itself is working in place -- the history is carried and
+    nothing unrelated is lost -- so only a different, existing name counts."""
+    return target != source and dataset_path(settings, target).exists()
 
 
 def preview_or_apply(

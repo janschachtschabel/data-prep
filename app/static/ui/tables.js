@@ -135,7 +135,7 @@ const Tables = (() => {
 
     busy(button, true, "tables.import.btn");
     try {
-      const res = await Api.postForm("/refine/datasets/import", form);
+      const res = await Api.postGuarded("/refine/datasets/import", form, name || Api.stem(file.name));
       await refreshDatasets(res.name);
       // A wide import is the moment to say so: a WLO export flattens to well
       // over a hundred columns, and the next step is usually dropping most.

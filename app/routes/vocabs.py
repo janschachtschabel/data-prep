@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from ..atomic import write_text_atomic
 from ..fetch import FetchError, fetch_json
-from ..security import read_upload_capped, require_key, safe_name
+from ..security import read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..vocab import Vocabulary, parse_vocabulary
 from ..vocab_formats import manual_to_jsonld
@@ -32,6 +32,7 @@ class FetchRequest(BaseModel):
     # educationalcontext column). Recorded now, useful downstream for mapping
     # the vocabulary's concepts to a dataset column.
     label_field: str | None = Field(default=None, max_length=200)
+    overwrite: bool = False  # a re-fetch to update a vocabulary sends this
 
 
 class ManualRequest(BaseModel):
@@ -43,6 +44,7 @@ class ManualRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     base_uri: str | None = Field(default=None, max_length=400)
     label_field: str | None = Field(default=None, max_length=200)
+    overwrite: bool = False
 
 
 def _vocab_dir(settings: Settings) -> Path:
@@ -84,6 +86,12 @@ def _store(settings: Settings, name: str, raw: dict, label_field: str | None = N
             "concept_count": len(vocab.concepts), "label_field": field}
 
 
+def _refuse_taken(settings: Settings, name: str, overwrite: bool) -> None:
+    """Seed sets and runs refer to a vocabulary by name, so replacing one
+    changes what they mean -- only on an explicit request."""
+    refuse_existing(_vocab_path(settings, name).exists(), "Vocabulary", name, overwrite)
+
+
 def _load(settings: Settings, name: str) -> Vocabulary:
     path = _vocab_path(settings, name)
     if not path.exists():
@@ -117,10 +125,12 @@ async def import_vocab(
     file: UploadFile,
     name: str | None = Form(default=None, max_length=100),
     label_field: str | None = Form(default=None, max_length=200),
+    overwrite: bool = Form(default=False),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     payload = await read_upload_capped(file, settings.max_upload_mb * 1024 * 1024)
     resolved = name or Path(file.filename or "vocabulary").stem
+    _refuse_taken(settings, resolved, overwrite)
     suffix = Path(file.filename or "").suffix.lower()
     if suffix in (".ttl", ".turtle"):
         try:
@@ -145,6 +155,7 @@ async def import_vocab(
 @router.post("/manual", summary="Create a vocabulary from a pasted concept list")
 async def manual_vocab(req: ManualRequest, settings: Settings = Depends(get_settings)) -> dict:
     name = safe_name(req.name, "vocabulary name")  # may 400 — before any write
+    _refuse_taken(settings, name, req.overwrite)
     base_uri = (req.base_uri or f"urn:dataprep:{name}").strip()
     try:
         raw = manual_to_jsonld(req.text, title=req.title or req.name, lang=req.lang, base_uri=base_uri)
@@ -155,13 +166,15 @@ async def manual_vocab(req: ManualRequest, settings: Settings = Depends(get_sett
 
 @router.post("/fetch", summary="Fetch a vocabulary from an allowed HTTPS URL")
 async def fetch_vocab(req: FetchRequest, settings: Settings = Depends(get_settings)) -> dict:
+    name = req.name or _name_from_url(req.url)
+    _refuse_taken(settings, name, req.overwrite)  # before the network call
     try:
         # fetch_json is synchronous (httpx.Client, up to fetch_timeout_seconds);
         # a slow upstream must not hold the event loop for that long.
         raw = await asyncio.to_thread(fetch_json, req.url, settings)
     except FetchError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _store(settings, req.name or _name_from_url(req.url), raw, req.label_field)
+    return _store(settings, name, raw, req.label_field)
 
 
 @router.get("/{name}", summary="Vocabulary details with concept tree")

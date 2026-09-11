@@ -103,11 +103,12 @@
     busy($("#vocab-fetch-btn"), async () => {
       const name = $("#vocab-fetch-name").value.trim();
       const field = $("#vocab-field").value.trim();
-      await Api.post("/vocabs/fetch", {
+      // Without a typed name the server derives one from the URL: ask unnamed.
+      await Api.postGuarded("/vocabs/fetch", {
         url: $("#vocab-url").value.trim(),
         ...(name ? { name } : {}),
         ...(field ? { label_field: field } : {}),
-      });
+      }, name || null);
       $("#vocab-fetch-form").reset();
     });
   });
@@ -116,10 +117,11 @@
     ev.preventDefault();
     busy($("#vocab-upload-btn"), async () => {
       const form = new FormData();
-      form.append("file", $("#vocab-file").files[0]);
+      const file = $("#vocab-file").files[0];
+      form.append("file", file);
       const name = $("#vocab-upload-name").value.trim();
       if (name) form.append("name", name);
-      await Api.postForm("/vocabs/import", form);
+      await Api.postGuarded("/vocabs/import", form, name || Api.stem(file && file.name));
       $("#vocab-upload-form").reset();
     });
   });
@@ -128,12 +130,13 @@
     ev.preventDefault();
     busy($("#vocab-manual-btn"), async () => {
       const field = $("#vocab-manual-field").value.trim();
-      await Api.post("/vocabs/manual", {
-        name: $("#vocab-manual-name").value.trim(),
+      const name = $("#vocab-manual-name").value.trim();
+      await Api.postGuarded("/vocabs/manual", {
+        name,
         text: $("#vocab-manual-text").value,
         lang: $("#vocab-manual-lang").value,
         ...(field ? { label_field: field } : {}),
-      });
+      }, name);
       $("#vocab-manual-form").reset();
     });
   });

@@ -158,6 +158,10 @@ def save_seed_set(settings: Settings, name: str, payload: dict) -> None:
     write_text_atomic(path, json.dumps(payload, ensure_ascii=False))
 
 
+def seed_set_exists(settings: Settings, name: str) -> bool:
+    return (_seeds_dir(settings) / f"{safe_name(name, 'seed set name')}.json").exists()
+
+
 def load_seed_set(settings: Settings, name: str) -> dict | None:
     path = _seeds_dir(settings) / f"{safe_name(name, 'seed set name')}.json"
     if not path.exists():

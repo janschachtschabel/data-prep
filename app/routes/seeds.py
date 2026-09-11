@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, session_for
 from ..reference import load_reference
-from ..security import llm_override, require_key, safe_name
+from ..security import llm_override, refuse_existing, require_key, safe_name
 from ..seeds import (
     SeedItem,
     bootstrap_concept,
@@ -20,6 +20,7 @@ from ..seeds import (
     list_seed_sets,
     load_seed_set,
     save_seed_set,
+    seed_set_exists,
     seed_set_summary,
 )
 from ..settings import Settings, get_settings
@@ -42,6 +43,8 @@ class BuildRequest(BaseModel):
     term_columns: list[str] | None = None
     terms_max_rows: int = Field(default=500, ge=0, le=20000)
     terms_top_n: int = Field(default=60, ge=10, le=500)
+    # Rebuilding discards every hand-edited and LLM-bootstrapped seed of the set.
+    overwrite: bool = False
 
 
 class BootstrapRequest(BaseModel):
@@ -81,6 +84,7 @@ async def list_sets(settings: Settings = Depends(get_settings)) -> dict:
 
 @router.post("/build", summary="Build a seed set (distilled from a reference, or empty pools)")
 async def build(req: BuildRequest, settings: Settings = Depends(get_settings)) -> dict:
+    refuse_existing(seed_set_exists(settings, req.name), "Seed set", req.name, req.overwrite)
     vocab = _load_vocab(settings, req.vocab)
     pools: dict[str, list[dict]] = {}
     term_banks: dict[str, list[str]] = {}

@@ -134,12 +134,13 @@
     container.replaceChildren(wrap);
   }
 
-  async function runOp(path, body, render) {
+  /* `shown` names what a write would replace, for the overwrite question. */
+  async function runOp(path, body, render, shown = body.target) {
     const name = $("#refine-dataset").value;
     if (!name) { showError(I18n.t("js.refine.chooseDataset")); return; }
     clearError();
     try {
-      const res = await Api.post(`/refine/${encodeURIComponent(name)}/${path}`, body);
+      const res = await Api.postGuarded(`/refine/${encodeURIComponent(name)}/${path}`, body, shown);
       render(res);
     } catch (err) {
       showError(err.message || I18n.t("js.refine.opFailed"));
@@ -153,10 +154,11 @@
     btn.disabled = true;
     try {
       const form = new FormData();
-      form.append("file", $("#refine-file").files[0]);
+      const file = $("#refine-file").files[0];
+      form.append("file", file);
       const name = $("#refine-name").value.trim();
       if (name) form.append("name", name);
-      await Api.postForm("/refine/datasets/import", form);
+      await Api.postGuarded("/refine/datasets/import", form, name || Api.stem(file && file.name));
       $("#refine-upload-form").reset();
       await refreshDatasets();
     } catch (err) {
@@ -329,7 +331,7 @@
     const btn = $("#combine-btn");
     btn.disabled = true;
     try {
-      const res = await Api.post("/refine/combine", { sources, target });
+      const res = await Api.postGuarded("/refine/combine", { sources, target }, target);
       const out = $("#refine-result");
       const p = document.createElement("p");
       p.textContent = I18n.t("js.refine.combined", {
@@ -376,7 +378,7 @@
       out.appendChild(table);
       out.hidden = false;
       await refreshDatasets(`${res.target}_train`);  // continue from the training split
-    });
+    }, `${target}_train / ${target}_holdout`);
   });
 
   $("#prep-push-btn").addEventListener("click", async () => {

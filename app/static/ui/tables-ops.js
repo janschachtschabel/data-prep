@@ -130,7 +130,7 @@ const TablesOps = (() => {
     try {
       const body = { op, params };
       if (apply) body.target = target;
-      const res = await Api.post(`/refine/${encodeURIComponent(source)}/op`, body);
+      const res = await Api.postGuarded(`/refine/${encodeURIComponent(source)}/op`, body, target);
       // Refresh FIRST, then report. Applying selects the result so the next step
       // can chain onto it, and that selection change clears the status -- writing
       // the message beforehand meant it vanished the instant it was earned.

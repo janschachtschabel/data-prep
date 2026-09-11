@@ -149,8 +149,10 @@
       const reference = $("#seed-reference").value;
       const kwCols = $("#seed-keyword-cols").value.split(",").map((s) => s.trim()).filter(Boolean);
       const termCols = $("#seed-term-cols").value.split(",").map((s) => s.trim()).filter(Boolean);
-      await Api.post("/seeds/build", {
-        name: $("#seed-name").value.trim(),
+      const name = $("#seed-name").value.trim();
+      // A rebuild discards the set's hand-edited and LLM-generated seeds.
+      await Api.postGuarded("/seeds/build", {
+        name,
         vocab: $("#seed-vocab").value,
         ...(reference ? { reference } : {}),
         per_concept: Number($("#seed-per-concept").value) || 6,
@@ -158,7 +160,7 @@
         ...(termCols.length ? { term_columns: termCols } : {}),
         terms_max_rows: Number($("#seed-terms-rows").value) || 0,
         terms_top_n: Number($("#seed-terms-topn").value) || 60,
-      });
+      }, name);
       $("#seed-build-form").reset();
       await refreshList();
     } catch (err) {

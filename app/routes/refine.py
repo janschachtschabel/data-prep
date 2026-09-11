@@ -13,7 +13,7 @@ from ..config import load_config
 from ..embeddings import get_encoder
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, session_for
 from ..refine.analyze import _combined_texts, analyze, training_preflight
-from ..refine.apply import preview_or_apply
+from ..refine.apply import preview_or_apply, replaces_another
 from ..refine.combine import combine_datasets, suggest_mapping
 from ..refine.enrich import enrich_dataset
 from ..refine.filters import run_filter
@@ -28,7 +28,7 @@ from ..refine.store import (
     save_dataset,
     write_ops,
 )
-from ..security import llm_override, require_key, safe_name
+from ..security import llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..textnorm import split_labels
 
@@ -64,6 +64,7 @@ class FilterRequest(BaseModel):
     filter: str = Field(max_length=40)
     params: dict = Field(default_factory=dict)
     target: str | None = Field(default=None, max_length=100)  # None = preview only
+    overwrite: bool = False
     text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS))
     label_column: str = DEFAULT_LABEL_COLUMN
     label_separator: str = Field(default=",", max_length=3)
@@ -83,6 +84,7 @@ class CombineSource(BaseModel):
 class CombineRequest(BaseModel):
     sources: list[CombineSource] = Field(min_length=1, max_length=20)
     target: str = Field(max_length=100)
+    overwrite: bool = False
     target_columns: list[str] = Field(default_factory=lambda: [*DEFAULT_TEXT_COLUMNS, DEFAULT_LABEL_COLUMN])
     text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS))
 
@@ -91,6 +93,7 @@ class SplitRequest(AnalyzeRequest):
     holdout_fraction: float = Field(default=0.15, gt=0.0, lt=0.9)
     seed: int = Field(default=42, ge=0)
     target: str = Field(max_length=100)
+    overwrite: bool = False
 
 
 class LabelAuditRequest(AnalyzeRequest):
@@ -103,6 +106,7 @@ class LabelAuditRequest(AnalyzeRequest):
 class EnrichRequest(BaseModel):
     mode: Literal["keywords", "description"]
     target: str = Field(max_length=100)
+    overwrite: bool = False
     title_column: str = "properties.cclom:title"
     description_column: str = "properties.cclom:general_description"
     keyword_column: str = "properties.cclom:general_keyword"
@@ -156,6 +160,8 @@ async def preflight(name: str, req: PreflightRequest, settings: Settings = Depen
 async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Depends(get_settings)) -> dict:
     df = _load_or_404(settings, name)
     target = safe_name(req.target, "target name") if req.target else None
+    if target:
+        refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     ctx: dict[str, object] = {
         "text_columns": req.text_columns,
         "label_column": req.label_column,
@@ -181,7 +187,8 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
     # Both derived names up front: checked at save time, "_train" could land
     # and "_holdout" then fail the bound, leaving half a split behind.
     for suffix in ("_train", "_holdout"):
-        safe_name(f"{target}{suffix}", "target name")
+        derived = safe_name(f"{target}{suffix}", "target name")
+        refuse_existing(dataset_path(settings, derived).exists(), "Dataset", derived, req.overwrite)
     try:
         train, holdout, stats = await asyncio.to_thread(
             holdout_split, df, req.text_columns, req.label_column,
@@ -235,6 +242,8 @@ async def enrich(
 ) -> dict:
     df = _load_or_404(settings, name)
     target = safe_name(req.target, "target name")
+    # Before any LLM call: a refused write must not have been paid for.
+    refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     for col in (req.title_column, req.description_column, req.keyword_column):
         if col not in df.columns:
             raise HTTPException(status_code=400, detail=f"Column {col!r} not found.")
@@ -284,6 +293,7 @@ async def combine_suggest(req: SuggestRequest, settings: Settings = Depends(get_
 @router.post("/combine", summary="Combine datasets into the target schema with conflict resolution")
 async def combine(req: CombineRequest, settings: Settings = Depends(get_settings)) -> dict:
     target = safe_name(req.target, "target name")
+    refuse_existing(dataset_path(settings, target).exists(), "Dataset", target, req.overwrite)
     sources = []
     for src in req.sources:
         df = _load_or_404(settings, src.name)

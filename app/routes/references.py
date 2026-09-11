@@ -19,7 +19,7 @@ from ..reference import (
     references_dir,
     store_reference,
 )
-from ..security import read_upload_capped, require_key, safe_name
+from ..security import read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 
 router = APIRouter(prefix="/references", tags=["References"], dependencies=[Depends(require_key)])
@@ -57,6 +57,7 @@ async def import_reference(
     name: str | None = Form(default=None, max_length=100),
     text_columns: str | None = Form(default=None, max_length=500),
     label_column: str | None = Form(default=None, max_length=100),
+    overwrite: bool = Form(default=False),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     payload = await read_upload_capped(file, settings.max_upload_mb * 1024 * 1024)
@@ -67,6 +68,8 @@ async def import_reference(
         else DEFAULT_TEXT_COLUMNS
     )
     safe = safe_name(resolved, "reference name")  # may 400 — before any work
+    # The meta file is what makes a reference set exist (listing, detail).
+    refuse_existing(_paths(settings, safe)[1].exists(), "Reference set", safe, overwrite)
     try:
         # Parsing plus the per-cell PII scrub of a 20 MB upload is CPU work;
         # inline it would block every other request on the single loop.

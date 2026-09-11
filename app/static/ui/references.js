@@ -67,14 +67,15 @@
     btn.disabled = true;
     try {
       const form = new FormData();
-      form.append("file", $("#ref-file").files[0]);
+      const file = $("#ref-file").files[0];
+      form.append("file", file);
       const name = $("#ref-name").value.trim();
       if (name) form.append("name", name);
       const cols = $("#ref-text-columns").value.trim();
       if (cols) form.append("text_columns", cols);
       const label = $("#ref-label-column").value.trim();
       if (label) form.append("label_column", label);
-      const meta = await Api.postForm("/references/import", form);
+      const meta = await Api.postGuarded("/references/import", form, name || Api.stem(file && file.name));
       $("#ref-upload-form").reset();
       const pii = meta.pii || { rows_affected: 0 };
       $("#ref-result").textContent = I18n.t("js.ref.imported", {

@@ -65,6 +65,35 @@ const Api = (() => {
     return type.includes("json") ? res.json() : res;
   }
 
+  /* POST something that is stored under a name. The server answers 409 when
+     the name is taken and `overwrite` was not sent -- nothing is replaced
+     silently. Ask in the UI language, then resend with overwrite; a "no"
+     leaves everything unchanged and surfaces as an ordinary error message.
+     `name` is only for the question (null when the server derives it). */
+  async function postGuarded(path, payload, name) {
+    const isForm = payload instanceof FormData;
+    const send = (overwrite) => {
+      if (isForm) {
+        if (overwrite) payload.set("overwrite", "true");
+        return request(path, { method: "POST", form: payload });
+      }
+      return request(path, { method: "POST", json: overwrite ? { ...payload, overwrite: true } : payload });
+    };
+    try {
+      return await send(false);
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 409) throw err;
+      const question = name
+        ? I18n.t("js.overwrite.confirm", { name })
+        : I18n.t("js.overwrite.confirmUnnamed");
+      if (!window.confirm(question)) throw new ApiError(409, I18n.t("js.overwrite.kept"));
+      return send(true);
+    }
+  }
+
+  /* The name the server derives from an upload when none is typed (Path.stem). */
+  const stem = (filename) => (filename || "").replace(/\.[^.]*$/, "");
+
   /* Authenticated file download: fetch as blob, hand to the browser. */
   async function download(path, filename) {
     const res = await request(path);
@@ -77,6 +106,7 @@ const Api = (() => {
 
   return {
     getKey, setKey, clearKey, getLlmKey, getLlmModel, setLlm, clearLlm, ApiError, download,
+    postGuarded, stem,
     get: (p) => request(p),
     post: (p, json) => request(p, { method: "POST", json }),
     put: (p, json) => request(p, { method: "PUT", json }),

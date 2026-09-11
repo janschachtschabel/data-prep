@@ -114,6 +114,19 @@ def safe_name(name: str, kind: str = "name") -> str:
     return name
 
 
+def refuse_existing(exists: bool, kind: str, name: str, overwrite: bool) -> None:
+    """409 when the name is taken and the caller did not ask to replace it.
+
+    Every store used to overwrite silently: a target name typed twice destroyed
+    another dataset, a rebuilt seed set lost its hand-edited and LLM-paid seeds.
+    api_v3 refuses an existing name the same way; ``overwrite`` is the explicit
+    "yes, replace it" the UI sends after asking."""
+    if exists and not overwrite:
+        raise HTTPException(
+            status_code=409, detail=f"{kind} {name!r} already exists. Send overwrite=true to replace it."
+        )
+
+
 async def read_upload_capped(upload: UploadFile, max_bytes: int) -> bytes:
     """Read an uploaded file in chunks, aborting if it exceeds ``max_bytes``."""
     chunks: list[bytes] = []
