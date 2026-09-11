@@ -7,6 +7,7 @@ API key comes from the env variable NAMED in config.yaml (never a literal key).
 
 from __future__ import annotations
 
+import os
 from urllib.parse import urlparse
 
 import httpx
@@ -30,27 +31,33 @@ class PushError(Exception):
         self.status = status
 
 
-async def push_csv(settings: Settings, csv_text: str, filename: str) -> dict:
-    """Upload ``csv_text`` to ``<api_v3.url>/datasets/import``; returns api_v3's
-    JSON. Raises :class:`PushError` (400 guard/config, 502 upstream)."""
-    import os
+def _target(settings: Settings) -> tuple[str, str]:
+    """The configured api_v3 base URL (no trailing slash) and its key.
 
+    One guard for both callers: unconfigured, disallowed host or missing key
+    each raise :class:`PushError` with status 400 before any network call."""
     target = load_config(settings.config_file).api_v3
     if not target.url:
-        raise PushError("api_v3 push is not configured (config.yaml: api_v3.url).")
+        raise PushError("api_v3 is not configured (config.yaml: api_v3.url).")
     host = (urlparse(target.url).hostname or "").lower()
     if host not in settings.fetch_allowed_hosts_list and host not in _LOCAL_HOSTS:
-        raise PushError(f"Push host {host!r} is not allowed.")
+        raise PushError(f"api_v3 host {host!r} is not allowed.")
     key = os.environ.get(target.api_key_env)
     if not key:
         raise PushError(f"Environment variable {target.api_key_env!r} is not set for the api_v3 key.")
+    return target.url.rstrip("/"), key
 
+
+async def push_csv(settings: Settings, csv_text: str, filename: str) -> dict:
+    """Upload ``csv_text`` to ``<api_v3.url>/datasets/import``; returns api_v3's
+    JSON. Raises :class:`PushError` (400 guard/config, 502 upstream)."""
+    base_url, key = _target(settings)
     try:
         async with httpx.AsyncClient(
             transport=_test_transport, timeout=settings.fetch_timeout_seconds  # type: ignore[arg-type]
         ) as client:
             response = await client.post(
-                target.url.rstrip("/") + "/datasets/import",
+                base_url + "/datasets/import",
                 headers={"X-API-Key": key},
                 files={"file": (filename, csv_text.encode("utf-8"), "text/csv")},
             )
@@ -67,18 +74,7 @@ async def predict_batch(
 ) -> list[list[dict]]:
     """Ranked predictions per text from the configured api_v3 model — used by the
     label audit for a second opinion. Same guards as :func:`push_csv`."""
-    import os
-
-    target = load_config(settings.config_file).api_v3
-    if not target.url:
-        raise PushError("api_v3 is not configured (config.yaml: api_v3.url).")
-    host = (urlparse(target.url).hostname or "").lower()
-    if host not in settings.fetch_allowed_hosts_list and host not in _LOCAL_HOSTS:
-        raise PushError(f"api_v3 host {host!r} is not allowed.")
-    key = os.environ.get(target.api_key_env)
-    if not key:
-        raise PushError(f"Environment variable {target.api_key_env!r} is not set for the api_v3 key.")
-
+    base_url, key = _target(settings)
     out: list[list[dict]] = []
     try:
         async with httpx.AsyncClient(
@@ -86,7 +82,7 @@ async def predict_batch(
         ) as client:
             for start in range(0, len(texts), batch):
                 response = await client.post(
-                    target.url.rstrip("/") + "/predict/batch",
+                    base_url + "/predict/batch",
                     headers={"X-API-Key": key, "Content-Type": "application/json"},
                     json={"texts": texts[start:start + batch], "model_name": model_name, "top_k": top_k},
                 )
