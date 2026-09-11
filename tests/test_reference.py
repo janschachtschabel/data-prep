@@ -207,3 +207,24 @@ def test_config_parses_references_defaults(tmp_path):
     cfg = load_config(path)
     assert cfg.references.defaults[0].name == "curated-30k"
     assert cfg.references.defaults[0].path.endswith("data_30k.csv")
+
+
+def test_the_startup_import_task_is_held_by_the_app(make_client, tmp_path, monkeypatch):
+    """asyncio.create_task returns a task the loop only weakly references; an
+    unreferenced task can be garbage-collected mid-flight (documented asyncio
+    caveat). The lifespan keeps it on app.state (audit 2026-09-11, L2)."""
+    import asyncio
+
+    source = tmp_path / "curated.csv"
+    source.write_text(
+        "properties.cclom:title;properties.cclom:general_description;"
+        "properties.cclom:general_keyword;properties.ccm:taxonid\nT;D;K;http://x/1\n",
+        encoding="utf-8",
+    )
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        f"references:\n  defaults:\n    - name: curated\n      path: {source.as_posix()}\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("DATAPREP_CONFIG_FILE", str(config))
+    client = make_client(auth_key=None)
+    assert isinstance(client.app.state.reference_import, asyncio.Task)

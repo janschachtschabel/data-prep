@@ -45,7 +45,11 @@ async def lifespan(app: FastAPI):
 
     defaults = load_config(settings.config_file).references.defaults
     if defaults:
-        asyncio.create_task(asyncio.to_thread(seed_default_references, settings, defaults))
+        # Held on app.state: the loop keeps only a weak reference to a task,
+        # and an unreferenced one can be garbage-collected mid-flight.
+        app.state.reference_import = asyncio.create_task(
+            asyncio.to_thread(seed_default_references, settings, defaults)
+        )
 
     logger.info("data-prep ready (data_dir=%s, auth=%s)", settings.data_dir, settings.auth_enabled)
     yield
