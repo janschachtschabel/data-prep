@@ -96,6 +96,26 @@ class TestReviewStore:
         assert _no_tmp_left(run_dir)
 
 
+class TestTwoWritersToOneName:
+    def test_they_do_not_share_a_temp_file(self, tmp_path):
+        """With one fixed temp name per target, a second writer to the same name
+        -- the startup reference import and an upload racing it, both threads --
+        wrote into the first writer's temp file and moved it away; the first
+        writer's rename then found nothing (FileNotFoundError, a 500). Nested
+        here so the interleaving is deterministic instead of a race."""
+        from app.atomic import replace_atomically, write_text_atomic
+
+        target = tmp_path / "x.json"
+
+        def outer(tmp: pathlib.Path) -> None:
+            tmp.write_text("outer", encoding="utf-8")
+            write_text_atomic(target, "inner")  # the other writer, mid-way
+
+        replace_atomically(target, outer)
+        assert target.read_text(encoding="utf-8") == "outer"  # the last rename wins, whole
+        assert _no_tmp_left(tmp_path)
+
+
 class TestVocabularyStore:
     def test_a_failed_write_leaves_the_previous_vocabulary_intact(self, make_client, monkeypatch, tmp_path):
         client = make_client(auth_key=None)

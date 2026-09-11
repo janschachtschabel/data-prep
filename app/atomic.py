@@ -13,13 +13,20 @@ window is a valid state.
 from __future__ import annotations
 
 import os
+import secrets
 from collections.abc import Callable
 from pathlib import Path
 
 
 def replace_atomically(path: Path, write: Callable[[Path], object]) -> None:
-    """Call ``write`` with a sibling temp path, then rename it over ``path``."""
-    tmp = path.with_name(path.name + ".tmp")
+    """Call ``write`` with a sibling temp path, then rename it over ``path``.
+
+    The temp name is unique per call: with one fixed name per target, two
+    writers to the same name (the startup reference import and an upload,
+    both in threads) shared a temp file, and the first writer's rename found
+    it gone. Eight hex characters keep the longest name within NAME_MAX (see
+    ``security.MAX_NAME_BYTES``)."""
+    tmp = path.with_name(f"{path.name}.{secrets.token_hex(4)}.tmp")
     try:
         write(tmp)
         os.replace(tmp, path)
