@@ -117,3 +117,24 @@ def test_over_long_name_in_a_path_is_a_400(make_client):
     client = make_client(auth_key="test-key")
     res = client.get(f"/refine/{'a' * 300}/ops", headers={"X-API-Key": "test-key"})
     assert res.status_code == 400
+
+
+def test_every_route_except_health_requires_the_key(make_client):
+    """Auth is enforced by a router-level dependency, which is the right
+    structure -- and exactly why one router added without it would pass
+    every per-route test. This walks the live route table instead."""
+    client = make_client(auth_key="test-key")
+    checked = []
+    # The OpenAPI path table is the published contract (and what the CI smoke
+    # check reads); app.routes keeps included routers nested in this FastAPI.
+    for path, methods in client.app.openapi()["paths"].items():
+        if path == "/health":
+            continue
+        concrete = path
+        for param in ("name", "run_id", "sample_id"):
+            concrete = concrete.replace("{" + param + "}", "x")
+        for method in methods:
+            res = client.request(method.upper(), concrete)
+            assert res.status_code == 401, (method, path, res.status_code)
+            checked.append((method, path))
+    assert len(checked) >= 40, checked
