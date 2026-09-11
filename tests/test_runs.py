@@ -681,12 +681,12 @@ def test_load_vocab_rejects_path_traversal(tmp_path):
     and the seeds route already sanitize internally."""
     from fastapi import HTTPException
 
-    from app.runs import RunManager
+    from app.run_context import load_vocab
     from app.settings import Settings
 
     settings = Settings(auth_key=None, data_dir=tmp_path / "data")
     with pytest.raises(HTTPException) as exc:
-        RunManager._load_vocab(settings, "../evil")
+        load_vocab(settings, "../evil")
     assert exc.value.status_code == 400
 
 
