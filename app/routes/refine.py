@@ -187,12 +187,17 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
     target = safe_name(req.target, "target name")
     # Both derived names up front: checked at save time, "_train" could land
     # and "_holdout" then fail the bound, leaving half a split behind.
+    # A derived name equal to the source (re-splitting "p_train" as "p") is
+    # working in place, like any other step on the dataset itself.
     def check_outputs() -> None:
         for suffix in ("_train", "_holdout"):
             derived = safe_name(f"{target}{suffix}", "target name")
-            refuse_existing(dataset_path(settings, derived).exists(), "Dataset", derived, req.overwrite)
+            refuse_existing(replaces_another(settings, name, derived), "Dataset", derived, req.overwrite)
 
     check_outputs()
+    # Read before anything is written: unreadable, it must fail the request
+    # while both outputs are still untouched.
+    history = read_ops(settings, name)
     try:
         train, holdout, stats = await asyncio.to_thread(
             holdout_split, df, req.text_columns, req.label_column,
@@ -212,9 +217,8 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
           "seed": req.seed, **stats}
     # The source's steps plus this one, REPLACING whatever the target names
     # held: appended, a reused name kept the history of a different table.
-    history = [*read_ops(settings, name), op]
-    write_ops(settings, f"{target}_train", history)
-    write_ops(settings, f"{target}_holdout", history)
+    write_ops(settings, f"{target}_train", [*history, op])
+    write_ops(settings, f"{target}_holdout", [*history, op])
     return {**stats, "target": target, "balance": balance}
 
 
@@ -252,6 +256,7 @@ async def enrich(
     for col in (req.title_column, req.description_column, req.keyword_column):
         if col not in df.columns:
             raise HTTPException(status_code=400, detail=f"Column {col!r} not found.")
+    history = read_ops(settings, name)  # before the LLM is paid for, not after
     session = session_for(req.llm_purpose, settings, override)
     try:
         new_df, stats = await enrich_dataset(
@@ -270,7 +275,7 @@ async def enrich(
     # Again at the write: the LLM calls can take minutes.
     refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     save_dataset(settings, target, new_df)
-    write_ops(settings, target, [*read_ops(settings, name), {
+    write_ops(settings, target, [*history, {
         "op": "enrich", "mode": req.mode, "source": name,
         "enriched": stats["enriched"], "usage": session.usage.as_dict()}])
     return {**stats, "target": target, "usage": session.usage.as_dict()}

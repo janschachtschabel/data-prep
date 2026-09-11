@@ -97,3 +97,53 @@ def test_combine_starts_a_fresh_history(make_client):
         "target": "t", "target_columns": cols, "text_columns": cols[:1], "overwrite": True})
     assert r.status_code == 200, r.text
     assert _history(client, "t") == ["combine"]
+
+
+def test_resplitting_a_split_onto_its_own_name_is_working_in_place(make_client):
+    """Splitting "p_train" again with target "p" writes "p_train" over itself --
+    the same in-place case as any other step, so no overwrite question."""
+    client = make_client()
+    _import(client, _dataset(), "p_train")
+    r = client.post("/refine/p_train/split", headers=HEADERS,
+                    json={"text_columns": COLS, "label_column": LABEL, "holdout_fraction": 0.25, "target": "p"})
+    assert r.status_code == 200, r.text
+
+
+def _corrupt_history(tmp_path, name: str) -> None:
+    (tmp_path / "data" / "refine" / f"{name}.ops.json").write_text("{not json", encoding="utf-8")
+
+
+def test_split_reads_the_source_history_before_writing_anything(make_client, tmp_path):
+    """Read after the saves, an unreadable source history failed the request
+    with both outputs already on disk and no history beside them."""
+    import json
+
+    import pytest
+
+    client = make_client()
+    _import(client, _dataset(), "src")
+    _corrupt_history(tmp_path, "src")
+    with pytest.raises(json.JSONDecodeError):
+        client.post("/refine/src/split", headers=HEADERS,
+                    json={"text_columns": COLS, "label_column": LABEL, "holdout_fraction": 0.25, "target": "p"})
+    assert not (tmp_path / "data" / "refine" / "p_train.csv").exists()
+
+
+def test_enrich_reads_the_source_history_before_paying_for_the_llm(make_client, monkeypatch, tmp_path):
+    import json
+
+    import pytest
+
+    import app.routes.refine as refine_route
+
+    client = make_client()
+    _import(client, pd.DataFrame([["Optik", "Licht und Brechung", ""]], columns=[TITLE, DESC, KEYW]), "src")
+    _corrupt_history(tmp_path, "src")
+    session = _mock_session({"keywords": "Optik, Licht, Physik"}, monkeypatch)
+    monkeypatch.setattr(refine_route, "session_for", lambda purpose, settings, override=None: session)
+    with pytest.raises(json.JSONDecodeError):
+        client.post("/refine/src/enrich", headers=HEADERS, json={
+            "mode": "keywords", "title_column": TITLE, "description_column": DESC,
+            "keyword_column": KEYW, "min_keywords": 3, "target": "out"})
+    assert session.usage.calls == 0, "failed before any LLM call was paid for"
+    assert not (tmp_path / "data" / "refine" / "out.csv").exists()
