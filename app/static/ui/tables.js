@@ -1,6 +1,6 @@
 /* Tables tab, part 1: looking at a table — import, browse, profile, export.
 
-   Changing a table (rules, columns, duplicates, join) lives in tables-ops.js.
+   Changing a table lives in tables-ops.js; the join in tables-join.js.
    The split is by what the user is doing, not by line count: reading a dataset
    and rewriting it are different jobs with different failure modes.
 
