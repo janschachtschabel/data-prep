@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from ..atomic import write_text_atomic
 from ..fetch import FetchError, fetch_json
 from ..security import read_upload_capped, require_key, safe_name
 from ..settings import Settings, get_settings
@@ -75,9 +76,9 @@ def _store(settings: Settings, name: str, raw: dict, label_field: str | None = N
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     path = _vocab_path(settings, name)  # safe_name may 400 — before any write
-    path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    write_text_atomic(path, json.dumps(raw, ensure_ascii=False))
     field = (label_field or "").strip()
-    _field_path(settings, name).write_text(field, encoding="utf-8")
+    write_text_atomic(_field_path(settings, name), field)
     return {"name": name, "title": _display_title(vocab),
             "concept_count": len(vocab.concepts), "label_field": field}
 

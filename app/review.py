@@ -10,9 +10,9 @@ avoid-title context covers every row, kept or discarded).
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
+from .atomic import write_text_atomic
 from .samples import read_samples
 
 REVIEW_STATUSES = ("passed", "approved", "discarded")
@@ -56,9 +56,5 @@ def update_status(run_dir: Path, sample_id: str, new_status: str) -> bool:
             found = True
     if not found:
         return False
-    tmp = path.with_suffix(".jsonl.tmp")
-    tmp.write_text(
-        "\n".join(json.dumps(s, ensure_ascii=False) for s in samples) + "\n", encoding="utf-8"
-    )
-    os.replace(tmp, path)
+    write_text_atomic(path, "\n".join(json.dumps(s, ensure_ascii=False) for s in samples) + "\n")
     return True

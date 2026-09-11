@@ -11,7 +11,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 
-from ..reference import DEFAULT_LABEL_COLUMN, DEFAULT_TEXT_COLUMNS, ingest_reference, references_dir
+from ..reference import (
+    DEFAULT_LABEL_COLUMN,
+    DEFAULT_TEXT_COLUMNS,
+    ingest_reference,
+    references_dir,
+    store_reference,
+)
 from ..security import read_upload_capped, require_key, safe_name
 from ..settings import Settings, get_settings
 
@@ -59,15 +65,14 @@ async def import_reference(
         if text_columns
         else DEFAULT_TEXT_COLUMNS
     )
-    csv_path, meta_path = _paths(settings, resolved)  # safe_name may 400 — before any work
+    safe = safe_name(resolved, "reference name")  # may 400 — before any work
     try:
         df, meta = ingest_reference(
             payload, name=resolved, text_columns=columns, label_column=label_column or DEFAULT_LABEL_COLUMN
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    df.to_csv(csv_path, sep=";", index=False, encoding="utf-8")
-    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    store_reference(settings, safe, df, meta)
     return meta
 
 

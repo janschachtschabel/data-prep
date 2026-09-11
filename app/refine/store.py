@@ -7,12 +7,11 @@ as-is (PII handling is an explicit filter operation, not an import side effect).
 from __future__ import annotations
 
 import json
-import os
-from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
 
+from ..atomic import replace_atomically, write_text_atomic
 from ..security import safe_name
 from ..settings import Settings
 from ..tabular import read_table
@@ -47,24 +46,8 @@ def load_dataset(settings: Settings, name: str) -> pd.DataFrame | None:
     return pd.read_csv(path, sep=";", dtype=str, encoding="utf-8", keep_default_na=False)
 
 
-def _replace_atomically(path: Path, write: Callable[[Path], object]) -> None:
-    """Write through a sibling ``.tmp`` and rename it into place.
-
-    A reader then sees the previous file or the complete new one, never a half
-    written one -- the same pattern ``run_store`` and ``review`` use. Unlike
-    those, a failed write is cleaned up here: a stray ``.tmp`` beside a dataset
-    is a question nobody should have to answer later.
-    """
-    tmp = path.with_name(path.name + ".tmp")
-    try:
-        write(tmp)
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
 def save_dataset(settings: Settings, name: str, df: pd.DataFrame) -> None:
-    _replace_atomically(
+    replace_atomically(
         dataset_path(settings, name),
         lambda tmp: df.to_csv(tmp, sep=";", index=False, encoding="utf-8"),
     )
@@ -109,10 +92,7 @@ def read_ops(settings: Settings, name: str) -> list[dict]:
 
 
 def write_ops(settings: Settings, name: str, ops: list[dict]) -> None:
-    _replace_atomically(
-        _ops_path(settings, name),
-        lambda tmp: tmp.write_text(json.dumps(ops, ensure_ascii=False), encoding="utf-8"),
-    )
+    write_text_atomic(_ops_path(settings, name), json.dumps(ops, ensure_ascii=False))
 
 
 def append_op(settings: Settings, name: str, record: dict) -> None:

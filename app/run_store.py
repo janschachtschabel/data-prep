@@ -1,4 +1,5 @@
-"""Run persistence: the authoritative ``state.json`` per run (atomic write),
+"""Run persistence: the authoritative ``state.json`` per run (atomic write via
+:mod:`app.atomic`),
 run listing, and crash reconciliation.
 
 Split from the run worker (:class:`app.runs.RunManager`) so on-disk state and
@@ -9,9 +10,9 @@ design): every function takes ``settings`` and touches only the runs directory.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
+from .atomic import write_text_atomic
 from .settings import Settings
 
 
@@ -27,10 +28,7 @@ def read_state(settings: Settings, run_id: str) -> dict | None:
 
 
 def write_state(settings: Settings, state: dict) -> None:
-    path = run_dir(settings, state["id"]) / "state.json"
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, path)
+    write_text_atomic(run_dir(settings, state["id"]) / "state.json", json.dumps(state, ensure_ascii=False))
 
 
 def list_runs(settings: Settings) -> list[dict]:
@@ -68,8 +66,6 @@ def reconcile_interrupted(settings: Settings) -> int:
         if state.get("status") == "running":
             state["status"] = "interrupted"
             state["message"] = "Interrupted by a server restart — resume to continue."
-            tmp = state_path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, state_path)
+            write_text_atomic(state_path, json.dumps(state, ensure_ascii=False))
             fixed += 1
     return fixed

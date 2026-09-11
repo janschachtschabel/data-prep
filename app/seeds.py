@@ -17,6 +17,7 @@ import random
 import pandas as pd
 from pydantic import BaseModel, Field
 
+from .atomic import write_text_atomic
 from .llm import LlmSession
 from .pii import scrub
 from .security import safe_name
@@ -154,7 +155,7 @@ def _summary(payload: dict) -> dict:
 
 def save_seed_set(settings: Settings, name: str, payload: dict) -> None:
     path = _seeds_dir(settings) / f"{safe_name(name, 'seed set name')}.json"
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    write_text_atomic(path, json.dumps(payload, ensure_ascii=False))
 
 
 def load_seed_set(settings: Settings, name: str) -> dict | None:

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .atomic import replace_atomically, write_text_atomic
 from .config import DefaultReference
 from .pii import PiiReport, scrub
 from .security import safe_name
@@ -50,6 +51,15 @@ def load_reference(settings: Settings, name: str) -> tuple[pd.DataFrame, dict] |
     df = pd.read_csv(csv_path, sep=";", dtype=str, encoding="utf-8").fillna("")
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     return df, meta
+
+
+def store_reference(settings: Settings, name: str, df: pd.DataFrame, meta: dict) -> None:
+    """Write a (scrubbed) reference set: the CSV first, then the meta file that
+    makes it listable -- so a crash between the two leaves an unlisted CSV, not
+    a listing that points at a missing table. Each file lands whole."""
+    base = references_dir(settings)
+    replace_atomically(base / f"{name}.csv", lambda tmp: df.to_csv(tmp, sep=";", index=False, encoding="utf-8"))
+    write_text_atomic(base / f"{name}.meta.json", json.dumps(meta, ensure_ascii=False))
 
 
 def ingest_reference(
@@ -133,8 +143,7 @@ def seed_default_references(settings: Settings, defaults: list[DefaultReference]
             continue
         try:
             df, meta = ingest_reference(source.read_bytes(), name=name)
-            df.to_csv(base / f"{name}.csv", sep=";", index=False, encoding="utf-8")
-            (base / f"{name}.meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+            store_reference(settings, name, df, meta)
         except (ValueError, OSError) as exc:
             logger.warning("Default reference %r failed to import: %s", name, exc)
             continue
