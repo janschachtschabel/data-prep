@@ -20,13 +20,13 @@ from ..refine.filters import run_filter
 from ..refine.label_audit import audit_predictions
 from ..refine.prep import balance_report, holdout_split
 from ..refine.store import (
-    append_op,
     dataset_path,
     delete_dataset,
     list_datasets,
     load_dataset,
     read_ops,
     save_dataset,
+    write_ops,
 )
 from ..security import llm_override, require_key, safe_name
 from ..settings import Settings, get_settings
@@ -198,8 +198,11 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
     save_dataset(settings, f"{target}_holdout", holdout)
     op = {"op": "holdout_split", "source": name, "holdout_fraction": req.holdout_fraction,
           "seed": req.seed, **stats}
-    append_op(settings, f"{target}_train", op)
-    append_op(settings, f"{target}_holdout", op)
+    # The source's steps plus this one, REPLACING whatever the target names
+    # held: appended, a reused name kept the history of a different table.
+    history = [*read_ops(settings, name), op]
+    write_ops(settings, f"{target}_train", history)
+    write_ops(settings, f"{target}_holdout", history)
     return {**stats, "target": target, "balance": balance}
 
 
@@ -251,8 +254,9 @@ async def enrich(
     except LlmError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     save_dataset(settings, target, new_df)
-    append_op(settings, target, {"op": "enrich", "mode": req.mode, "source": name,
-                                 "enriched": stats["enriched"], "usage": session.usage.as_dict()})
+    write_ops(settings, target, [*read_ops(settings, name), {
+        "op": "enrich", "mode": req.mode, "source": name,
+        "enriched": stats["enriched"], "usage": session.usage.as_dict()}])
     return {**stats, "target": target, "usage": session.usage.as_dict()}
 
 
@@ -291,9 +295,11 @@ async def combine(req: CombineRequest, settings: Settings = Depends(get_settings
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     save_dataset(settings, target, combined)
-    append_op(settings, target, {"op": "combine", "sources": [s.name for s in req.sources],
-                                 "total_in": stats["total_in"], "total_out": stats["total_out"],
-                                 "conflicts_resolved": stats["conflicts_resolved"]})
+    # A new table made from several: no single source's history describes it,
+    # so the history starts with this step (the op names the sources).
+    write_ops(settings, target, [{"op": "combine", "sources": [s.name for s in req.sources],
+                                  "total_in": stats["total_in"], "total_out": stats["total_out"],
+                                  "conflicts_resolved": stats["conflicts_resolved"]}])
     return {**stats, "target": target}
 
 

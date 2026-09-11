@@ -26,7 +26,7 @@ from ..refine.apply import preview_or_apply, run_table_op
 from ..refine.duplicates import duplicate_report
 from ..refine.join import DEFAULT_MAX_ROWS, join_datasets, key_cardinality
 from ..refine.profile import profile_columns
-from ..refine.store import load_dataset, save_dataset
+from ..refine.store import load_dataset, save_dataset, write_ops
 from ..refine.view import page_rows
 from ..security import read_upload_capped, require_key, safe_name
 from ..settings import Settings, get_settings
@@ -85,6 +85,9 @@ async def import_dataset(
         # LookupError: an unknown encoding name is the caller's mistake, not ours.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     save_dataset(settings, resolved, df)
+    # A fresh import has no steps yet; without this, re-importing under a used
+    # name kept the previous table's history.
+    write_ops(settings, resolved, [])
     return {"name": resolved, "rows": int(len(df)), "columns": list(df.columns)}
 
 
