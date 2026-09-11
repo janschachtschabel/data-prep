@@ -124,3 +124,27 @@ def test_enrich_route_rejects_unknown_mode(make_client, tmp_path, monkeypatch):
                           "keyword_column": KEYW, "target": "out"},
                     headers=HEADERS)
     assert r.status_code == 422  # Literal schema rejects it
+
+
+def test_enrich_route_maps_llm_config_error_to_503(make_client, monkeypatch):
+    """A missing API key is LlmConfigError: the upstream was never reached, so
+    502 is the wrong answer. The seed routes already map it to 503; enrich
+    answered 502 for the same condition (audit 2026-09-11, API1)."""
+    import app.routes.refine as refine_route
+    from app.llm import LlmConfigError
+
+    client = make_client()
+    _import(client, pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, KEYW]))
+    monkeypatch.setattr(refine_route, "session_for",
+                        lambda purpose, settings, override=None: _mock_session({"keywords": "x"}, monkeypatch))
+
+    async def _boom(*_args, **_kwargs):
+        raise LlmConfigError("Environment variable 'TEST_LLM_KEY' is not set")
+
+    monkeypatch.setattr(refine_route, "enrich_dataset", _boom)
+    r = client.post("/refine/curated/enrich",
+                    json={"mode": "keywords", "title_column": TITLE, "description_column": DESC,
+                          "keyword_column": KEYW, "target": "out"},
+                    headers=HEADERS)
+    assert r.status_code == 503
+    assert "not set" in r.json()["detail"]

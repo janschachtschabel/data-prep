@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from ..apiv3 import PushError, predict_batch, push_csv
 from ..config import load_config
 from ..embeddings import get_encoder
-from ..llm import BudgetExceeded, LlmError, LlmOverride, session_for
+from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, session_for
 from ..refine.analyze import _combined_texts, analyze, training_preflight
 from ..refine.apply import preview_or_apply
 from ..refine.combine import combine_datasets, suggest_mapping
@@ -240,6 +240,10 @@ async def enrich(
         )
     except BudgetExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except LlmConfigError as exc:
+        # Missing key: the upstream was never reached, so 503 (like the seed
+        # routes), not bad-gateway.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except LlmError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     save_dataset(settings, target, new_df)
