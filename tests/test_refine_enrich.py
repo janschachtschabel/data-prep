@@ -91,7 +91,7 @@ def _mock_session(payload: dict, monkeypatch):
 
 
 def test_enrich_route_writes_target_with_marks(make_client, tmp_path, monkeypatch):
-    import app.routes.refine as refine_route
+    import app.routes.refine_prep as refine_route
 
     client = make_client()
     _import(client, pd.DataFrame([["Optik", "Licht und Brechung", ""]],
@@ -113,7 +113,7 @@ def test_enrich_route_writes_target_with_marks(make_client, tmp_path, monkeypatc
 
 
 def test_enrich_route_rejects_unknown_mode(make_client, tmp_path, monkeypatch):
-    import app.routes.refine as refine_route
+    import app.routes.refine_prep as refine_route
 
     client = make_client()
     _import(client, pd.DataFrame([["Optik", "Licht", "kw"]], columns=[TITLE, DESC, KEYW]))
@@ -130,7 +130,7 @@ def test_enrich_route_maps_llm_config_error_to_503(make_client, monkeypatch):
     """A missing API key is LlmConfigError: the upstream was never reached, so
     502 is the wrong answer. The seed routes already map it to 503; enrich
     answered 502 for the same condition (audit 2026-09-11, API1)."""
-    import app.routes.refine as refine_route
+    import app.routes.refine_prep as refine_route
     from app.llm import LlmConfigError
 
     client = make_client()

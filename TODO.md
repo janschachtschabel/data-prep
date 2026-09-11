@@ -32,9 +32,10 @@ ueberschreibt mehr ungefragt (409 + `overwrite`, UI fragt nach), Namensgrenze
 in Bytes statt Zeichen (die 100-Zeichen-Grenze aus dem Audit hatte Split-Namen
 und lange Altnamen unerreichbar gemacht), Historie bei Wiederverwendung eines
 Namens korrekt, Push-409 von api_v3 als 409 mit Hinweis, eindeutige
-Temp-Namen. Danach ein unabhaengiges Review (0 kritisch/schwer, 4 kleinere, 5 Kleinigkeiten), bis auf zwei begruendete Ausnahmen umgesetzt. **596 Tests gruen.** `routes/refine.py` ist auf 342 Zeilen
-gewachsen — Aufteilung (Split/Enrich/Push/Combine in ein eigenes Router-Modul)
-steht als naechster Strukturschritt an.
+Temp-Namen. Danach ein unabhaengiges Review (0 kritisch/schwer, 4 kleinere, 5 Kleinigkeiten), bis auf zwei begruendete Ausnahmen umgesetzt. **596 Tests gruen.** Danach `routes/refine.py` (342 Zeilen) verhaltensgleich
+geteilt: `routes/refine.py` (141, Store/Analyse/Filter) + `routes/refine_prep.py`
+(223, Split/Enrich/Combine/Push/Label-Audit); die OpenAPI-Beschreibung ist davor
+und danach byte-identisch.
 
 **Audit 2026-09-11 abgearbeitet (2026-09-11).** Bericht:
 `docs/audits/2026-09-11-audit.md` (Gesamt 75 gewichtet, Urteil "Conditional",
@@ -46,8 +47,8 @@ CI, 503-Mapping in enrich, JSON-Body-Cap, Startup-Task-Referenz,
 Shape-Sidecar fuer die Datensatzliste, `runs.py` in `run_context.py` +
 `runs.py` aufgeteilt (jede Funktion Komplexitaet <= 10). **561 Tests gruen.**
 Offen (Low, aus dem Bericht): Dateien ueber 300 Zeilen (`i18n.js` 1119 —
-DE/EN trennen, `refine.js` 472, `tabular.py` 318 — `flatten` auslagern,
-`routes/refine.py` 304), Hash-Pinning (`--require-hashes`) und Digest-Pin des
+DE/EN trennen, `refine.js` 472, `tabular.py` 318 — `flatten` auslagern),
+Hash-Pinning (`--require-hashes`) und Digest-Pin des
 Basis-Images, openai-3.x-Migration hinter `llm_providers.capabilities`,
 Coverage-Messung in CI, JS-Tests, Rate-Limiter (Aufgabe des Reverse-Proxys),
 Backup-Hinweis fuer das `/data`-Volume.

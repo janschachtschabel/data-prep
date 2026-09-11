@@ -65,7 +65,7 @@ def test_split_carries_the_source_history_not_the_targets(make_client):
 
 
 def test_enrich_carries_the_source_history_not_the_targets(make_client, monkeypatch):
-    import app.routes.refine as refine_route
+    import app.routes.refine_prep as refine_route
 
     client = make_client()
     _import(client, pd.DataFrame([["Optik", "Licht und Brechung", ""]], columns=[TITLE, DESC, KEYW]), "src")
@@ -134,7 +134,7 @@ def test_enrich_reads_the_source_history_before_paying_for_the_llm(make_client, 
 
     import pytest
 
-    import app.routes.refine as refine_route
+    import app.routes.refine_prep as refine_route
 
     client = make_client()
     _import(client, pd.DataFrame([["Optik", "Licht und Brechung", ""]], columns=[TITLE, DESC, KEYW]), "src")

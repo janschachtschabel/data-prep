@@ -88,7 +88,7 @@ def test_split_refuses_when_either_output_name_is_taken(client):
 
 
 def test_enrich_refuses_a_taken_target(client, monkeypatch):
-    import app.routes.refine as refine_route
+    import app.routes.refine_prep as refine_route
 
     src = pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, KEYW])
     assert _import(client, src, "src").status_code == 200
@@ -214,7 +214,7 @@ def test_a_step_refuses_a_target_taken_while_it_ran(client, monkeypatch):
 
 
 def test_enrich_refuses_a_target_taken_during_its_llm_calls(client, monkeypatch):
-    import app.routes.refine as refine_route
+    import app.routes.refine_prep as refine_route
     from app.refine.store import save_dataset
 
     src = pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, KEYW])
