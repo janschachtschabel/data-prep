@@ -216,6 +216,20 @@ def test_push_of_a_name_api_v3_already_has_is_a_conflict_not_a_gateway_error(
     assert "already" in r.json()["detail"]
 
 
+def test_a_push_api_v3_refuses_says_why(make_client, tmp_path, monkeypatch):
+    """api_v3 caps a dataset name at 100 characters including ".csv"; a longer
+    one came back as a bare "rejected the upload (HTTP 400)" (review finding).
+    api_v3 is the operator's own configured host, so its reason is relayed."""
+    import app.apiv3 as apiv3
+
+    client = _client_with_push(make_client, tmp_path, monkeypatch, "http://127.0.0.1:8021")
+    monkeypatch.setattr(apiv3, "_test_transport", httpx.MockTransport(
+        lambda request: httpx.Response(400, json={"detail": "Invalid dataset name: too long."})))
+    r = client.post("/refine/src/push", headers=HEADERS)
+    assert r.status_code == 502
+    assert "Invalid dataset name: too long." in r.json()["detail"]
+
+
 def test_push_route_rejects_foreign_host(make_client, tmp_path, monkeypatch):
     client = _client_with_push(make_client, tmp_path, monkeypatch, "https://evil.example.org")
     r = client.post("/refine/src/push", headers=HEADERS)

@@ -31,6 +31,20 @@ class PushError(Exception):
         self.status = status
 
 
+def _reason(response: httpx.Response) -> str:
+    """api_v3's own ``detail`` for a refused request, as ": <detail>" (or "").
+
+    Relayed because api_v3 is the operator's own configured host and its reason
+    -- a name too long, a key without admin rights -- is what the operator has
+    to act on; a bare status code is not. Capped, and read defensively: a proxy
+    in between may answer with HTML."""
+    try:
+        detail = response.json().get("detail")
+    except (ValueError, AttributeError):
+        return ""
+    return f": {str(detail)[:300].rstrip('.')}" if detail else ""
+
+
 def _target(settings: Settings) -> tuple[str, str]:
     """The configured api_v3 base URL (no trailing slash) and its key.
 
@@ -68,10 +82,11 @@ async def push_csv(settings: Settings, csv_text: str, filename: str) -> dict:
             # api_v3 never overwrites a dataset. A taken name is a conflict the
             # operator resolves, not a broken upstream -- say which and how.
             raise PushError(
-                f"api_v3 already has a dataset named {filename!r}. Delete it there, "
-                "or push a copy saved under another name.", 409,
+                f"api_v3 already has a dataset named {filename!r}; delete it there first.", 409,
             ) from exc
-        raise PushError(f"api_v3 rejected the upload (HTTP {exc.response.status_code}).", 502) from exc
+        raise PushError(
+            f"api_v3 rejected the upload (HTTP {exc.response.status_code}){_reason(exc.response)}.", 502,
+        ) from exc
     except httpx.HTTPError as exc:
         raise PushError(f"api_v3 push failed: {exc.__class__.__name__}.", 502) from exc
 
@@ -96,7 +111,9 @@ async def predict_batch(
                 response.raise_for_status()
                 out.extend(row.get("predictions", []) for row in response.json()["results"])
     except httpx.HTTPStatusError as exc:
-        raise PushError(f"api_v3 prediction failed (HTTP {exc.response.status_code}).", 502) from exc
+        raise PushError(
+            f"api_v3 prediction failed (HTTP {exc.response.status_code}){_reason(exc.response)}.", 502,
+        ) from exc
     except httpx.HTTPError as exc:
         raise PushError(f"api_v3 prediction failed: {exc.__class__.__name__}.", 502) from exc
     return out
