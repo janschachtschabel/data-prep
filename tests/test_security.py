@@ -23,12 +23,15 @@ def test_safe_name_rejects_path_characters(bad):
     assert exc.value.status_code == 400
 
 
-def test_safe_name_rejects_over_long_names():
-    """Names arrive as path parameters with no pydantic bound. On Linux a name
-    over 255 bytes makes Path.exists() raise ENAMETOOLONG (a 500); on Windows
-    it is a 404. Bounding it here answers 400 on both, matching the 100-char
-    cap every body and form field already carries."""
-    with pytest.raises(HTTPException) as exc:
-        safe_name("a" * 101)
-    assert exc.value.status_code == 400
-    assert safe_name("a" * 100) == "a" * 100
+def test_safe_name_bounds_bytes_not_characters():
+    """The filesystem limit is 255 BYTES per name (Linux NAME_MAX), and every
+    store appends a suffix (".meta.json", a temp marker). A character count
+    got both directions wrong: it refused the 108-character names split
+    derives from a valid 100-character target, and let 70 emoji -- 280 bytes,
+    ENAMETOOLONG on the Linux image -- straight through."""
+    assert safe_name("a" * 108) == "a" * 108  # a split target of 100 plus "_holdout"
+    assert safe_name("a" * 200) == "a" * 200
+    for too_long in ("a" * 201, "\U0001F4DA" * 70):
+        with pytest.raises(HTTPException) as exc:
+            safe_name(too_long)
+        assert exc.value.status_code == 400

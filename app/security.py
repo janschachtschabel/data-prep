@@ -84,18 +84,20 @@ def _is_loopback_client(request: Request) -> bool:
         return False
 
 
-# The same cap every request-body name field carries (Field(max_length=100)).
-# Path parameters have no pydantic bound, so it is enforced here: a name over
-# 255 bytes makes Path.exists() raise ENAMETOOLONG on Linux, i.e. a 500.
-MAX_NAME_LENGTH = 100
+# Counted in UTF-8 BYTES, because that is what the filesystem counts: Linux
+# refuses a file name over 255 bytes (ENAMETOOLONG, a 500). The stores append
+# up to ~30 bytes (".meta.json", a temp marker), so 200 leaves room -- and
+# still admits the 108-character names split derives from a 100-character
+# body field. A character cap got both wrong: 70 emoji are 280 bytes.
+MAX_NAME_BYTES = 200
 
 
 def safe_name(name: str, kind: str = "name") -> str:
     """Validate a user-supplied name, rejecting path-traversal characters and
-    over-long names."""
-    if len(name) > MAX_NAME_LENGTH:
+    names too long for a file name."""
+    if len(name.encode("utf-8")) > MAX_NAME_BYTES:
         raise HTTPException(
-            status_code=400, detail=f"Invalid {kind}: longer than {MAX_NAME_LENGTH} characters."
+            status_code=400, detail=f"Invalid {kind}: longer than {MAX_NAME_BYTES} bytes."
         )
     if (
         not name

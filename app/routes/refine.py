@@ -178,6 +178,10 @@ async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Dep
 async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depends(get_settings)) -> dict:
     df = _load_or_404(settings, name)
     target = safe_name(req.target, "target name")
+    # Both derived names up front: checked at save time, "_train" could land
+    # and "_holdout" then fail the bound, leaving half a split behind.
+    for suffix in ("_train", "_holdout"):
+        safe_name(f"{target}{suffix}", "target name")
     try:
         train, holdout, stats = await asyncio.to_thread(
             holdout_split, df, req.text_columns, req.label_column,

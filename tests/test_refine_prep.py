@@ -103,6 +103,44 @@ def test_split_route_writes_train_and_holdout(make_client, tmp_path):
     assert ops[-1]["op"] == "holdout_split"
 
 
+def test_split_accepts_a_target_at_the_field_limit(make_client):
+    """A 100-character target is valid; the names split derives from it are
+    108 characters and must be too."""
+    client = make_client()
+    _import(client, _dataset())
+    r = client.post("/refine/src/split",
+                    json={"text_columns": COLS, "label_column": LABEL,
+                          "holdout_fraction": 0.25, "target": "t" * 100},
+                    headers=HEADERS)
+    assert r.status_code == 200, r.text
+
+
+def test_split_checks_the_derived_names_before_writing_anything(make_client, tmp_path):
+    """A target whose "_holdout" form overflows the bound must be refused up
+    front -- not after "_train" has been written, which left half a split."""
+    client = make_client()
+    _import(client, _dataset())
+    target = "\u00e4" * 97  # 194 bytes; "_holdout" makes it 202
+    r = client.post("/refine/src/split",
+                    json={"text_columns": COLS, "label_column": LABEL,
+                          "holdout_fraction": 0.25, "target": target},
+                    headers=HEADERS)
+    assert r.status_code == 400
+    assert not list((tmp_path / "data" / "refine").glob(f"{target}*"))
+
+
+def test_a_dataset_with_a_long_legacy_name_stays_reachable(make_client, tmp_path):
+    """Names up to 108 characters were written by splits before the bound
+    existed; they must still load and delete."""
+    client = make_client()
+    _import(client, _dataset())
+    legacy = "L" * 105
+    refine = tmp_path / "data" / "refine"
+    (refine / f"{legacy}.csv").write_bytes((refine / "src.csv").read_bytes())
+    assert client.get(f"/refine/{legacy}/rows", headers=HEADERS).status_code == 200
+    assert client.delete(f"/refine/{legacy}", headers=HEADERS).status_code == 200
+
+
 # -------------------------------------------------------------- push route ----
 
 
