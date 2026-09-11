@@ -47,7 +47,7 @@ def load_dataset(settings: Settings, name: str) -> pd.DataFrame | None:
     return pd.read_csv(path, sep=";", dtype=str, encoding="utf-8", keep_default_na=False)
 
 
-def _replace_atomically(path: Path, write: Callable[[Path], None]) -> None:
+def _replace_atomically(path: Path, write: Callable[[Path], object]) -> None:
     """Write through a sibling ``.tmp`` and rename it into place.
 
     A reader then sees the previous file or the complete new one, never a half

@@ -12,6 +12,7 @@ like from inside the process.
 
 from __future__ import annotations
 
+import contextlib
 import pathlib
 
 import pandas as pd
@@ -120,10 +121,10 @@ class TestApplyIsConsistent:
         save_dataset(settings, "src", V1)
         write_ops(settings, "src", [{"filter": "a"}])
         _fail_partway_write_text(monkeypatch, when=2)
-        try:
+        # Raises before the fix (the second write fails) and not after (there is
+        # no second write); the assertion below is on the state either way.
+        with contextlib.suppress(OSError):
             preview_or_apply(settings, "src", "out", "rules", {}, V2, self.STATS)
-        except OSError:
-            pass
         ops = read_ops(settings, "out")
         assert ops != [{"filter": "a"}], "the source's history without the new step"
         assert ops == [] or [o["filter"] for o in ops] == ["a", "rules"]
