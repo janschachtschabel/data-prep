@@ -15,6 +15,7 @@ const I18n = (() => {
   const DICT = {
     en: {
       // --- shell ---
+      "skip.link": "Skip to content",
       "topbar.subtitle": "dataset workshop",
       "login.signin": "Sign in",
       "login.hint": "Enter the server's API key to build and refine datasets. If the server runs" +
@@ -530,6 +531,7 @@ const I18n = (() => {
 
     de: {
       // --- shell ---
+      "skip.link": "Zum Inhalt springen",
       "topbar.subtitle": "Datenwerkstatt",
       "login.signin": "Anmelden",
       "login.hint": "Gib den API-Schlüssel des Servers ein, um Datensätze zu erstellen und" +

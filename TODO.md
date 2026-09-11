@@ -26,6 +26,22 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Audit 2026-09-11 abgearbeitet (2026-09-11).** Bericht:
+`docs/audits/2026-09-11-audit.md` (Gesamt 75 gewichtet, Urteil "Conditional",
+kein Critical/High; Juli neu gewichtet: 71). Alle Befunde bis Medium je ein
+Commit, test-first: API-Key als Bytes verglichen, Namenslaenge begrenzt, ein
+atomarer Schreib-Helper fuer alle Stores (`app/atomic.py`), Import/Referenz/
+Fetch off-loop, Platzhalter-Key verweigert, Auth-Matrix-Test, pip-audit in
+CI, 503-Mapping in enrich, JSON-Body-Cap, Startup-Task-Referenz,
+Shape-Sidecar fuer die Datensatzliste, `runs.py` in `run_context.py` +
+`runs.py` aufgeteilt (jede Funktion Komplexitaet <= 10). **561 Tests gruen.**
+Offen (Low, aus dem Bericht): Dateien ueber 300 Zeilen (`i18n.js` 1119 —
+DE/EN trennen, `refine.js` 472, `tabular.py` 318 — `flatten` auslagern,
+`routes/refine.py` 304), Hash-Pinning (`--require-hashes`) und Digest-Pin des
+Basis-Images, openai-3.x-Migration hinter `llm_providers.capabilities`,
+Coverage-Messung in CI, JS-Tests, Rate-Limiter (Aufgabe des Reverse-Proxys),
+Backup-Hinweis fuer das `/data`-Volume.
+
 **Stufe A der Tabellen-Werkbank fertig (2026-09-10).** Plan:
 `docs/plan-2026-09-10-tabellen-werkbank.md`. data-prep kann jetzt eine beliebige
 Tabelle verarbeiten, nicht nur trainingsgeformte: CSV/JSON/JSONL lesen und

@@ -33,8 +33,15 @@ vocabulary, PII, filter, combine, split and preflight tools work without one.
 ```bash
 cd data-prep
 python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt -r requirements-dev.txt   # Windows
-# or:  .venv/bin/pip install -r requirements.txt -r requirements-dev.txt          # POSIX
+.venv/Scripts/python -m pip install -r requirements.txt -c requirements.lock -r requirements-dev.txt   # Windows
+# or:  .venv/bin/pip install -r requirements.txt -c requirements.lock -r requirements-dev.txt          # POSIX
+```
+
+The `-c requirements.lock` constraint makes a development install resolve to
+the same pinned tree CI and the Docker image use; without it the `>=` floors
+in `requirements.txt` resolve to whatever is newest that day.
+
+```bash
 cp .env.example .env    # then edit .env
 ```
 
@@ -81,9 +88,10 @@ image by digest (see the note at the top of the `Dockerfile`).
 ## Tests, lint, types
 
 ```bash
-.venv/Scripts/python -m pytest tests -q                              # 235 tests
+.venv/Scripts/python -m pytest tests -q                              # the whole suite, offline
 .venv/Scripts/python -m ruff check app tests
 .venv/Scripts/python -m mypy app --config-file pyproject.toml
+.venv/Scripts/python -m pip_audit -r requirements.lock --no-deps     # CVE check, also a CI gate
 ```
 
 The default test run is offline (LLM/embeddings/api_v3 mocked). One marked live
@@ -127,7 +135,16 @@ it. Past five million rows the join is refused rather than attempted.
   static UI are public. The key compares in constant time. With no key
   configured, auth is disabled for **loopback clients only** — a keyless
   instance refuses non-loopback requests (403) rather than serving the network
-  wide open.
+  wide open. The `.env.example` placeholder `change-me` is refused at
+  startup, so a copied-but-unedited file cannot run with a key everyone can
+  read in the repository.
+- **No rate limiter in the app.** Brute force against `/auth/check` is bounded
+  only by the key's entropy: use a long random key and let the reverse proxy
+  in front (nginx, caddy) limit request rates. slowapi is a documented v2
+  candidate.
+- Request bodies are capped at `max_upload_mb` (uploads stream against it,
+  JSON bodies are refused by `Content-Length`), gzipped uploads at ten times
+  that once inflated.
 - No pickle. Secrets only from env, never logged, never in `config.yaml`.
 - Uploads are PII-scrubbed on import (references) or handled by an explicit PII
   filter (refine). User-supplied names go through `security.safe_name`.
@@ -141,7 +158,9 @@ it. Past five million rows the join is refused rather than attempted.
 - **Deliberate deviation from api_v3:** HTTPS URL fetch is allowed for
   vocabularies and the api_v3 push/predict — but only to an allowlist (default
   `vocabs.openeduhub.de` + the configured api_v3 host / localhost), with a size
-  cap, a timeout, and only behind auth.
+  cap, a timeout, and only behind auth. `localhost` is accepted over plain
+  `http://` for a local api_v3 — a development convenience; a remote api_v3
+  must be an allowlisted HTTPS host.
 - **Separation guarantee:** a run's exporter reads only accepted synthetic
   samples — reference rows can never reach an export (pinned by test).
 

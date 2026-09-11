@@ -3,6 +3,54 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — audit remediation (2026-09-11)
+
+The 2026-09-11 code audit (`docs/audits/2026-09-11-audit.md`, overall 75
+weighted, verdict Conditional) found no critical or high issues. Its
+findings are resolved one commit each, test-first; the table at the end of
+the report maps each finding to its commit.
+
+### Security
+- A non-ASCII `X-API-Key` header answered 500 — a `TypeError` inside the auth
+  dependency, two tracebacks per request, no credentials needed. The key is
+  compared as bytes and answers 401 (S1).
+- Names in URL paths had no length bound; on the Linux image a 300-character
+  name made `Path.exists()` raise `ENAMETOOLONG` (500). `safe_name` caps at
+  100 characters like every body field and answers 400 (L3).
+- The `.env.example` placeholder `change-me` is refused at startup, so a
+  copied-but-unedited file cannot run with a key everyone can read (S2).
+- Non-multipart request bodies are capped at `max_upload_mb` by
+  `Content-Length`; uploads keep their streamed cap (API2).
+- `pip-audit` checks `requirements.lock` in both workflows (D1).
+- A test walks the OpenAPI path table and asserts every route except
+  `/health` answers 401 without a key; sabotage-verified (T6).
+
+### Fixed
+- Seed sets, vocabularies, references and run state are written all or
+  nothing through one helper (`app/atomic.py`), and a failed write leaves no
+  `.tmp` behind. A truncated seed-set file no longer takes the whole Seeds
+  listing down (L1).
+- `/refine/{name}/enrich` answers 503 for a missing LLM key, like the seed
+  routes (API1).
+- The startup reference-import task is held on `app.state` so it cannot be
+  garbage-collected mid-flight (L2).
+- The skip link is translated like every other string (F1).
+
+### Performance
+- Table import, reference import and vocabulary fetch run off the event
+  loop; `/health` and run polling no longer stall behind a large upload (P1).
+- `GET /refine/datasets` reads a shape sidecar written at save time instead
+  of re-reading column 0 of every table on every call; tables stored before
+  the sidecar are still counted through the parser (P2).
+
+### Changed
+- `RunManager._generate` (154 lines, complexity 20) is split: `run_context.py`
+  loads what a run needs, `runs.py` executes it; every function is now at or
+  below complexity 10 (A1). One api_v3 target guard for push and predict (A3).
+- README: install with `-c requirements.lock`; the security model names the
+  missing rate limiter (the proxy's job), the body cap and the plain-http
+  localhost push. CLAUDE.md lists the known file-size exceptions.
+
 ## [Unreleased] — review remediation of the table workbench (2026-09-10)
 
 A structured review of stages A–C found 3 major, 7 minor and 2 nit issues in
