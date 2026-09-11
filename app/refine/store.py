@@ -51,18 +51,41 @@ def save_dataset(settings: Settings, name: str, df: pd.DataFrame) -> None:
         dataset_path(settings, name),
         lambda tmp: df.to_csv(tmp, sep=";", index=False, encoding="utf-8"),
     )
+    # The shape beside the table, so listing never re-reads it. Written AFTER
+    # the CSV: a crash between the two leaves a table that is merely counted
+    # the slow way, never a shape without its table.
+    shape = {"rows": int(len(df)), "columns": [str(c) for c in df.columns]}
+    write_text_atomic(_meta_path(settings, name), json.dumps(shape, ensure_ascii=False))
+
+
+def _meta_path(settings: Settings, name: str) -> Path:
+    return refine_dir(settings) / f"{safe_name(name, 'dataset name')}.meta.json"
+
+
+def _shape_by_parsing(path: Path) -> dict:
+    """Rows and columns of a table stored before the sidecar existed.
+
+    Counted through the CSV parser, not by lines: a quoted cell may span
+    several physical lines (refine stores uploads verbatim). Reading a single
+    column keeps the cost bounded -- but it is still a pass over the file,
+    which is why saved tables record their shape instead."""
+    try:
+        columns = [str(c) for c in pd.read_csv(path, sep=";", nrows=0, encoding="utf-8").columns]
+    except pd.errors.EmptyDataError:
+        return {"rows": 0, "columns": []}
+    rows = int(len(pd.read_csv(path, sep=";", usecols=[0], dtype=str, encoding="utf-8"))) if columns else 0
+    return {"rows": rows, "columns": columns}
 
 
 def list_datasets(settings: Settings) -> list[dict]:
     out = []
     for path in sorted(refine_dir(settings).glob("*.csv")):
-        header = pd.read_csv(path, sep=";", nrows=0, encoding="utf-8")
-        columns = list(header.columns)
-        # Count DATA rows through the CSV parser, not raw lines: a quoted cell
-        # may span several physical lines (refine stores uploads verbatim), so a
-        # line count over-counts. Reading a single column keeps the cost bounded.
-        rows = int(len(pd.read_csv(path, sep=";", usecols=[0], dtype=str, encoding="utf-8"))) if columns else 0
-        out.append({"name": path.stem, "rows": rows, "columns": columns})
+        meta = path.with_suffix(".meta.json")
+        try:
+            shape = json.loads(meta.read_text(encoding="utf-8")) if meta.exists() else _shape_by_parsing(path)
+        except json.JSONDecodeError:  # a hand-damaged sidecar must not hide the table
+            shape = _shape_by_parsing(path)
+        out.append({"name": path.stem, **shape})
     return out
 
 
@@ -71,6 +94,7 @@ def delete_dataset(settings: Settings, name: str) -> bool:
     existed = path.exists()
     path.unlink(missing_ok=True)
     _ops_path(settings, name).unlink(missing_ok=True)
+    _meta_path(settings, name).unlink(missing_ok=True)
     return existed
 
 
