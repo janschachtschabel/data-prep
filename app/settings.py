@@ -10,7 +10,12 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The value .env.example ships for the key fields. A copied-but-unedited .env
+# must not yield a running instance whose key everyone can read in the repo.
+PLACEHOLDER_KEY = "change-me"
 
 # Anchor default paths to the data-prep folder so the app works from any CWD.
 _BASE = Path(__file__).resolve().parent.parent
@@ -54,6 +59,18 @@ class Settings(BaseSettings):
 
     # --- Logging ---
     log_level: str = "INFO"
+
+    @field_validator("auth_key")
+    @classmethod
+    def _refuse_the_placeholder(cls, value: str | None) -> str | None:
+        """Fail closed at startup, like the non-loopback 403: a known literal is
+        not a secret."""
+        if value == PLACEHOLDER_KEY:
+            raise ValueError(
+                f"DATAPREP_AUTH_KEY is the .env.example placeholder {PLACEHOLDER_KEY!r}: "
+                "set a real key, or unset it for loopback-only use."
+            )
+        return value
 
     @property
     def fetch_allowed_hosts_list(self) -> list[str]:

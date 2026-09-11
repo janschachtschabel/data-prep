@@ -76,3 +76,16 @@ def test_shipped_config_yaml_parses():
 
     cfg = load_config(Settings(auth_key=None).config_file)
     assert set(cfg.llm) >= {"seeds", "bulk"}
+
+
+def test_the_example_placeholder_is_refused_as_a_key(monkeypatch):
+    """`cp .env.example .env` and forgetting the edit must not yield a running
+    instance whose key is the literal everyone can read in the repository.
+    Fail closed at startup, like the non-loopback 403."""
+    from pydantic import ValidationError
+
+    from app.settings import Settings
+
+    monkeypatch.setenv("DATAPREP_AUTH_KEY", "change-me")
+    with pytest.raises(ValidationError, match="placeholder"):
+        Settings()
