@@ -55,7 +55,13 @@ def require_key(
             detail="No API key configured: this instance serves loopback clients "
             "only. Set DATAPREP_AUTH_KEY to enable remote access.",
         )
-    if key is None or settings.auth_key is None or not secrets.compare_digest(key, settings.auth_key):
+    # Compared as bytes: header values arrive latin-1 decoded, and compare_digest
+    # refuses non-ASCII str -- a key with an umlaut must be a 401, not a 500.
+    if (
+        key is None
+        or settings.auth_key is None
+        or not secrets.compare_digest(key.encode("utf-8"), settings.auth_key.encode("utf-8"))
+    ):
         raise HTTPException(
             status_code=401,
             detail="API key required. Provide the X-API-Key header.",
@@ -78,8 +84,19 @@ def _is_loopback_client(request: Request) -> bool:
         return False
 
 
+# The same cap every request-body name field carries (Field(max_length=100)).
+# Path parameters have no pydantic bound, so it is enforced here: a name over
+# 255 bytes makes Path.exists() raise ENAMETOOLONG on Linux, i.e. a 500.
+MAX_NAME_LENGTH = 100
+
+
 def safe_name(name: str, kind: str = "name") -> str:
-    """Validate a user-supplied name, rejecting path-traversal characters."""
+    """Validate a user-supplied name, rejecting path-traversal characters and
+    over-long names."""
+    if len(name) > MAX_NAME_LENGTH:
+        raise HTTPException(
+            status_code=400, detail=f"Invalid {kind}: longer than {MAX_NAME_LENGTH} characters."
+        )
     if (
         not name
         or ".." in name

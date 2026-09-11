@@ -101,3 +101,19 @@ def test_unhandled_errors_return_sanitized_500(make_client):
 
 async def _boom() -> dict:
     raise RuntimeError("internal detail that must never leak")
+
+
+def test_non_ascii_key_header_is_a_401_not_a_500(make_client):
+    """Header bytes reach the app decoded as latin-1, and secrets.compare_digest
+    refuses non-ASCII str -- so a key containing an umlaut used to raise inside
+    the auth dependency: a 500 with a full traceback, triggerable with no
+    credentials. Wrong key, wrong answer: it must be a plain 401."""
+    client = make_client(auth_key="test-key")
+    res = client.get("/auth/check", headers={"X-API-Key": "schüssel".encode("latin-1")})
+    assert res.status_code == 401
+
+
+def test_over_long_name_in_a_path_is_a_400(make_client):
+    client = make_client(auth_key="test-key")
+    res = client.get(f"/refine/{'a' * 300}/ops", headers={"X-API-Key": "test-key"})
+    assert res.status_code == 400

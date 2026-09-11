@@ -21,3 +21,14 @@ def test_safe_name_rejects_path_characters(bad):
     with pytest.raises(HTTPException) as exc:
         safe_name(bad)
     assert exc.value.status_code == 400
+
+
+def test_safe_name_rejects_over_long_names():
+    """Names arrive as path parameters with no pydantic bound. On Linux a name
+    over 255 bytes makes Path.exists() raise ENAMETOOLONG (a 500); on Windows
+    it is a 404. Bounding it here answers 400 on both, matching the 100-char
+    cap every body and form field already carries."""
+    with pytest.raises(HTTPException) as exc:
+        safe_name("a" * 101)
+    assert exc.value.status_code == 400
+    assert safe_name("a" * 100) == "a" * 100
