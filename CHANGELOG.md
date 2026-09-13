@@ -3,6 +3,29 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — enrichment for any field, and a minimum per label (2026-09-13)
+
+### Added
+
+- **`POST /refine/{name}/balance` lifts under-represented labels to a minimum number
+  of rows.** It generates what each short label is missing from that label's own
+  richest rows, gating every item against the fields' `min_values` and against
+  repetition. `dry_run: true` answers with the deficit, the model calls and the
+  synthetic share per label before an LLM session is opened at all — this is the one
+  refine operation whose cost scales with how unbalanced the data is.
+- **Generated rows stay out of the holdout.** They carry `generated_for`, and the
+  split keeps them on the training side and reports `generated_excluded`. Without
+  that, a model is validated on text written from the examples it trained on.
+
+### Changed
+
+- **Enrichment works on any text field, not only title/description/keywords.** A
+  request names the fields and which one to fill; a field that holds several values
+  says so with its separator, so a semicolon-separated author list needs no new code.
+  Requests in the old `mode` shape keep working and produce the same prompts. The
+  provenance mark in `enriched_fields` is now the column name, which is what
+  identifies a field once the three roles are gone.
+
 ## [Unreleased] — imports the size of a real export (2026-09-13)
 
 ### Changed

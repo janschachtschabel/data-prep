@@ -11,7 +11,19 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .routes import exports, references, refine, refine_prep, review, runs, seeds, system, tables, vocabs
+from .routes import (
+    exports,
+    references,
+    refine,
+    refine_balance,
+    refine_prep,
+    review,
+    runs,
+    seeds,
+    system,
+    tables,
+    vocabs,
+)
 from .settings import get_settings
 
 logging.basicConfig(
@@ -151,6 +163,7 @@ def create_app() -> FastAPI:
     app.include_router(exports.router)
     app.include_router(refine.router)
     app.include_router(refine_prep.router)
+    app.include_router(refine_balance.router)
     app.include_router(tables.router)
 
     if settings.ui_enabled:

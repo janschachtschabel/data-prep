@@ -10,8 +10,9 @@ Two ways in:
 - **Generate** a dataset from a vocabulary (+ optional references), review it,
   export or push it to api_v3.
 - **Refine** an existing CSV: inspect it, run a training preflight, filter,
-  combine, split into train/holdout, audit labels against a trained model, and
-  enrich missing fields.
+  combine, split into train/holdout, audit labels against a trained model,
+  enrich missing fields, and lift under-represented labels to a minimum number
+  of rows.
 
 ## Requirements
 
@@ -116,7 +117,7 @@ anything has been decided about which column is the label. All of it is in the
 Three behaviours are worth knowing before relying on them:
 
 - **Nothing is replaced silently.** Every endpoint that stores something under a
-  name — imports, `target` of op/filter/join/split/enrich/combine, references,
+  name — imports, `target` of op/filter/join/split/enrich/combine/balance, references,
   vocabularies, seed sets — answers **409** when the name is taken, and
   replaces it only with `overwrite: true` (a form field for uploads). Naming
   the dataset you are working on as its own target is working in place and
@@ -175,6 +176,27 @@ it. Past five million rows the join is refused rather than attempted.
 ## Honest-evaluation discipline
 
 Synthetic and mined rows are **training-only**. Evaluate on a curated,
+### Balancing an uneven dataset
+
+Real exports are uneven: a few hundred rows for one subject, three for another.
+`POST /refine/{name}/balance` generates the rows each short label is missing --
+from that label's own richest rows, so the new text resembles the material the
+label actually describes. Send `dry_run: true` first: it answers with the per-label
+deficit, the number of model calls, and the share of each label that would end up
+synthetic, without opening an LLM session.
+
+Two properties make the result safe to train on:
+
+- Every generated row carries `generated_for`, and `POST /refine/{name}/split`
+  keeps those rows on the **training** side. A holdout containing generated text
+  measures how well a model learned the generator.
+- A label whose rows carry no text at all is skipped rather than invented from its
+  name, and reported under `skipped_without_examples`.
+
+Read the synthetic share before trusting a number: a label lifted from 3 rows to
+100 is a label the model has still barely seen, and its per-label F1 says more
+about the generator than about the data.
+
 text-disjoint holdout (the Prepare tool produces one). Internal metrics on mixed
 synthetic+curated data overstate real quality — every audit report ships with
 this warning.
@@ -184,7 +206,7 @@ this warning.
 ```
 app/            FastAPI app: settings, security, llm, pii, vocab, seeds, runs,
                 filtering, exporter, apiv3, refine/ (analyze, filters, combine,
-                prep, label_audit, enrich), routes/, static/ui/
+                prep, label_audit, enrich, balance), routes/, static/ui/
 docs/           plan (source of truth) + ui-guide.md (German)
 config.yaml     LLM endpoints, budgets, embeddings, api_v3 target
 ```
