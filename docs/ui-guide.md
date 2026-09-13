@@ -99,9 +99,33 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   denen das Modell dem Gold-Label deutlich widerspricht, landen in einer
   Prüfliste. Es wird **nichts automatisch umgelabelt** — das entscheidet ein
   Mensch.
-- **Enrich** — ergänzt fehlende Schlagwörter oder leere Beschreibungen per KI.
-  Vorhandene Inhalte werden **nie** überschrieben; jede Ergänzung wird in einer
-  Spalte `enriched_fields` vermerkt.
+- **Was die Textfelder enthalten** — eine Zeile je gewählter Textspalte. Kreuze
+  „mehrere Werte" an, wenn eine Zelle mehrere Angaben enthält (Schlagwörter sind
+  kommagetrennt, ein Titel mit Komma bleibt ein Titel), und gib das Trennzeichen
+  und die Mindestanzahl an. Der Hinweis daneben ist die eine Zeile, die die KI
+  über dieses Feld zu sehen bekommt — je konkreter, desto brauchbarer das
+  Ergebnis. Diese Angaben gelten für beide KI-Werkzeuge darunter.
+- **Enrich** — füllt Lücken in **einem frei gewählten Feld** per KI: Schlagwörter,
+  Beschreibung, oder jede andere Textspalte deines Datensatzes. Vorhandene Inhalte
+  werden **nie** überschrieben; jede Ergänzung wird in einer Spalte
+  `enriched_fields` vermerkt.
+- **Mindestanzahl Zeilen je Label** — für ungleich verteilte Datensätze: ein Fach
+  mit 300 Zeilen und eines mit 3 sind für das Training nicht dasselbe. Gib die
+  Mindestzahl an (z. B. 100) und klicke **Vorschau**: sie zeigt je Label, wie viele
+  Zeilen fehlen, wie viele Modellaufrufe das kostet und **wie viel Prozent des
+  Labels danach erzeugt wäre** — ohne dass etwas aufgerufen wird. Erst danach lässt
+  sich **Erzeugen** klicken.
+
+  Drei Dinge, die du dazu wissen solltest:
+  - Erzeugt wird **aus den eigenen Beispielen des Labels**. Ein Label, dessen
+    Zeilen gar keinen Text enthalten, wird übersprungen statt erfunden.
+  - Jede erzeugte Zeile bekommt die Spalte `generated_for`. Beim Aufteilen in
+    train/holdout bleiben diese Zeilen **im Training** — sonst würde man das Modell
+    an Texten prüfen, die aus denselben Beispielen geschrieben wurden, an denen es
+    gelernt hat, und die Auswertung sähe besser aus, als sie ist.
+  - Ein von 3 auf 100 gehobenes Label hat das Modell trotzdem kaum gesehen. Die
+    Prozentzahl in der Vorschau sagt dir, wie sehr ein späterer F1-Wert für dieses
+    Label über die Generierung spricht statt über deine Daten.
 
 ## Beliebige Tabellen bearbeiten (Reiter „Tabellen")
 

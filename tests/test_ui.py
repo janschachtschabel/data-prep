@@ -44,8 +44,19 @@ def test_every_js_i18n_t_key_has_en_and_de_translation(make_client):
         src = client.get(f"/ui/{module}").text
         used |= set(re.findall(r'I18n\.t\(\s*"([\w.-]+)"', src))
     assert used, "no I18n.t keys found — did the wiring regress?"
-    assert not (used - en_keys), f"js keys missing English: {sorted(used - en_keys)}"
-    assert not (used - de_keys), f"js keys missing German: {sorted(used - de_keys)}"
+
+    def resolves(key: str, keys: set[str]) -> bool:
+        """A key is translated either plainly or as BOTH plural forms.
+
+        Both, not either: a table carrying only `.other` renders "1 label are below"
+        for a count of one, which is the bug pluralisation exists to prevent.
+        """
+        return key in keys or ({f"{key}.one", f"{key}.other"} <= keys)
+
+    missing_en = {k for k in used if not resolves(k, en_keys)}
+    missing_de = {k for k in used if not resolves(k, de_keys)}
+    assert not missing_en, f"js keys missing English: {sorted(missing_en)}"
+    assert not missing_de, f"js keys missing German: {sorted(missing_de)}"
 
 
 def test_ui_serves_index_html(make_client):
@@ -265,3 +276,57 @@ def test_the_label_filter_shows_an_example(make_client):
         placeholder = re.search(r'"refine\.labelfilter\.ph":\s*"([^"]*)"', block)
         assert placeholder, f"refine.labelfilter.ph missing from the {language} table"
         assert "discipline" in placeholder.group(1), "the example should show a real prefix"
+
+
+def test_each_text_field_can_say_that_it_holds_a_list(make_client):
+    """Keywords are one column holding several values; a title is one value that may
+    contain a comma. Nothing in the file says which is which, so the form asks — once,
+    for the columns already chosen above, rather than per operation."""
+    html = make_client(auth_key="secret-1").get("/ui/").text
+
+    assert 'id="refine-fields"' in html, "no place for the per-field rows"
+    assert '<script src="refine-fields.js">' in html, "the module building them is not loaded"
+    assert 'id="refine-fields-empty"' in html, "no empty state when no columns are chosen"
+
+
+def test_enrichment_fills_a_chosen_field_not_one_of_two_fixed_modes(make_client):
+    """The point of the generalisation, in the UI: which field to fill is a choice over
+    the columns the user picked, so a dataset whose gaps sit in an author column is
+    reachable without an API call."""
+    html = make_client(auth_key="secret-1").get("/ui/").text
+
+    assert 'id="enrich-field"' in html, "no field picker for enrichment"
+    assert 'id="enrich-mode"' not in html, "the two fixed modes should be gone"
+    field = re.search(r'<select id="enrich-field"[^>]*>', html).group()
+    assert "data-i18n" not in field, "the options are built from the chosen columns"
+
+
+def test_balancing_asks_for_a_target_and_shows_the_cost_before_generating(make_client):
+    """This is the one operation whose cost scales with how unbalanced the data is, so
+    the run button stays disabled until a preview has said how many rows and how many
+    model calls it would take."""
+    html = make_client(auth_key="secret-1").get("/ui/").text
+
+    target = re.search(r'<input id="balance-target"[^>]*>', html).group()
+    assert 'type="number"' in target and 'min="1"' in target, target
+    assert 'id="balance-preview-btn"' in html, "no preview button"
+
+    run = re.search(r'<button[^>]*id="balance-run-btn"[^>]*>', html).group()
+    assert "disabled" in run, f"the run button must start disabled: {run}"
+
+    result = re.search(r'<div id="balance-result"[^>]*>', html).group()
+    assert 'aria-live="polite"' in result, f"the result is announced: {result}"
+
+
+def test_the_balance_help_names_what_a_generated_row_costs_in_honesty(make_client):
+    """A label lifted from 3 rows to 100 is 97 % invented. The UI has to say that where
+    the decision is made, not only in the README — and in both languages."""
+    js = make_client(auth_key="secret-1").get("/ui/i18n.js").text
+    en_block = js.split("en: {", 1)[1].split("de: {", 1)[0]
+    de_block = js.split("de: {", 1)[1]
+
+    for language, block in (("en", en_block), ("de", de_block)):
+        help_text = re.search(r'"refine\.balance\.help":\s*[`"]([^`"]*)', block)
+        assert help_text, f"refine.balance.help missing from the {language} table"
+        assert "holdout" in help_text.group(1).lower(), \
+            f"the {language} help does not mention the holdout guarantee"

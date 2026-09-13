@@ -3,7 +3,7 @@
    operations panel here. textContent / table rendering only. */
 "use strict";
 
-(() => {
+const Refine = (() => {
   const $ = (sel) => document.querySelector(sel);
 
   function showError(message) {
@@ -45,6 +45,7 @@
       chip.addEventListener("click", () => appendTextColumn(col));
       chips.appendChild(chip);
     }
+    RefineFields.render();
   }
 
   function appendTextColumn(column) {
@@ -53,6 +54,7 @@
     if (!present.includes(column)) present.push(column);
     field.value = present.join(", ");
     field.focus();                     // the caret lands where the change happened
+    RefineFields.render();             // setting .value fires no change event
   }
 
   async function refreshDatasets(selectName) {
@@ -469,11 +471,10 @@
   $("#enrich-btn").addEventListener("click", async () => {
     const target = $("#enrich-target").value.trim();
     if (!target) { showError(I18n.t("js.refine.enterEnrichName")); return; }
-    const body = {
-      mode: $("#enrich-mode").value,
-      min_keywords: Number($("#enrich-min").value) || 3,
-      target,
-    };
+    const fields = RefineFields.spec();
+    const targetField = $("#enrich-field").value;
+    if (!targetField) { showError(I18n.t("js.refine.enrichNeedsField")); return; }
+    const body = { fields, target_field: targetField, target };
     const btn = $("#enrich-btn");
     btn.disabled = true;
     btn.textContent = I18n.t("js.refine.enriching");
@@ -482,7 +483,7 @@
         const out = $("#refine-result");
         out.replaceChildren(Object.assign(document.createElement("p"), {
           textContent: I18n.t("js.refine.enriched", {
-            enriched: res.enriched, rows: res.rows, mode: res.mode, target: res.target,
+            enriched: res.enriched, rows: res.rows, field: res.field, target: res.target,
             calls: res.usage.calls, tokens: res.usage.tokens_total,
           }),
         }));
@@ -507,4 +508,8 @@
   window.addEventListener("dataprep-tab-shown", (e) => {
     if (e.detail === "refine") refreshDatasets();
   });
+
+  // Shared with refine-fields.js: the dataset picker, the overwrite-guarded POST and
+  // the error box belong to this panel, and a second copy of them would drift.
+  return { runOp, refreshDatasets, renderTable, showError, clearError };
 })();

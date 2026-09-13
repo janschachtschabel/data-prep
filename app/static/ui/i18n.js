@@ -283,11 +283,29 @@ const I18n = (() => {
       "refine.enrich.legend": "Enrich (additive, LLM)",
       "refine.enrich.help": `Fill gaps only — never overwrites existing content. Every change is
         recorded in an <code>enriched_fields</code> column.`,
-      "enrich.mode": "Mode",
-      "enrich.mode.keywords": "add keywords (rows below the minimum)",
-      "enrich.mode.description": "add description (empty ones)",
-      "enrich.min": "Min keywords", "enrich.target": "New dataset name",
+      "enrich.field": "Field to fill", "enrich.target": "New dataset name",
       "enrich.btn": "Enrich → new dataset",
+      "refine.fields.legend": "What the text fields hold",
+      "refine.fields.help": `One row per text column above. Tick <em>holds a list</em> for a
+         column whose cell contains several values, and say what separates them. The hint
+         is the single line the LLM is given about that field.`,
+      "refine.fields.empty": "No text columns chosen yet — pick some above.",
+      "refine.fields.islist": "holds a list",
+      "refine.fields.separator": "Separator between the values",
+      "refine.fields.minvalues": "Minimum number of values",
+      "refine.fields.guidance": "Hint for the LLM about this field",
+      "refine.fields.guidance.ph": "one line, e.g. what this field should contain",
+      "refine.balance.legend": "Minimum rows per label (LLM)",
+      "refine.balance.help": `Generates the rows each under-represented label is missing,
+         from that label&rsquo;s own examples. Preview first: it says how many rows and how
+         many model calls that would be, without calling anything. Generated rows are
+         marked and are kept out of the holdout when you split, so the evaluation stays
+         honest.`,
+      "refine.balance.target": "Rows per label (minimum)",
+      "refine.balance.limit": "Generate at most",
+      "refine.balance.name": "New dataset name",
+      "refine.balance.preview": "Preview",
+      "refine.balance.run": "Generate → new dataset",
 
       // --- dynamic (JS runtime strings, via I18n.t) ---
       "js.btn.view": "View", "js.btn.open": "Open", "js.btn.delete": "Delete",
@@ -388,8 +406,28 @@ const I18n = (() => {
       "js.refine.audit": "Audited {rows} rows · {flagged} flagged for review (model confidently disagrees with the gold label).",
       "js.refine.enterEnrichName": "Enter a name for the enriched dataset.",
       "js.refine.enriching": "Enriching…",
-      "js.refine.enriched": "Enriched {enriched} of {rows} rows ({mode}) → \"{target}\". LLM calls: {calls}, tokens: {tokens}.",
+      "js.refine.enriched": "Enriched {enriched} of {rows} rows ({field}) → \"{target}\". LLM calls: {calls}, tokens: {tokens}.",
       "js.refine.thLabel": "label", "js.refine.thSupport": "support",
+      "js.refine.thDeficit": "missing", "js.refine.thSynthetic": "would be generated",
+      "js.refine.enrichNeedsField": "Choose the field to fill (pick text columns above first).",
+      "js.refine.balancePlan.one": `1 label is below {target}. To generate — rows: {rows},
+         model calls: {calls}. Preview only, nothing has been generated yet.`,
+      "js.refine.balancePlan.other": `{count} labels are below {target}. To generate — rows:
+         {rows}, model calls: {calls}. Preview only, nothing has been generated yet.`,
+      "js.refine.balanceNothing": "Nothing to do — no label is below {target}.",
+      "js.refine.balanceMore.one": "… and one more label below the target.",
+      "js.refine.balanceMore.other": "… and {count} more labels below the target.",
+      "js.refine.balanceSkipped.one": `One label is skipped because its rows carry no text to
+         generate from: {labels}`,
+      "js.refine.balanceSkipped.other": `{count} labels are skipped because their rows carry no
+         text to generate from: {labels}`,
+      "js.refine.balancePreviewing": "Calculating…",
+      "js.refine.balanceRunning": "Generating…",
+      "js.refine.balanceNeedsName": "Enter a name for the balanced dataset.",
+      "js.refine.balanced.one": `Generated 1 row; labels brought up to target: {labels} →
+         "{target}". LLM calls: {calls}, tokens: {tokens}.`,
+      "js.refine.balanced.other": `Generated {count} rows; labels brought up to target: {labels}
+         → "{target}". LLM calls: {calls}, tokens: {tokens}.`,
       "js.refine.thBefore": "before", "js.refine.thAfter": "after",
       "js.refine.thSource": "source", "js.refine.thRowsIn": "rows in", "js.refine.thRowsKept": "rows kept",
       "js.refine.thEffective": "effective samples", "js.refine.thTrainSupport": "train support",
@@ -816,11 +854,29 @@ const I18n = (() => {
       "refine.enrich.legend": "Anreichern (additiv, LLM)",
       "refine.enrich.help": `Nur Lücken füllen — überschreibt nie bestehende Inhalte. Jede Änderung
         wird in einer <code>enriched_fields</code>-Spalte vermerkt.`,
-      "enrich.mode": "Modus",
-      "enrich.mode.keywords": "Schlagwörter ergänzen (Zeilen unter dem Minimum)",
-      "enrich.mode.description": "Beschreibung ergänzen (leere)",
-      "enrich.min": "Min. Schlagwörter", "enrich.target": "Name des neuen Datensatzes",
+      "enrich.field": "Zu füllendes Feld", "enrich.target": "Name des neuen Datensatzes",
       "enrich.btn": "Anreichern → neuer Datensatz",
+      "refine.fields.legend": "Was die Textfelder enthalten",
+      "refine.fields.help": `Eine Zeile je Textspalte von oben. Kreuze <em>mehrere Werte</em>
+         an, wenn eine Zelle mehrere Werte enthält, und gib an, was sie trennt. Der Hinweis
+         ist die eine Zeile, die das Sprachmodell über dieses Feld zu sehen bekommt.`,
+      "refine.fields.empty": "Noch keine Textspalten gewählt — oben welche auswählen.",
+      "refine.fields.islist": "mehrere Werte",
+      "refine.fields.separator": "Trennzeichen zwischen den Werten",
+      "refine.fields.minvalues": "Mindestanzahl an Werten",
+      "refine.fields.guidance": "Hinweis für das Sprachmodell zu diesem Feld",
+      "refine.fields.guidance.ph": "eine Zeile, z. B. was in diesem Feld stehen soll",
+      "refine.balance.legend": "Mindestanzahl Zeilen je Label (KI)",
+      "refine.balance.help": `Erzeugt die Zeilen, die jedem unterbesetzten Label fehlen — aus
+         den eigenen Beispielen dieses Labels. Erst die Vorschau: sie nennt die Zahl der
+         Zeilen und der Modellaufrufe, ohne etwas aufzurufen. Erzeugte Zeilen werden
+         markiert und beim Split aus dem Holdout herausgehalten, damit die Auswertung
+         ehrlich bleibt.`,
+      "refine.balance.target": "Zeilen je Label (mindestens)",
+      "refine.balance.limit": "Höchstens erzeugen",
+      "refine.balance.name": "Name des neuen Datensatzes",
+      "refine.balance.preview": "Vorschau",
+      "refine.balance.run": "Erzeugen → neuer Datensatz",
 
       // --- dynamic (JS runtime strings, via I18n.t) ---
       "js.btn.view": "Ansehen", "js.btn.open": "Öffnen", "js.btn.delete": "Löschen",
@@ -925,8 +981,28 @@ const I18n = (() => {
       "js.refine.audit": "{rows} Zeilen geprüft · {flagged} zur Prüfung markiert (Modell widerspricht dem Gold-Label deutlich).",
       "js.refine.enterEnrichName": "Gib einen Namen für den angereicherten Datensatz ein.",
       "js.refine.enriching": "Reichere an…",
-      "js.refine.enriched": "{enriched} von {rows} Zeilen angereichert ({mode}) → „{target}“. LLM-Aufrufe: {calls}, Tokens: {tokens}.",
+      "js.refine.enriched": "{enriched} von {rows} Zeilen angereichert ({field}) → „{target}“. LLM-Aufrufe: {calls}, Tokens: {tokens}.",
       "js.refine.thLabel": "Label", "js.refine.thSupport": "Belegung",
+      "js.refine.thDeficit": "fehlen", "js.refine.thSynthetic": "würden erzeugt",
+      "js.refine.enrichNeedsField": "Wähle das zu füllende Feld (oben zuerst Textspalten auswählen).",
+      "js.refine.balancePlan.one": `1 Label liegt unter {target}. Zu erzeugen — Zeilen:
+         {rows}, Modellaufrufe: {calls}. Nur Vorschau, es wurde noch nichts erzeugt.`,
+      "js.refine.balancePlan.other": `{count} Label liegen unter {target}. Zu erzeugen —
+         Zeilen: {rows}, Modellaufrufe: {calls}. Nur Vorschau, es wurde noch nichts erzeugt.`,
+      "js.refine.balanceNothing": "Nichts zu tun — kein Label liegt unter {target}.",
+      "js.refine.balanceMore.one": "… und ein weiteres Label unter dem Ziel.",
+      "js.refine.balanceMore.other": "… und {count} weitere Label unter dem Ziel.",
+      "js.refine.balanceSkipped.one": `Ein Label wird übersprungen, weil seine Zeilen keinen
+         Text enthalten, aus dem sich etwas erzeugen ließe: {labels}`,
+      "js.refine.balanceSkipped.other": `{count} Label werden übersprungen, weil ihre Zeilen
+         keinen Text enthalten, aus dem sich etwas erzeugen ließe: {labels}`,
+      "js.refine.balancePreviewing": "Berechne…",
+      "js.refine.balanceRunning": "Erzeuge…",
+      "js.refine.balanceNeedsName": "Gib einen Namen für den ausgeglichenen Datensatz ein.",
+      "js.refine.balanced.one": `1 Zeile erzeugt · {labels} Label aufs Ziel gebracht →
+         „{target}“. LLM-Aufrufe: {calls}, Tokens: {tokens}.`,
+      "js.refine.balanced.other": `{count} Zeilen erzeugt · {labels} Label aufs Ziel gebracht →
+         „{target}“. LLM-Aufrufe: {calls}, Tokens: {tokens}.`,
       "js.refine.thBefore": "vorher", "js.refine.thAfter": "nachher",
       "js.refine.thSource": "Quelle", "js.refine.thRowsIn": "Zeilen rein", "js.refine.thRowsKept": "Zeilen behalten",
       "js.refine.thEffective": "effektive Beispiele", "js.refine.thTrainSupport": "Train-Belegung",
@@ -1081,9 +1157,19 @@ const I18n = (() => {
     return (navigator.language || "en").toLowerCase().startsWith("de") ? "de" : "en";
   }
 
+  /* A key given a `count` may carry `.one` / `.other` variants; the count picks one.
+     Two forms is exactly what German and English need — a language with more (Polish,
+     Arabic) would need Intl.PluralRules here. Keys without variants are untouched. */
+  function pluralVariant(table, key, params) {
+    if (!params || params.count === undefined) return undefined;
+    const variant = key + (Number(params.count) === 1 ? ".one" : ".other");
+    return table[variant] !== undefined ? table[variant] : DICT.en[variant];
+  }
+
   function t(key, params) {
     const table = DICT[current()] || DICT.en;
-    let value = table[key] !== undefined ? table[key] : (DICT.en[key] !== undefined ? DICT.en[key] : key);
+    let value = pluralVariant(table, key, params);
+    if (value === undefined) value = table[key] !== undefined ? table[key] : (DICT.en[key] !== undefined ? DICT.en[key] : key);
     if (params) value = value.replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined ? String(params[k]) : m));
     return value;
   }

@@ -198,6 +198,18 @@ select { width: 100%; padding: var(--s-2) var(--s-3);
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
 
 /* preset buttons (default vocabularies) */
+/* One row per chosen text column: the column name anchors it, the rest are what
+   that column holds. Every input here is width:100% (see above), so the sizes come
+   from the flex basis — which also lets the row wrap under the name on a phone
+   instead of scrolling sideways. */
+.field-spec { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3);
+              padding: var(--s-2) 0; border-top: 1px solid var(--border); }
+.field-spec-name { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.field-spec-sep { flex: 0 0 5ch; text-align: center; }
+.field-spec-min { flex: 0 0 9ch; }
+.field-spec-guidance { flex: 2 1 240px; }
+.field-spec label.check { margin: 0; flex: 0 0 auto; }
+
 .presets { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .presets button { text-align: left; }
 

@@ -565,6 +565,20 @@
                datalist, so its columns are offered as buttons that append one each. -->
           <div id="refine-col-chips" class="presets" aria-live="polite"></div>
           <datalist id="refine-col-options"></datalist>
+          <!-- What each chosen column HOLDS. Nothing in a CSV says whether a cell is
+               one value or a list, and the LLM operations below need to know: a
+               keyword cell separated by commas is three values, a title containing a
+               comma is still one title. Asked once here, used by enrich and balance. -->
+          <fieldset id="refine-fields-box">
+            <legend data-i18n="refine.fields.legend">What the text fields hold</legend>
+            <p class="muted" data-i18n="refine.fields.help">One row per text column above.
+               Tick <em>holds a list</em> for a column whose cell contains several values,
+               and say what separates them. The hint is the single line the LLM is given
+               about that field.</p>
+            <p id="refine-fields-empty" class="muted" data-i18n="refine.fields.empty">No text
+               columns chosen yet — pick some above.</p>
+            <div id="refine-fields"></div>
+          </fieldset>
           <div class="row">
             <div>
               <label for="refine-label-col" data-i18n="refine.labelcol">Label column</label>
@@ -700,15 +714,8 @@
                content. Every change is recorded in an <code>enriched_fields</code> column.</p>
             <div class="row">
               <div>
-                <label for="enrich-mode" data-i18n="enrich.mode">Mode</label>
-                <select id="enrich-mode">
-                  <option value="keywords" data-i18n="enrich.mode.keywords">add keywords (rows below the minimum)</option>
-                  <option value="description" data-i18n="enrich.mode.description">add description (empty ones)</option>
-                </select>
-              </div>
-              <div>
-                <label for="enrich-min" data-i18n="enrich.min">Min keywords</label>
-                <input id="enrich-min" type="number" min="1" max="20" value="3">
+                <label for="enrich-field" data-i18n="enrich.field">Field to fill</label>
+                <select id="enrich-field"></select>
               </div>
               <div>
                 <label for="enrich-target" data-i18n="enrich.target">New dataset name</label>
@@ -716,6 +723,34 @@
               </div>
             </div>
             <button type="button" id="enrich-btn" data-i18n="enrich.btn">Enrich → new dataset</button>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="refine.balance.legend">Minimum rows per label (LLM)</legend>
+            <p class="muted" data-i18n="refine.balance.help">Generates the rows each
+               under-represented label is missing, from that label&rsquo;s own examples.
+               Preview first: it says how many rows and how many model calls that would
+               be, without calling anything. Generated rows are marked and are kept out
+               of the holdout when you split, so the evaluation stays honest.</p>
+            <div class="row">
+              <div>
+                <label for="balance-target" data-i18n="refine.balance.target">Rows per label (minimum)</label>
+                <input id="balance-target" type="number" min="1" max="10000" value="100" inputmode="numeric">
+              </div>
+              <div>
+                <label for="balance-limit" data-i18n="refine.balance.limit">Generate at most</label>
+                <input id="balance-limit" type="number" min="1" max="5000" value="500" inputmode="numeric">
+              </div>
+              <div>
+                <label for="balance-name" data-i18n="refine.balance.name">New dataset name</label>
+                <input id="balance-name" type="text" maxlength="100">
+              </div>
+            </div>
+            <div class="row">
+              <button type="button" id="balance-preview-btn" class="ghost" data-i18n="refine.balance.preview">Preview</button>
+              <button type="button" id="balance-run-btn" disabled data-i18n="refine.balance.run">Generate → new dataset</button>
+            </div>
+            <div id="balance-result" aria-live="polite" hidden></div>
           </fieldset>
         </div>
 
@@ -936,6 +971,7 @@
 <script src="runs.js"></script>
 <script src="review.js"></script>
 <script src="refine.js"></script>
+<script src="refine-fields.js"></script>
 <script src="tables.js"></script>
 <script src="tables-ops.js"></script>
 <script src="tables-join.js"></script>
