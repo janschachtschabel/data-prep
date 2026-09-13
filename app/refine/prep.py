@@ -17,6 +17,7 @@ import pandas as pd
 
 from ..textnorm import split_labels
 from .analyze import _combined_texts, auto_min_samples
+from .balance import GENERATED_FOR
 
 
 def holdout_split(
@@ -28,16 +29,27 @@ def holdout_split(
     seed: int = 42,
     label_separator: str = ",",
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """Split into (train, holdout, stats), text-disjoint and label-stratified."""
+    """Split into (train, holdout, stats), text-disjoint and label-stratified.
+
+    Rows carrying a ``generated_for`` mark stay on the TRAINING side: a holdout
+    containing text an LLM wrote from the same examples the model trained on measures
+    how well the model learned that LLM, and the resulting F1 flatters itself by a
+    margin nobody can see afterwards.
+    """
     texts = _combined_texts(df, text_columns)
     labels = [split_labels(cell, label_separator) for cell in df[label_column]]
+    generated = _generated_mask(df)
 
     groups: dict[str, list[int]] = defaultdict(list)
     for i, text in enumerate(texts):
         groups[text].append(i)
 
+    # The fraction is a fraction of the REAL rows: counting generated ones would ask
+    # for a holdout larger than the real data of that label can fill.
     support: dict[str, int] = defaultdict(int)
-    for row_labels in labels:
+    for row_labels, is_generated in zip(labels, generated, strict=True):
+        if is_generated:
+            continue
         for lab in set(row_labels):
             support[lab] += 1
     target = {lab: max(1, round(holdout_fraction * count)) for lab, count in support.items()}
@@ -48,6 +60,11 @@ def holdout_split(
     holdout_rows: set[int] = set()
     for key in keys:
         rows = groups[key]
+        if any(generated[i] for i in rows):
+            # Train-only. Skipping the whole GROUP rather than the single row keeps
+            # the text-disjointness promise: a generated row sharing a real row's
+            # text would otherwise put that text on both sides.
+            continue
         group_labels = {lab for i in rows for lab in labels[i]}
         if any(holdout_count[lab] < target.get(lab, 0) for lab in group_labels):
             holdout_rows.update(rows)
@@ -62,8 +79,17 @@ def holdout_split(
         "train_rows": int(len(train)),
         "holdout_rows": int(len(holdout)),
         "holdout_fraction_actual": round(len(holdout) / len(df), 3) if len(df) else 0.0,
+        "generated_excluded": int(sum(generated)),
     }
     return train, holdout, stats
+
+
+def _generated_mask(df: pd.DataFrame) -> list[bool]:
+    """Which rows were generated. A dataset that never went through balancing has no
+    such column and answers "none", so its split is unchanged."""
+    if GENERATED_FOR not in df.columns:
+        return [False] * len(df)
+    return [bool(str(cell or "").strip()) for cell in df[GENERATED_FOR]]
 
 
 def balance_report(

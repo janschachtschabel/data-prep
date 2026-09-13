@@ -65,6 +65,41 @@ def test_holdout_split_is_deterministic():
     assert list(a[TITLE]) == list(b[TITLE])
 
 
+def test_a_generated_row_never_lands_in_the_holdout():
+    """The honesty of every later metric rests on this. A holdout containing rows an
+    LLM wrote from the same examples the model trained on measures how well the model
+    learned that LLM, and the F1 flatters itself by a margin nobody can see."""
+    from app.refine.prep import holdout_split
+
+    df = _dataset()
+    generated = df.head(10).copy()
+    generated[TITLE] = [f"Erzeugt {i}" for i in range(10)]
+    generated[DESC] = [f"Ein erzeugter Text nummer {i}" for i in range(10)]
+    generated["generated_for"] = generated[LABEL]
+    df["generated_for"] = ""
+    both = pd.concat([df, generated], ignore_index=True)
+
+    train, holdout, stats = holdout_split(both, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert len(holdout) > 0, "the real rows still form a holdout"
+    assert set(holdout["generated_for"]) == {""}
+    assert (train["generated_for"] != "").sum() == 10, "they are training rows, not lost"
+    assert stats["generated_excluded"] == 10
+    assert len(train) + len(holdout) == len(both)
+
+
+def test_a_dataset_without_the_provenance_column_splits_exactly_as_before():
+    """Balancing is optional. A dataset that never went through it must not change
+    behaviour because the split learned a new column."""
+    from app.refine.prep import holdout_split
+
+    df = _dataset()
+    train, holdout, stats = holdout_split(df, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert len(train) + len(holdout) == len(df)
+    assert stats["generated_excluded"] == 0
+
+
 def test_balance_report_counts_and_recommends_min_samples():
     from app.refine.prep import balance_report
 
