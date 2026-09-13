@@ -26,6 +26,41 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Feldgenerische Anreicherung + Mindestanzahl je Label (2026-09-13).** Plan:
+`docs/plan-2026-09-13-balance-enrichment.md` (10 Aufgaben, 3 Phasen), test-first
+umgesetzt, je ein Commit. **638 Tests gruen, ruff/mypy sauber.**
+
+- **Phase 1 — das Feld als Begriff.** `refine/fields.py`: ein `TextField` weiss,
+  ob seine Zelle einen Wert oder eine Liste enthaelt (`separator`, `min_values`,
+  `guidance`). `enrich_dataset` arbeitet damit auf **jedem** Textfeld statt auf
+  title/description/keywords; ein Prompt aus den uebrigen Feldern plus der
+  `guidance` des Zielfelds ersetzt die zwei fest verdrahteten Prompts. Die alte
+  Request-Form (`mode`) funktioniert weiter und erzeugt denselben Text — ein Test
+  schickt beide Formen und vergleicht die entstandenen Datensaetze.
+- **Phase 2 — Balancing.** `refine/balance.py` + `refine/balance_prompt.py`:
+  `plan_balance` (rein, die Vorschau: Defizit, Batches, Synthetik-Anteil je Label),
+  `balance_dataset` (erzeugt aus den eigenen Beispielen des Labels, zwei
+  feldgenerische Gates, begrenzte Wiederholung, Gruende in den Stats). Ein Label
+  ohne Text in seinen Zeilen wird uebersprungen statt erfunden. **`holdout_split`
+  haelt erzeugte Zeilen im Training** (`generated_for`) und meldet
+  `generated_excluded` — sonst prueft man das Modell an Texten, die aus denselben
+  Beispielen stammen, an denen es gelernt hat. Dabei zwei Fallen: die ganze
+  Text-Gruppe bleibt im Training (sonst stuende ein Text auf beiden Seiten), und
+  die Holdout-Quote zaehlt nur echte Zeilen. Route:
+  `POST /refine/{name}/balance`, mit `dry_run` das die Vorschau liefert, **ohne**
+  eine LLM-Session zu oeffnen (ein Test haelt das fest).
+- **Phase 3 — UI.** Feldzeilen unter den Spalten-Chips (mehrwertig? Trennzeichen,
+  Mindestanzahl, Hinweis), Anreichern fuellt ein **gewaehltes** Feld, Balancing mit
+  Ziel, Vorschau und einem Erzeugen-Knopf, der erst nach einer Vorschau aktiv wird
+  und bei jeder Aenderung wieder sperrt. Eigene Datei `refine-fields.js`
+  (refine.js war an der Groessengrenze) und teilt sich dessen Helfer. **i18n
+  bekam Pluralformen** (`key.one`/`key.other`): die erste Fassung schrieb
+  „1 Label werden uebersprungen"; der Vollstaendigkeitstest verlangt jetzt beide
+  Formen in beiden Tabellen. Im Browser gegen einen bewusst ungleichen Datensatz
+  geprueft (Vorschau Chemie 2/+8/80 %, Physik 6/+4/40 %, Label ohne Text
+  uebersprungen; Tastaturbedienung, 24-px-Ziel der Checkbox, Umbruch bei 320 px).
+- **Offen:** Push nach GitHub und Container-Neubau (nicht beauftragt).
+
 **Doppelte Namen abgesichert (2026-09-11).** Sieben Probleme gefunden und
 vorher gegen die laufende App reproduziert, je ein Commit: kein Schreibweg
 ueberschreibt mehr ungefragt (409 + `overwrite`, UI fragt nach), Namensgrenze
