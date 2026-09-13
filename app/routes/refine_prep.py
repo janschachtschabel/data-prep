@@ -21,6 +21,7 @@ from ..refine.analyze import _combined_texts
 from ..refine.apply import replaces_another
 from ..refine.combine import combine_datasets, suggest_mapping
 from ..refine.enrich import enrich_dataset
+from ..refine.fields import TextField
 from ..refine.label_audit import audit_predictions
 from ..refine.prep import balance_report, holdout_split
 from ..refine.store import dataset_path, read_ops, save_dataset, write_ops
@@ -65,16 +66,66 @@ class LabelAuditRequest(AnalyzeRequest):
     limit: int = Field(default=2000, ge=1, le=20000)  # cap the api_v3 predict load
 
 
+# What the two shipped prompts asked for, kept verbatim as the guidance of the WLO
+# fields: a request in the old shape has to produce the same text as before, and the
+# only place that survived the generalisation is here.
+_WLO_KEYWORD_GUIDANCE = (
+    "Nenne 3-6 treffende deutsche Schlagwörter (kommagetrennt), die den Inhalt "
+    "erschließen."
+)
+_WLO_DESCRIPTION_GUIDANCE = (
+    "Schreibe eine sachliche Beschreibung (100-400 Zeichen), was dieses Material bietet."
+)
+
+
+class FieldSpec(BaseModel):
+    """One text field of the dataset — the request mirror of ``refine.fields.TextField``."""
+
+    column: str = Field(max_length=200)
+    separator: str | None = Field(default=None, max_length=3)
+    min_values: int = Field(default=1, ge=1, le=50)
+    guidance: str = Field(default="", max_length=1000)
+
+    def to_field(self) -> TextField:
+        return TextField(column=self.column, separator=self.separator,
+                         min_values=self.min_values, guidance=self.guidance)
+
+
 class EnrichRequest(BaseModel):
-    mode: Literal["keywords", "description"]
+    """Either shape: ``fields`` + ``target_field``, or the original ``mode`` with the
+    three WLO columns. The old one keeps working — it was the only shape until now,
+    and a client that still sends it gets exactly the text it always got."""
+
     target: str = Field(max_length=MAX_NAME_BYTES)
     overwrite: bool = False
+    limit: int = Field(default=500, ge=1, le=5000)  # cap the LLM cost per call
+    llm_purpose: Literal["seeds", "bulk"] = "bulk"
+
+    fields: list[FieldSpec] | None = Field(default=None, max_length=50)
+    target_field: str | None = Field(default=None, max_length=200)
+
+    mode: Literal["keywords", "description"] | None = None
     title_column: str = "properties.cclom:title"
     description_column: str = "properties.cclom:general_description"
     keyword_column: str = "properties.cclom:general_keyword"
     min_keywords: int = Field(default=3, ge=1, le=20)
-    limit: int = Field(default=500, ge=1, le=5000)  # cap the LLM cost per call
-    llm_purpose: Literal["seeds", "bulk"] = "bulk"
+
+    def resolve(self) -> tuple[list[TextField], str]:
+        """The fields to work on and the one to fill, from whichever shape arrived."""
+        if self.fields and self.target_field:
+            return [spec.to_field() for spec in self.fields], self.target_field
+        if self.mode is None:
+            raise ValueError(
+                "Send either 'fields' with 'target_field', or 'mode' with the column names."
+            )
+        fields = [
+            TextField(column=self.title_column),
+            TextField(column=self.description_column, guidance=_WLO_DESCRIPTION_GUIDANCE),
+            TextField(column=self.keyword_column, separator=",",
+                      min_values=self.min_keywords, guidance=_WLO_KEYWORD_GUIDANCE),
+        ]
+        target = self.keyword_column if self.mode == "keywords" else self.description_column
+        return fields, target
 
 
 @router.post("/{name}/split", summary="Stratified text-disjoint holdout split (train + holdout)")
@@ -149,15 +200,18 @@ async def enrich(
     target = safe_name(req.target, "target name")
     # Before any LLM call: a refused write must not have been paid for.
     refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
-    for col in (req.title_column, req.description_column, req.keyword_column):
+    try:
+        fields, target_field = req.resolve()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    for col in [f.column for f in fields]:
         if col not in df.columns:
             raise HTTPException(status_code=400, detail=f"Column {col!r} not found.")
     history = read_ops(settings, name)  # before the LLM is paid for, not after
     session = session_for(req.llm_purpose, settings, override)
     try:
         new_df, stats = await enrich_dataset(
-            df, title_col=req.title_column, description_col=req.description_column,
-            keyword_col=req.keyword_column, mode=req.mode, min_keywords=req.min_keywords,
+            df, fields=fields, target_field=target_field,
             complete=session.complete, limit=req.limit,
         )
     except BudgetExceeded as exc:
@@ -172,7 +226,7 @@ async def enrich(
     refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     save_dataset(settings, target, new_df)
     write_ops(settings, target, [*history, {
-        "op": "enrich", "mode": req.mode, "source": name,
+        "op": "enrich", "field": target_field, "source": name,
         "enriched": stats["enriched"], "usage": session.usage.as_dict()}])
     return {**stats, "target": target, "usage": session.usage.as_dict()}
 
