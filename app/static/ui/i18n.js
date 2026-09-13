@@ -230,7 +230,8 @@ const I18n = (() => {
         preflight that simulates the classification API's data preparation to show the
         <em>effective</em> training set before you train.`,
       "refine.upload.h": "Upload dataset",
-      "refine.file": `CSV file <span class="muted">(semicolon-separated, UTF-8; stored as-is)</span>`,
+      "refine.file": `CSV file <span class="muted">(semicolon-separated, UTF-8; .csv.gz
+        accepted; stored as-is)</span>`,
       "refine.name": `Name <span class="muted">(optional — filename if empty)</span>`,
       "refine.upload.btn": "Upload",
       "refine.datasets.h": "Datasets", "refine.empty": "None yet — upload one above.",
@@ -759,8 +760,8 @@ const I18n = (() => {
         einen Training-Preflight, der die Datenaufbereitung der Klassifikations-API simuliert und
         die <em>effektive</em> Trainingsmenge vor dem Training zeigt.`,
       "refine.upload.h": "Datensatz hochladen",
-      "refine.file": `CSV-Datei <span class="muted">(semikolongetrennt, UTF-8; wird unverändert
-        gespeichert)</span>`,
+      "refine.file": `CSV-Datei <span class="muted">(semikolongetrennt, UTF-8; auch .csv.gz;
+        wird unverändert gespeichert)</span>`,
       "refine.name": `Name <span class="muted">(optional — sonst Dateiname)</span>`,
       "refine.upload.btn": "Hochladen",
       "refine.datasets.h": "Datensätze", "refine.empty": "Noch keine — lade oben einen hoch.",

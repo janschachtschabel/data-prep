@@ -191,3 +191,41 @@ def test_every_column_kind_the_profile_returns_has_a_translation(make_client):
         key = f'"js.tables.kind.{kind}"'
         assert key in en_block, f"{key} missing English"
         assert key in de_block, f"{key} missing German"
+
+
+def test_the_upload_dialogs_match_what_each_endpoint_accepts(make_client):
+    """A file dialog that hides a format the endpoint reads is a silent refusal: the
+    file simply is not in the list, and nothing says why.
+
+    `/refine/datasets/import` reads CSV, JSON and JSONL, plain or gzipped
+    (`app.tabular.SUPPORTED_READ`), and both the Refine and the Tables panel post
+    there — but Refine filtered its dialog to `.csv`, so the `.csv.gz` a 130 MB
+    export arrives in could not be picked.
+
+    References are the opposite case and must stay narrow: `ingest_reference` parses
+    with `pd.read_csv(BytesIO(...))`, which does not inflate gzip, so offering `.gz`
+    there would promise what the server answers 400 to.
+    """
+    html = make_client(auth_key="secret-1").get("/ui/").text
+
+    def accept_of(input_id: str) -> str:
+        tag = re.search(rf'<input id="{input_id}"[^>]*>', html)
+        assert tag, f"no input {input_id} in the markup"
+        return re.search(r'accept="([^"]*)"', tag.group()).group(1)
+
+    assert ".gz" in accept_of("refine-file"), "the refine dialog hides gzipped exports"
+    assert ".gz" in accept_of("tables-file"), "the tables dialog took .gz all along"
+    assert ".gz" not in accept_of("ref-file"), "references cannot inflate gzip"
+
+
+def test_the_refine_upload_label_names_gzip_in_both_languages(make_client):
+    """The dialog accepting `.csv.gz` is half the answer; a label that says "CSV file"
+    still tells the reader not to try one."""
+    js = make_client(auth_key="secret-1").get("/ui/i18n.js").text
+    en_block = js.split("en: {", 1)[1].split("de: {", 1)[0]
+    de_block = js.split("de: {", 1)[1]
+
+    for language, block in (("en", en_block), ("de", de_block)):
+        label = re.search(r'"refine\.file":\s*`([^`]*)`', block)
+        assert label, f"refine.file missing from the {language} table"
+        assert ".gz" in label.group(1), f"refine.file ({language}) does not mention gzip"

@@ -536,7 +536,7 @@
           <h3 data-i18n="refine.upload.h">Upload dataset</h3>
           <form id="refine-upload-form">
             <label for="refine-file" data-i18n="refine.file">CSV file <span class="muted">(semicolon-separated, UTF-8; stored as-is)</span></label>
-            <input id="refine-file" type="file" accept=".csv,text/csv" required>
+            <input id="refine-file" type="file" accept=".csv,.gz,text/csv,application/gzip" required>
             <label for="refine-name" data-i18n="refine.name">Name <span class="muted">(optional — filename if empty)</span></label>
             <input id="refine-name" type="text" maxlength="100">
             <button type="submit" id="refine-upload-btn" data-i18n="refine.upload.btn">Upload</button>
