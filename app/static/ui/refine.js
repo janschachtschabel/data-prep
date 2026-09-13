@@ -24,6 +24,37 @@
     };
   }
 
+  // What each dataset actually contains, so the column fields can offer facts
+  // instead of the WLO defaults every file is assumed to follow.
+  const columnsByDataset = new Map();
+
+  function offerColumns(datasetName) {
+    const columns = columnsByDataset.get(datasetName) || [];
+    // The label field takes one value, so the native datalist fits it exactly.
+    $("#refine-col-options").replaceChildren(
+      ...columns.map((col) => new Option(col, col)));
+    // The text field takes a comma-separated list, which a datalist cannot serve:
+    // each column becomes a button that appends itself to what is already there.
+    const chips = $("#refine-col-chips");
+    chips.replaceChildren();
+    for (const col of columns) {
+      const chip = document.createElement("button");
+      chip.type = "button";            // inside a form: must not submit it
+      chip.className = "ghost";
+      chip.textContent = col;
+      chip.addEventListener("click", () => appendTextColumn(col));
+      chips.appendChild(chip);
+    }
+  }
+
+  function appendTextColumn(column) {
+    const field = $("#refine-text-cols");
+    const present = field.value.split(",").map((part) => part.trim()).filter(Boolean);
+    if (!present.includes(column)) present.push(column);
+    field.value = present.join(", ");
+    field.focus();                     // the caret lands where the change happened
+  }
+
   async function refreshDatasets(selectName) {
     const select = $("#refine-dataset");
     const previous = selectName || select.value;
@@ -37,6 +68,7 @@
       $("#refine-empty").hidden = res.datasets.length > 0;
       for (const ds of res.datasets) {
         select.add(new Option(ds.name, ds.name));
+        columnsByDataset.set(ds.name, ds.columns);
         list.appendChild(datasetRow(ds));
         combineSources.appendChild(combineCheckbox(ds));
       }
@@ -44,6 +76,7 @@
         select.value = previous;
       }
       loadOps(select.value);
+      offerColumns(select.value);
     } catch (err) {
       showError(err.message || I18n.t("js.err.datasets"));
     }
@@ -245,7 +278,10 @@
     });
   }
 
-  $("#refine-dataset").addEventListener("change", (ev) => loadOps(ev.target.value));
+  $("#refine-dataset").addEventListener("change", (ev) => {
+    loadOps(ev.target.value);
+    offerColumns(ev.target.value);
+  });
   $("#refine-filter-preview").addEventListener("click", () => runFilter(false));
   $("#refine-filter-apply").addEventListener("click", () => runFilter(true));
 

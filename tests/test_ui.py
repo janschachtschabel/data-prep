@@ -229,3 +229,39 @@ def test_the_refine_upload_label_names_gzip_in_both_languages(make_client):
         label = re.search(r'"refine\.file":\s*`([^`]*)`', block)
         assert label, f"refine.file missing from the {language} table"
         assert ".gz" in label.group(1), f"refine.file ({language}) does not mention gzip"
+
+
+def test_the_refine_form_offers_the_datasets_own_columns(make_client):
+    """Typing `properties.cclom:general_description` from memory is how a column name
+    gets a typo, and the API already knows the real ones (`/refine/datasets` returns
+    them per dataset). api_v3 offers them in its pickers; this form left both fields as
+    free text with a static placeholder of the WLO defaults, which is a guess about the
+    file rather than a fact from it.
+
+    The label column is single-valued, so a datalist fits it exactly. The text-column
+    field is a comma-separated list, which a datalist cannot serve — it gets the
+    columns as clickable chips instead, and the container has to be in the markup.
+    """
+    html = make_client(auth_key="secret-1").get("/ui/").text
+
+    assert 'id="refine-col-options"' in html, "no datalist for the dataset's columns"
+    label_input = re.search(r'<input id="refine-label-col"[^>]*>', html).group()
+    assert 'list="refine-col-options"' in label_input, f"label column not wired: {label_input}"
+    assert 'id="refine-col-chips"' in html, "no place for the text-column chips"
+
+
+def test_the_label_filter_shows_an_example(make_client):
+    """A substring filter with an empty box does not say what a substring of WHAT looks
+    like. api_v3 fills the same field with an example; this one was blank."""
+    html = make_client(auth_key="secret-1").get("/ui/").text
+    js = make_client(auth_key="secret-1").get("/ui/i18n.js").text
+
+    field = re.search(r'<input id="refine-label-filter"[^>]*>', html).group()
+    assert "data-i18n-placeholder" in field, f"no placeholder key on the field: {field}"
+
+    en_block = js.split("en: {", 1)[1].split("de: {", 1)[0]
+    de_block = js.split("de: {", 1)[1]
+    for language, block in (("en", en_block), ("de", de_block)):
+        placeholder = re.search(r'"refine\.labelfilter\.ph":\s*"([^"]*)"', block)
+        assert placeholder, f"refine.labelfilter.ph missing from the {language} table"
+        assert "discipline" in placeholder.group(1), "the example should show a real prefix"

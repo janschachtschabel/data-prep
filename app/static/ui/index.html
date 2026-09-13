@@ -561,15 +561,20 @@
           <label for="refine-text-cols" data-i18n="refine.textcols">Text columns <span class="muted">(comma-separated; blank = WLO defaults)</span></label>
           <input id="refine-text-cols" type="text" maxlength="500"
                  placeholder="properties.cclom:title, properties.cclom:general_description, properties.cclom:general_keyword">
+          <!-- Filled from the selected dataset: a comma-separated field cannot use a
+               datalist, so its columns are offered as buttons that append one each. -->
+          <div id="refine-col-chips" class="presets" aria-live="polite"></div>
+          <datalist id="refine-col-options"></datalist>
           <div class="row">
             <div>
               <label for="refine-label-col" data-i18n="refine.labelcol">Label column</label>
               <input id="refine-label-col" type="text" maxlength="100"
-                     placeholder="properties.ccm:taxonid">
+                     list="refine-col-options" placeholder="properties.ccm:taxonid">
             </div>
             <div>
               <label for="refine-label-filter" data-i18n="refine.labelfilter">Label filter <span class="muted">(substring)</span></label>
-              <input id="refine-label-filter" type="text" maxlength="200">
+              <input id="refine-label-filter" type="text" maxlength="200"
+                     data-i18n-placeholder="refine.labelfilter.ph">
             </div>
             <div>
               <label for="refine-min-samples" data-i18n="refine.minsamples">Min samples <span class="muted">(preflight; blank = auto)</span></label>
