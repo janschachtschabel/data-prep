@@ -71,7 +71,7 @@ async def import_reference(
     # The meta file is what makes a reference set exist (listing, detail).
     refuse_existing(_paths(settings, safe)[1].exists(), "Reference set", safe, overwrite)
     try:
-        # Parsing plus the per-cell PII scrub of a 20 MB upload is CPU work;
+        # Parsing plus the per-cell PII scrub of an upload this size is CPU work;
         # inline it would block every other request on the single loop.
         df, meta = await asyncio.to_thread(
             ingest_reference,

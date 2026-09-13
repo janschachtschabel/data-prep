@@ -44,7 +44,12 @@ class Settings(BaseSettings):
     auth_key: str | None = None
 
     # --- Limits ---
-    max_upload_mb: int = 20
+    # Bounds the COMPRESSED upload, and the exports this app is pointed at are large:
+    # the WLO full export is ~130 MB gzipped (~1.4 GB plain), which a 20 MB cap refused
+    # with a 413 before the format mattered. Raise the memory the process may use along
+    # with it — a gzip this size inflates about tenfold while it parses. A public
+    # instance should lower it: DATAPREP_MAX_UPLOAD_MB is the one number to change.
+    max_upload_mb: int = 500
 
     # --- Guarded URL fetch (the ONE deliberate deviation from api_v3's
     # no-URL-fetch rule, see design doc): https-only + host allowlist + cap ---

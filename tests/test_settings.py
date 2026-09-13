@@ -89,3 +89,20 @@ def test_the_example_placeholder_is_refused_as_a_key(monkeypatch):
     monkeypatch.setenv("DATAPREP_AUTH_KEY", "change-me")
     with pytest.raises(ValidationError, match="placeholder"):
         Settings()
+
+
+def test_the_upload_cap_carries_a_real_export_and_stays_adjustable(monkeypatch):
+    """The cap bounds the COMPRESSED upload, and the exports this app is pointed at
+    are large: the WLO full export is ~130 MB gzipped (~1.4 GB plain). A 20 MB
+    default refused those with a 413 before the format mattered at all.
+
+    It stays one number an operator can lower — a public instance should — so this
+    pins both halves: the default a local run gets, and the override that changes it.
+    """
+    from app.settings import Settings
+
+    monkeypatch.delenv("DATAPREP_MAX_UPLOAD_MB", raising=False)
+    assert Settings().max_upload_mb == 500
+
+    monkeypatch.setenv("DATAPREP_MAX_UPLOAD_MB", "25")
+    assert Settings().max_upload_mb == 25

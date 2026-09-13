@@ -150,7 +150,9 @@ it. Past five million rows the join is refused rather than attempted.
   candidate.
 - Request bodies are capped at `max_upload_mb` (uploads stream against it,
   JSON bodies are refused by `Content-Length`), gzipped uploads at ten times
-  that once inflated.
+  that once inflated. The default is **500 MB compressed**, sized for a full WLO
+  export (~130 MB gzipped, ~1.4 GB parsed); the process needs memory to match, and
+  an instance reachable by others should lower it.
 - No pickle. Secrets only from env, never logged, never in `config.yaml`.
 - Uploads are PII-scrubbed on import (references) or handled by an explicit PII
   filter (refine). User-supplied names go through `security.safe_name`.

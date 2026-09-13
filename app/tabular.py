@@ -44,9 +44,11 @@ _EXTENSIONS = {
 _PEEK = 4096
 
 # Ceiling on what a gzip payload may inflate to. The upload cap bounds the
-# COMPRESSED size only, and gzip reaches 1000:1 on repetitive input, so a
-# 20 MB upload of zeros would otherwise inflate to ~20 GB inside the single
-# worker. Callers that know the upload cap pass a multiple of it instead.
+# COMPRESSED size only, and gzip reaches 1000:1 on repetitive input, so an upload
+# of zeros at the cap would otherwise inflate a thousandfold inside the single
+# worker. Callers that know the upload cap pass a multiple of it instead — the
+# multiple has to stay above what real data does (a WLO export inflates ~11x),
+# so it is the bomb it stops, not the export.
 DEFAULT_MAX_DECOMPRESSED = 256 * 1024 * 1024
 
 

@@ -3,6 +3,18 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — imports the size of a real export (2026-09-13)
+
+### Changed
+
+- **The upload cap is 500 MB, not 20.** It bounds the COMPRESSED size, and the exports
+  this app exists to refine are far past 20 MB: the WLO full export is ~130 MB gzipped
+  (~1.4 GB parsed), so it was refused with a 413 before its format was ever read. The
+  cap is still one number an operator lowers — `DATAPREP_MAX_UPLOAD_MB` — and an
+  instance others can reach should. The ten-fold inflation ceiling is unchanged and
+  still derived from it: real exports inflate about elevenfold, a bomb a thousandfold,
+  so it is the bomb it stops. Give the process memory to match the cap you set.
+
 ## [Unreleased] — duplicate names (2026-09-11)
 
 A check for problems with reused names found seven, all reproduced against
