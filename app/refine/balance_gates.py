@@ -1,0 +1,139 @@
+"""Asking the model for one label's rows, and gating what it answers.
+
+Separate from ``balance.py`` because this is the part that talks to the model and
+decides what counts as a row; the other module reads the frame, plans, and
+assembles the result. Both are needed for a run, but they change for different
+reasons — a new gate here, a new statistic there.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Awaitable, Callable
+
+from pydantic import BaseModel
+
+from ..pii import scrub
+from .balance_prompt import BalanceBatch, BalanceItem, build_balance_prompt, output_budget
+from .fields import TextField, read_values, write_values
+
+# The injected model call. Keyword arguments carry the per-batch output budget.
+Complete = Callable[..., Awaitable[BaseModel]]
+
+# After the planned batches, this many more attempts per label to replace what the
+# gates rejected. Without a cap a model that keeps repeating itself would be paid
+# for indefinitely; with one, the shortfall is reported instead.
+EXTRA_BATCHES = 2
+
+
+class _Rejected(Exception):  # noqa: N818 - a verdict, not an error condition
+    """A generated item that does not become a row, and why.
+
+    Its own class: rejections used to travel as LookupError, and KeyError is one —
+    a genuine bug inside a gate was counted as a discarded item.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def fingerprint(cells: list[str]) -> str:
+    """Identity of a row for the duplicate gate — over NORMALISED cells, so "a,b"
+    stored by an import and "a, b" written by the generator are the same list."""
+    return "\n".join(cells).casefold()
+
+
+def pick_examples(positions: list[int], cells: list[list[str]], k: int) -> list[int]:
+    """Up to ``k`` of ``positions``, richest first and without repeated rows.
+
+    Longest combined text first: a one-word title teaches the model nothing about
+    what a full entry of this label looks like.
+    """
+    chosen: dict[str, int] = {}
+    for position in sorted(positions, key=lambda p: sum(map(len, cells[p])), reverse=True):
+        chosen.setdefault(fingerprint(cells[position]), position)
+        if len(chosen) == k:
+            break
+    return list(chosen.values())
+
+
+def _min_chars(examples: list[dict], fields: list[TextField]) -> list[int]:
+    """Per field, the shortest acceptable single value: half the shortest example.
+
+    Fields have no common length — a title is not a description — so the bar comes
+    from what this label's own rows look like. List fields are gated by
+    ``min_values`` instead.
+    """
+    floors = []
+    for field in fields:
+        lengths = [len(row[field.column]) for row in examples if row.get(field.column)]
+        floors.append(0 if field.separator or not lengths else min(lengths) // 2)
+    return floors
+
+
+def _accept(item: BalanceItem, fields: list[TextField], seen: set[str],
+            min_chars: list[int]) -> list[str]:
+    """The generated cells, or :class:`_Rejected` with the reason.
+
+    Completeness first — every field must carry its ``min_values``, the dataset's
+    own definition of a gap — then length, then repetition. Each cell is scrubbed
+    WHOLE before it is split: split first, "+49 30 1234567" is three harmless
+    numbers.
+    """
+    values = []
+    for index, field in enumerate(fields):
+        raw = item.values[index] if index < len(item.values) else ""
+        parts = read_values(scrub(raw)[0], field)
+        if len(parts) < field.min_values:
+            raise _Rejected("discarded_incomplete")
+        values.append(parts)
+    cells = [write_values(parts, field) for parts, field in zip(values, fields, strict=True)]
+    if any(len(cell) < floor for cell, floor in zip(cells, min_chars, strict=True)):
+        raise _Rejected("discarded_short")
+    key = fingerprint(cells)
+    if key in seen:
+        raise _Rejected("discarded_duplicate")
+    seen.add(key)
+    return cells
+
+
+async def generate_for_label(
+    label: str,
+    examples: list[dict],
+    *,
+    fields: list[TextField],
+    wanted: int,
+    avoid: list[str],
+    seen: set[str],
+    batch_size: int,
+    complete: Complete,
+) -> tuple[list[list[str]], dict]:
+    """Ask for ``wanted`` accepted items, retrying the shortfall within the budget.
+
+    Returns the accepted cells and a count per rejection reason. ``avoid`` and
+    ``seen`` are extended with what is accepted, so later batches — and later labels
+    — do not repeat it.
+    """
+    accepted: list[list[str]] = []
+    counters = {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0}
+    floors = _min_chars(examples, fields)
+    attempts = math.ceil(wanted / batch_size) + EXTRA_BATCHES
+
+    while len(accepted) < wanted and attempts:
+        attempts -= 1
+        n = min(wanted - len(accepted), batch_size)
+        prompt = build_balance_prompt(label, examples, fields, n=n, avoid_titles=avoid)
+        batch = await complete(prompt, BalanceBatch,
+                               max_output_tokens=output_budget(examples, fields, n))
+        for item in batch.items:  # type: ignore[attr-defined]
+            if len(accepted) >= wanted:
+                break
+            try:
+                cells = _accept(item, fields, seen, floors)
+            except _Rejected as rejection:
+                counters[rejection.reason] += 1
+                continue
+            accepted.append(cells)
+            avoid.append(cells[0])
+    return accepted, counters

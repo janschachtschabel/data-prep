@@ -86,7 +86,7 @@ def test_a_preview_costs_nothing_and_says_what_the_run_would_do(make_client, mon
     plan = r.json()
     assert plan["rows_to_add"] == 3
     assert plan["per_label"]["Physik"] == {
-        "support": 1, "deficit": 3, "batches": 1, "synthetic_share": 0.75}
+        "support": 1, "deficit": 3, "planned": 3, "batches": 1, "synthetic_share": 0.75}
 
 
 def test_the_run_writes_a_new_dataset_and_leaves_the_source_alone(make_client, monkeypatch):

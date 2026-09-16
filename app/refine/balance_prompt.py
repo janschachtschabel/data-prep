@@ -40,6 +40,10 @@ class BalanceBatch(BaseModel):
 # and a handful of those would cost more per batch than the generation itself.
 _EXAMPLE_CHARS = 400
 
+# The avoid block: the most recent titles, each cut to a title's length.
+_AVOID_COUNT = 15
+_AVOID_CHARS = 120
+
 _BALANCE_PROMPT = """Kontext: Ein Katalog für BILDUNGSINHALTE (Lernmaterialien für \
 Unterricht und Selbstlernen). Jeder Eintrag beschreibt EIN konkretes Lernmaterial, \
 das zu "{label}" gehört.
@@ -59,6 +63,39 @@ Regeln:
 - KEINE Personennamen, E-Mail-Adressen, Telefonnummern, URLs, Anbieter- oder \
 Institutionsnamen.
 Antworte NUR mit JSON: {{"items": [{{"values": [{value_slots}]}}]}}"""
+
+
+def _avoid_block(titles: list[str]) -> str:
+    """The titles to avoid, as ONE line.
+
+    Whitespace is collapsed because a line break inside a title would otherwise write
+    a new line — possibly an instruction — into the prompt. Blanks and repeats carry
+    nothing, and a missing cell is not a title.
+    """
+    cleaned: list[str] = []
+    known: set[str] = set()
+    for title in titles:
+        if not isinstance(title, str):
+            continue
+        text = " ".join(title.split())[:_AVOID_CHARS]
+        if text and text.casefold() not in known:
+            known.add(text.casefold())
+            cleaned.append(text)
+    return "; ".join(cleaned[-_AVOID_COUNT:]) or "—"
+
+
+def output_budget(examples: list[dict], fields: list[TextField], n: int) -> int:
+    """Output tokens for a batch of ``n`` entries shaped like ``examples``.
+
+    The run worker's formula (``runs.py``), sized from the longest example instead of
+    a configured corridor. The client default of 2,000 tokens — reasoning included —
+    truncates a batch of ten entries with descriptions.
+    """
+    chars = max(
+        (sum(len(str(row.get(f.column) or "")) for f in fields) for row in examples),
+        default=0,
+    )
+    return min(16000, 500 + n * max(300, chars // 2))
 
 
 def _field_line(index: int, field: TextField) -> str:
@@ -86,22 +123,20 @@ def build_balance_prompt(
     ``avoid_titles`` are values of the FIRST field already present or produced — the
     block that keeps a batch from collapsing into variants of one item.
     """
-    if not examples:
+    rendered: list[str] = []
+    for row in examples:
+        cells = [write_values(read_values(row.get(f.column), f), f)[:_EXAMPLE_CHARS]
+                 for f in fields]
+        if any(cells):  # a row with no text is an example of nothing
+            rendered.append(json.dumps(cells, ensure_ascii=False))
+    if not rendered:
         raise ValueError(f"Label {label!r} has no examples to generate from.")
 
-    rendered = "\n".join(
-        json.dumps(
-            [write_values(read_values(row.get(f.column), f), f)[:_EXAMPLE_CHARS]
-             for f in fields],
-            ensure_ascii=False,
-        )
-        for row in examples
-    )
     return _BALANCE_PROMPT.format(
         label=label,
         field_lines="\n".join(_field_line(i, f) for i, f in enumerate(fields, start=1)),
-        examples=rendered,
+        examples="\n".join(rendered),
         n=n,
-        avoid="; ".join(avoid_titles[-15:]) or "—",
+        avoid=_avoid_block(avoid_titles),
         value_slots=", ".join('"..."' for _ in fields),
     )
