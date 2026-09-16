@@ -349,3 +349,34 @@ def test_a_strict_answer_breaking_the_schema_is_an_llm_error_without_the_output(
 
     assert not isinstance(caught.value, ValueError)
     assert secret not in str(caught.value)
+
+
+def test_a_missing_endpoint_is_a_configuration_error(tmp_path):
+    """Nothing upstream was reached, so callers answer 503 — which they only do for
+    LlmConfigError."""
+    from app.llm import LlmConfigError, session_for
+    from app.settings import Settings
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("", encoding="utf-8")
+
+    # seeds and bulk always get a default endpoint; any other purpose has none.
+    with pytest.raises(LlmConfigError):
+        session_for("nonexistent", Settings(config_file=cfg))
+
+
+def test_the_call_profile_needs_no_session_and_no_endpoint(tmp_path):
+    """The balance preview states a worst case before anything is paid: a strict
+    endpoint parses in one call, the JSON-object path may take two, and an unknown
+    purpose is counted as two rather than refused."""
+    from app.llm import call_profile
+    from app.settings import Settings
+
+    budget = tmp_path / "budget.yaml"
+    budget.write_text("budgets:\n  max_llm_calls: 77\n", encoding="utf-8")
+    json_path = tmp_path / "json.yaml"
+    json_path.write_text("llm:\n  bulk:\n    model: gpt-4o-mini\n", encoding="utf-8")
+
+    assert call_profile("bulk", Settings(config_file=budget)) == (1, 77)   # gpt-5 default
+    assert call_profile("bulk", Settings(config_file=json_path))[0] == 2
+    assert call_profile("nonexistent", Settings(config_file=budget)) == (2, 77)

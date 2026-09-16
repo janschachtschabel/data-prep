@@ -219,3 +219,187 @@ def test_a_field_the_domain_refuses_is_a_validation_error_not_a_crash(make_clien
             "fields": [{"column": TITLE}, bad], "label_column": LABEL,
             "target_per_label": 4, "dry_run": True})
         assert r.status_code == 422, (bad, r.status_code, r.text)
+
+
+# ------------------------------------------------------- review remediation ----
+
+
+def _refuse_sessions(monkeypatch):
+    import app.routes.refine_balance as route
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("no LLM session may be opened here")
+
+    monkeypatch.setattr(route, "session_for", refuse)
+
+
+def test_the_preview_states_the_worst_case_calls_and_the_budget(make_client, monkeypatch):
+    """The review's run was previewed at 1,500 calls and made 2,100 (#12). The preview
+    now names the worst case — retries included, `limit` applied — next to the
+    per-request budget, still without opening a session (D2)."""
+    client = make_client()
+    _import(client, _unbalanced())
+    _refuse_sessions(monkeypatch)
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 25,
+        "limit": 30, "dry_run": True})
+
+    assert r.status_code == 200, r.text
+    plan = r.json()
+    assert plan["rows_to_add"] == 30                 # 21 + 24 needed, 30 allowed
+    assert plan["max_calls"] >= plan["max_batches"] >= plan["batches"]
+    assert plan["call_budget"] > 0
+
+
+def test_the_preview_runs_off_the_event_loop(make_client, monkeypatch):
+    """Planning reads every row; on a real export that is not free (review #8)."""
+    import asyncio
+
+    import app.routes.refine_balance as route
+
+    where: dict[str, bool] = {}
+    real = route.plan_balance
+
+    def probe(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            where["on_loop"] = True
+        except RuntimeError:
+            where["on_loop"] = False
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(route, "plan_balance", probe)
+    client = make_client()
+    _import(client, _unbalanced())
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "dry_run": True})
+
+    assert r.status_code == 200, r.text
+    assert where == {"on_loop": False}
+
+
+def test_balancing_never_writes_into_its_own_source(make_client, monkeypatch):
+    """After a run the UI selects the result; a second click then sent the result as
+    both source and target, which the store treats as working in place (#13, D4)."""
+    client = make_client()
+    _import(client, _unbalanced())
+    _refuse_sessions(monkeypatch)
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "target": "quelle"})
+
+    assert r.status_code == 400
+    assert "new dataset" in r.json()["detail"]
+    source = client.get("/refine/quelle/rows?limit=50", headers=HEADERS).json()
+    assert len(source["rows"]) == 5
+
+
+def test_a_run_that_could_exceed_the_call_budget_is_refused_before_it_pays(
+        make_client, monkeypatch):
+    """A run that hits the cap mid-way is lost whole; one that cannot fit is refused
+    up front, while it has cost nothing (D2)."""
+    import app.routes.refine_balance as route
+    from app.config import Budgets
+
+    client = make_client()
+    _import(client, _unbalanced())
+    _refuse_sessions(monkeypatch)
+    monkeypatch.setattr(route, "call_profile", lambda *_a, **_k: (1, 3))
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 40, "target": "out"})
+
+    assert r.status_code == 400
+    assert "budget" in r.json()["detail"]
+    assert Budgets().max_llm_calls > 3   # the stub, not the default, is what refused
+
+
+def test_an_unconfigured_llm_purpose_is_503_not_a_crash(make_client, monkeypatch):
+    """`session_for` ran outside the error mapping, so a missing endpoint was a 500."""
+    import app.routes.refine_balance as route
+    from app.llm import LlmConfigError
+
+    client = make_client()
+    _import(client, _unbalanced())
+
+    def unconfigured(*_args, **_kwargs):
+        raise LlmConfigError("No LLM endpoint configured for purpose 'bulk'.")
+
+    monkeypatch.setattr(route, "session_for", unconfigured)
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "target": "out"})
+
+    assert r.status_code == 503
+
+
+def test_a_bug_in_the_engine_is_not_reported_as_a_bad_request(make_client, monkeypatch):
+    """Only the foreign-provenance refusal is the caller's to fix. Every other
+    ValueError — pydantic's ValidationError is one — became a 400 carrying whatever
+    the exception said (#11)."""
+    import app.routes.refine_balance as route
+
+    client = make_client()
+    _import(client, _unbalanced())
+    _use(_mock_session([["A", "B", "c, d, e"]], monkeypatch), monkeypatch)
+    client = client.__class__(client.app, raise_server_exceptions=False)
+
+    async def broken(*_args, **_kwargs):
+        raise ValueError("internal detail that is nobody's business")
+
+    monkeypatch.setattr(route, "balance_dataset", broken)
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "target": "out"})
+
+    assert r.status_code == 500
+    assert "nobody's business" not in r.text
+
+
+def test_fields_that_would_be_misused_are_refused(make_client):
+    """The label column as a text field, a provenance column as a text field, or one
+    column twice — each makes the engine write where it must not (#25)."""
+    client = make_client()
+    _import(client, _unbalanced())
+
+    for fields in ([*FIELDS, {"column": LABEL}],
+                   [*FIELDS, {"column": "generated_for"}],
+                   [*FIELDS, {"column": TITLE}]):
+        r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+            "fields": fields, "label_column": LABEL, "target_per_label": 4, "dry_run": True})
+        assert r.status_code == 422, (fields[-1], r.status_code, r.text)
+
+
+def test_an_empty_label_separator_is_refused(make_client):
+    client = make_client()
+    _import(client, _unbalanced())
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "label_separator": "",
+        "target_per_label": 4, "dry_run": True})
+
+    assert r.status_code == 422
+
+
+def test_marks_from_an_earlier_balance_on_another_label_column_are_trusted(
+        make_client, monkeypatch):
+    """The dataset's own history says who wrote `generated_for` (#15, D5)."""
+    client = make_client()
+    df = _unbalanced()
+    df["stufe"] = ["Sek I"] * 4 + ["Sek II"]
+    _import(client, df)
+    _use(_mock_session([["Akustik", "Ein Text über Schall.", "a, b, c"],
+                        ["Thermo", "Ein Text über Wärme.", "d, e, f"],
+                        ["Statik", "Ein Text über Kräfte.", "g, h, i"]], monkeypatch),
+         monkeypatch)
+    first = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "target": "stufe1"})
+    assert first.status_code == 200, first.text
+
+    # A RUN, not a preview: only a run checks who wrote the marks.
+    second = client.post("/refine/stufe1/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": "stufe", "target_per_label": 2, "target": "stufe2"})
+
+    assert second.status_code == 200, second.text

@@ -8,19 +8,20 @@ Same ``/refine`` prefix, so the URLs sit next to the other refine operations.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, session_for
+from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, call_profile, session_for
 from ..refine.apply import replaces_another
-from ..refine.balance import balance_dataset, plan_balance
+from ..refine.balance import ForeignProvenanceError, balance_dataset, plan_balance
 from ..refine.store import read_ops, save_dataset, write_ops
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from .refine import DEFAULT_LABEL_COLUMN, load_or_404
-from .refine_prep import FieldSpec
+from .refine_prep import FieldSpec, check_fields
 
 router = APIRouter(prefix="/refine", tags=["Refine"], dependencies=[Depends(require_key)])
 
@@ -35,7 +36,7 @@ class BalanceRequest(BaseModel):
 
     fields: list[FieldSpec] = Field(min_length=1, max_length=50)
     label_column: str = Field(default=DEFAULT_LABEL_COLUMN, max_length=200)
-    label_separator: str = Field(default=",", max_length=3)
+    label_separator: str = Field(default=",", min_length=1, max_length=3)
     target_per_label: int = Field(ge=1, le=10_000)
     examples_per_label: int = Field(default=4, ge=1, le=20)
     batch_size: int = Field(default=10, ge=1, le=50)
@@ -44,6 +45,11 @@ class BalanceRequest(BaseModel):
     target: str = Field(default="", max_length=MAX_NAME_BYTES)
     overwrite: bool = False
     llm_purpose: Literal["seeds", "bulk"] = "bulk"
+
+    @model_validator(mode="after")
+    def _fields_are_usable(self) -> BalanceRequest:
+        check_fields(self.fields, label_column=self.label_column)
+        return self
 
 
 @router.post("/{name}/balance", summary="Generate the rows each short label is missing")
@@ -61,22 +67,42 @@ async def balance(
     plan_args = {"fields": fields, "label_column": req.label_column,
                  "target_per_label": req.target_per_label,
                  "label_separator": req.label_separator, "batch_size": req.batch_size}
-    if req.dry_run:
-        return plan_balance(df, **plan_args)  # type: ignore[arg-type]
 
-    target = safe_name(req.target, "target name")
-    # Before any LLM call: a refused write must not have been paid for.
-    refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
+    if not req.dry_run:
+        target = safe_name(req.target, "target name")
+        if target == name:
+            # The store treats target == source as working in place; balancing never
+            # does — the UI selects the result after a run, and a second click would
+            # otherwise have grown it unpreviewed.
+            raise HTTPException(status_code=400, detail=(
+                "Balancing writes a new dataset; choose a target name other than the source."))
+        # Before any LLM call: a refused write must not have been paid for.
+        refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
+
+    plan = await asyncio.to_thread(plan_balance, df, **plan_args, limit=req.limit)  # type: ignore[arg-type]
+    per_completion, budget = call_profile(req.llm_purpose, settings, override)
+    plan["max_calls"] = plan["max_batches"] * per_completion
+    plan["call_budget"] = budget
+    if req.dry_run:
+        return plan
+    if plan["max_calls"] > budget:
+        # A run that hits the cap mid-way is lost whole; this one has cost nothing yet.
+        raise HTTPException(status_code=400, detail=(
+            f"This run could need up to {plan['max_calls']} model calls; the call budget is "
+            f"{budget}. Lower the target or the limit and run it in several steps."))
+
     history = read_ops(settings, name)
-    session = session_for(req.llm_purpose, settings, override)
+    # The dataset's own history says whether 'generated_for' is this app's.
+    provenance_known = any(op.get("op") == "balance" for op in history)
     try:
+        session = session_for(req.llm_purpose, settings, override)
         new_df, stats = await balance_dataset(
             df, **plan_args, complete=session.complete,  # type: ignore[arg-type]
             examples_per_label=req.examples_per_label, limit=req.limit,
+            provenance_known=provenance_known,
         )
-    except ValueError as exc:
-        # A foreign 'generated_for' column: the caller can rename it, so this is a
-        # bad request, not a crash.
+    except ForeignProvenanceError as exc:
+        # The caller can rename their column; nothing else from the engine is theirs to fix.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc

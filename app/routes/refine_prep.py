@@ -24,6 +24,7 @@ from ..refine.enrich import enrich_dataset
 from ..refine.fields import TextField
 from ..refine.label_audit import audit_predictions
 from ..refine.prep import balance_report, holdout_split
+from ..refine.provenance import MARK_COLUMNS
 from ..refine.store import dataset_path, read_ops, save_dataset, write_ops
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
@@ -98,6 +99,21 @@ class FieldSpec(BaseModel):
                          min_values=self.min_values, guidance=self.guidance)
 
 
+def check_fields(specs: list[FieldSpec], *, label_column: str | None = None) -> None:
+    """Refuse fields an engine would misuse: a column named twice would be filled
+    twice, a provenance column would have its marks overwritten by generated text,
+    and the label column must not be rewritten as if it were text."""
+    columns = [spec.column for spec in specs]
+    repeated = sorted({c for c in columns if columns.count(c) > 1})
+    if repeated:
+        raise ValueError(f"Field {repeated[0]!r} is named more than once.")
+    reserved = [c for c in columns if c in MARK_COLUMNS]
+    if reserved:
+        raise ValueError(f"{reserved[0]!r} is where this app marks rows; it cannot be a text field.")
+    if label_column is not None and label_column in columns:
+        raise ValueError(f"The label column {label_column!r} cannot also be a text field.")
+
+
 class EnrichRequest(BaseModel):
     """Either shape: ``fields`` + ``target_field``, or the original ``mode`` with the
     three WLO columns. The old one keeps working — it was the only shape until now,
@@ -117,9 +133,19 @@ class EnrichRequest(BaseModel):
     keyword_column: str = "properties.cclom:general_keyword"
     min_keywords: int = Field(default=3, ge=1, le=20)
 
+    @model_validator(mode="after")
+    def _fields_are_usable(self) -> EnrichRequest:
+        if self.fields:
+            check_fields(self.fields)
+        return self
+
     def resolve(self) -> tuple[list[TextField], str]:
         """The fields to work on and the one to fill, from whichever shape arrived."""
         if self.fields and self.target_field:
+            if self.target_field not in {spec.column for spec in self.fields}:
+                raise ValueError(
+                    f"target_field {self.target_field!r} is not among the fields."
+                )
             return [spec.to_field() for spec in self.fields], self.target_field
         if self.mode is None:
             raise ValueError(
@@ -215,8 +241,8 @@ async def enrich(
         if col not in df.columns:
             raise HTTPException(status_code=400, detail=f"Column {col!r} not found.")
     history = read_ops(settings, name)  # before the LLM is paid for, not after
-    session = session_for(req.llm_purpose, settings, override)
     try:
+        session = session_for(req.llm_purpose, settings, override)
         new_df, stats = await enrich_dataset(
             df, fields=fields, target_field=target_field,
             complete=session.complete, limit=req.limit,

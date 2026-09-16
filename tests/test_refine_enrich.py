@@ -345,3 +345,48 @@ def test_the_prompt_names_the_field_and_its_shape_even_without_guidance():
     assert KEYW in prompts[0]
     assert "4" in prompts[0]
     assert '";"' in prompts[0] or "';'" in prompts[0]
+
+
+def test_a_target_field_that_is_not_among_the_fields_is_a_bad_request(make_client):
+    """The engine refuses it with a ValueError the route did not map — a 500 (#10)."""
+    client = make_client()
+    _import(client, pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, KEYW]))
+
+    r = client.post("/refine/curated/enrich", headers=HEADERS, json={
+        "fields": [{"column": TITLE}, {"column": DESC}], "target_field": KEYW,
+        "target": "out"})
+
+    assert r.status_code == 400
+    assert KEYW in r.json()["detail"]
+
+
+def test_enrichment_refuses_fields_it_would_misuse(make_client):
+    """`enriched_fields` as a text field would have its provenance overwritten by
+    generated text; a column named twice would be filled twice (#25)."""
+    client = make_client()
+    _import(client, pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, KEYW]))
+
+    for fields in ([{"column": TITLE}, {"column": "enriched_fields"}],
+                   [{"column": TITLE}, {"column": TITLE}]):
+        r = client.post("/refine/curated/enrich", headers=HEADERS, json={
+            "fields": fields, "target_field": TITLE, "target": "out"})
+        assert r.status_code == 422, (fields, r.status_code, r.text)
+
+
+def test_an_unconfigured_purpose_is_503_for_enrichment_too(make_client, monkeypatch):
+    import app.routes.refine_prep as refine_route
+    from app.llm import LlmConfigError
+
+    client = make_client()
+    _import(client, pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, KEYW]))
+
+    def unconfigured(*_args, **_kwargs):
+        raise LlmConfigError("No LLM endpoint configured for purpose 'bulk'.")
+
+    monkeypatch.setattr(refine_route, "session_for", unconfigured)
+
+    r = client.post("/refine/curated/enrich", headers=HEADERS, json={
+        "mode": "keywords", "title_column": TITLE, "description_column": DESC,
+        "keyword_column": KEYW, "target": "out"})
+
+    assert r.status_code == 503

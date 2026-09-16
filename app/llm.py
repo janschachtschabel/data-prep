@@ -77,13 +77,32 @@ def session_for(
     cfg = load_config(settings.config_file)
     endpoint = cfg.llm.get(purpose)
     if endpoint is None:
-        raise LlmError(f"No LLM endpoint configured for purpose {purpose!r} in config.yaml.")
+        # A configuration problem: nothing upstream was reached (-> 503, not 502).
+        raise LlmConfigError(f"No LLM endpoint configured for purpose {purpose!r} in config.yaml.")
     endpoint, api_key = apply_override(endpoint, override)
     endpoint = endpoint.model_copy(update={"base_url": resolve_base_url(
         endpoint.provider, endpoint.base_url, cfg.b_api_base_url)})
     return LlmSession(
         endpoint=endpoint, budgets=cfg.budgets, ledger=process_ledger(cfg.budgets), api_key=api_key
     )
+
+
+def call_profile(
+    purpose: str, settings: Settings, override: LlmOverride | None = None
+) -> tuple[int, int]:
+    """(model calls one completion may take, the per-request call budget).
+
+    For a cost preview, without opening a session: a strict endpoint parses in one
+    call, the JSON-object path may retry once. An unconfigured purpose is not an
+    error HERE — the preview still has something true to say — so it counts
+    conservatively as two; opening a session for it fails as it always has.
+    """
+    cfg = load_config(settings.config_file)
+    endpoint = cfg.llm.get(purpose)
+    if endpoint is None:
+        return 2, cfg.budgets.max_llm_calls
+    endpoint, _ = apply_override(endpoint, override)
+    return (1 if capabilities(endpoint.model)["strict"] else 2), cfg.budgets.max_llm_calls
 
 
 def _summary(exc: ValidationError) -> str:
