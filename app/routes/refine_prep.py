@@ -68,8 +68,9 @@ class LabelAuditRequest(AnalyzeRequest):
 
 
 # What the two shipped prompts asked for, kept verbatim as the guidance of the WLO
-# fields: a request in the old shape has to produce the same text as before, and the
-# only place that survived the generalisation is here.
+# fields: a request in the old shape keeps the instructions it always carried; the
+# prompt around them now names fields by column. The UI pre-fills the same sentences
+# (static/ui/refine-fields.js), so a change here belongs there too.
 _WLO_KEYWORD_GUIDANCE = (
     "Nenne 3-6 treffende deutsche Schlagwörter (kommagetrennt), die den Inhalt "
     "erschließen."

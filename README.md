@@ -176,30 +176,38 @@ it. Past five million rows the join is refused rather than attempted.
 ## Honest-evaluation discipline
 
 Synthetic and mined rows are **training-only**. Evaluate on a curated,
-### Balancing an uneven dataset
-
-Real exports are uneven: a few hundred rows for one subject, three for another.
-`POST /refine/{name}/balance` generates the rows each short label is missing --
-from that label's own richest rows, so the new text resembles the material the
-label actually describes. Send `dry_run: true` first: it answers with the per-label
-deficit, the number of model calls, and the share of each label that would end up
-synthetic, without opening an LLM session.
-
-Two properties make the result safe to train on:
-
-- Every generated row carries `generated_for`, and `POST /refine/{name}/split`
-  keeps those rows on the **training** side. A holdout containing generated text
-  measures how well a model learned the generator.
-- A label whose rows carry no text at all is skipped rather than invented from its
-  name, and reported under `skipped_without_examples`.
-
-Read the synthetic share before trusting a number: a label lifted from 3 rows to
-100 is a label the model has still barely seen, and its per-label F1 says more
-about the generator than about the data.
-
 text-disjoint holdout (the Prepare tool produces one). Internal metrics on mixed
 synthetic+curated data overstate real quality — every audit report ships with
 this warning.
+
+### Balancing an uneven dataset
+
+Real exports are uneven: a few hundred rows for one subject, three for another.
+`POST /refine/{name}/balance` generates the rows each short label is missing —
+from that label's own real rows, so the new text resembles the material the label
+actually describes. Send `dry_run: true` first. Without opening an LLM session it
+answers with, per label, the deficit, what this run would generate, and the share
+that would end up synthetic, plus the worst-case number of model calls next to
+the call budget. A run that could exceed the budget is refused before its first
+call. `limit` caps one run; running again on the result continues where it
+stopped.
+
+Three properties make the result safe to train on:
+
+- Every generated row carries `generated_for`, and every real row shown to the
+  generator as an example carries `example_for`. `POST /refine/{name}/split`
+  keeps both on the **training** side: a holdout containing generated text — or
+  the real text it paraphrases — measures how well a model learned the generator.
+  `combine` carries both marks along.
+- A label whose real rows carry no text is skipped rather than invented from its
+  name or from earlier generated rows, and reported under
+  `skipped_without_examples`.
+- The result is always a new dataset; a source is never balanced in place.
+
+Read the synthetic share before trusting a number: a label lifted from 3 rows to
+100 is a label the model has still barely seen, and its per-label F1 says more
+about the generator than about the data. api_v3's own cross-validation during
+training does not know these marks — judge a model on the holdout.
 
 ## Layout
 

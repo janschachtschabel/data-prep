@@ -3,6 +3,43 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — review of the balancing work (2026-09-16)
+
+An independent review found 9 major, 11 minor and 6 small issues in the work
+below; 24 were reproduced before fixing. One commit per concern, test-first. The
+design decisions are recorded in `docs/plan-2026-09-13-balance-enrichment.md`.
+
+### Fixed
+
+- **Holdout leakage through examples.** Real rows shown to the generator are
+  marked `example_for` and stay in training, like generated rows; the split
+  reports the real rows it kept back, masks by position, and treats a missing
+  cell as no mark.
+- **Enrichment overwrote curated content.** A short list is extended instead of
+  replaced (this was older than the generalisation), an empty answer changes
+  nothing, and `min_values > 1` on a single-valued field is refused — it made
+  every description a gap. The prompt now states which field to fill.
+- **A second click ran unpreviewed into the result.** A run is sent only for the
+  request its preview was made for; balancing never writes in place.
+- **The preview understated the cost.** It applies `limit`, names the worst case
+  including retries next to the call budget, and a run that cannot fit is refused
+  before it pays.
+- **Balancing:** verbatim copies of imported rows passed the duplicate gate;
+  re-runs imitated earlier generated rows; phone numbers survived the PII scrub
+  when a separator split them; one-character values were accepted; a batch of
+  ten could be truncated at the default output limit; labels the limit cut were
+  reported as complete; 5.5 s of pandas work ran on the event loop (now 0.13 s,
+  off the loop).
+- **Errors:** a truncated or schema-breaking model answer was a 500 or a 400
+  quoting the output; an unconfigured purpose, an empty separator and an unknown
+  `target_field` were 500s; any engine ValueError was reported as the caller's
+  fault. Fields may not name the label column, a mark column, or one column
+  twice.
+- **Combine** dropped the marks of generated rows.
+- **UI:** a 422 read "[object Object]"; the panel sent requests without text
+  columns; the WLO keyword column now starts as a list; busy labels survive a
+  language switch; the five-column preview scrolls in its own box on a phone.
+
 ## [Unreleased] — enrichment for any field, and a minimum per label (2026-09-13)
 
 ### Added
@@ -22,7 +59,8 @@ Keep a Changelog; the project is pre-1.0 and versions track milestones.
 - **Enrichment works on any text field, not only title/description/keywords.** A
   request names the fields and which one to fill; a field that holds several values
   says so with its separator, so a semicolon-separated author list needs no new code.
-  Requests in the old `mode` shape keep working and produce the same prompts. The
+  Requests in the old `mode` shape keep working: they fill the same columns with
+  the same instructions, inside a prompt that now names its fields by column. The
   provenance mark in `enriched_fields` is now the column name, which is what
   identifies a field once the three roles are gone.
 

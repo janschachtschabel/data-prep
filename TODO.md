@@ -26,6 +26,22 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Review der Balancing-Arbeit abgearbeitet (2026-09-16).** Unabhaengiges Review:
+9 schwer, 11 mittel, 6 klein, 24 per Skript reproduziert. Acht Designentscheidungen
+(D1-D8) vorab im Plan festgehalten, dann je Anliegen ein Commit, test-first.
+Kernpunkte: echte Beispielzeilen (`example_for`) bleiben beim Split im Training;
+Anreichern ergaenzt kurze Listen statt sie zu ersetzen (das war aelter als die
+Verallgemeinerung); ein Lauf wird nur fuer die Anfrage gesendet, fuer die die
+Vorschau gilt, und schreibt nie in die Quelle; die Vorschau nennt den Worst Case
+samt Budget, ein Lauf, der es sprengen koennte, wird vorab abgelehnt; die Engine
+liest den Rahmen spaltenweise ausserhalb der Event-Loop (5,5 s -> 0,13 s bei
+30k x 20). Neu: `refine/provenance.py`, `refine/balance_gates.py`,
+`routes/field_spec.py`, `tests/ui/balance_panel.check.js` (echte UI-Skripte in
+node, von pytest getrieben). **687 Tests gruen, ruff/mypy sauber.** Live geprueft:
+ein echter Lauf (1 Aufruf, 670 Tokens), anschliessender Split ohne markierte
+Zeile im Holdout. Offen: Push nach GitHub und Container-Neubau (nicht beauftragt);
+Teilergebnisse bei Budget-Abbruch speichern (Folgearbeit, siehe Plan D2).
+
 **Feldgenerische Anreicherung + Mindestanzahl je Label (2026-09-13).** Plan:
 `docs/plan-2026-09-13-balance-enrichment.md` (10 Aufgaben, 3 Phasen), test-first
 umgesetzt, je ein Commit. **638 Tests gruen, ruff/mypy sauber.**
@@ -35,8 +51,9 @@ umgesetzt, je ein Commit. **638 Tests gruen, ruff/mypy sauber.**
   `guidance`). `enrich_dataset` arbeitet damit auf **jedem** Textfeld statt auf
   title/description/keywords; ein Prompt aus den uebrigen Feldern plus der
   `guidance` des Zielfelds ersetzt die zwei fest verdrahteten Prompts. Die alte
-  Request-Form (`mode`) funktioniert weiter und erzeugt denselben Text — ein Test
-  schickt beide Formen und vergleicht die entstandenen Datensaetze.
+  Request-Form (`mode`) funktioniert weiter und fuellt dieselben Spalten mit
+  denselben Hinweisen (der Prompt drumherum nennt Felder jetzt beim Spaltennamen)
+  — ein Test schickt beide Formen und vergleicht die entstandenen Datensaetze.
 - **Phase 2 — Balancing.** `refine/balance.py` + `refine/balance_prompt.py`:
   `plan_balance` (rein, die Vorschau: Defizit, Batches, Synthetik-Anteil je Label),
   `balance_dataset` (erzeugt aus den eigenen Beispielen des Labels, zwei

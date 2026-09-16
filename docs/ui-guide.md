@@ -107,8 +107,10 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   Ergebnis. Diese Angaben gelten für beide KI-Werkzeuge darunter.
 - **Enrich** — füllt Lücken in **einem frei gewählten Feld** per KI: Schlagwörter,
   Beschreibung, oder jede andere Textspalte deines Datensatzes. Vorhandene Inhalte
-  werden **nie** überschrieben; jede Ergänzung wird in einer Spalte
-  `enriched_fields` vermerkt.
+  werden **nie** überschrieben: eine zu kurze Liste wird ergänzt, nicht ersetzt,
+  und eine leere Antwort ändert nichts. Jede Ergänzung wird in einer Spalte
+  `enriched_fields` vermerkt. Für die WLO-Spalten sind Schlagwörter schon als
+  Liste (mindestens 3) und mit einem passenden Hinweis vorbelegt.
 - **Mindestanzahl Zeilen je Label** — für ungleich verteilte Datensätze: ein Fach
   mit 300 Zeilen und eines mit 3 sind für das Training nicht dasselbe. Gib die
   Mindestzahl an (z. B. 100) und klicke **Vorschau**: sie zeigt je Label, wie viele
@@ -116,16 +118,28 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   Labels danach erzeugt wäre** — ohne dass etwas aufgerufen wird. Erst danach lässt
   sich **Erzeugen** klicken.
 
-  Drei Dinge, die du dazu wissen solltest:
-  - Erzeugt wird **aus den eigenen Beispielen des Labels**. Ein Label, dessen
-    Zeilen gar keinen Text enthalten, wird übersprungen statt erfunden.
-  - Jede erzeugte Zeile bekommt die Spalte `generated_for`. Beim Aufteilen in
-    train/holdout bleiben diese Zeilen **im Training** — sonst würde man das Modell
-    an Texten prüfen, die aus denselben Beispielen geschrieben wurden, an denen es
-    gelernt hat, und die Auswertung sähe besser aus, als sie ist.
+  Die Vorschau nennt außerdem, wie viele Modellaufrufe der Lauf **höchstens**
+  brauchen kann, und das Budget daneben. Passt das nicht, wird der Lauf gar nicht
+  erst gestartet. „Höchstens erzeugen" begrenzt einen Lauf; ein weiterer Lauf auf
+  dem Ergebnis macht weiter, wo der erste aufgehört hat. Ändert sich nach der
+  Vorschau etwas am Formular — Datensatz, Felder, Zahlen —, muss sie neu berechnet
+  werden, bevor erzeugt wird. Das Ergebnis ist immer ein neuer Datensatz.
+
+  Vier Dinge, die du dazu wissen solltest:
+  - Erzeugt wird **aus den echten Zeilen des Labels**. Ein Label, dessen Zeilen
+    gar keinen Text enthalten, wird übersprungen statt erfunden — auch dann, wenn
+    es nur schon erzeugte Zeilen hat.
+  - Jede erzeugte Zeile bekommt die Spalte `generated_for`, jede echte Zeile, die
+    als Beispiel diente, die Spalte `example_for`. Beim Aufteilen in train/holdout
+    bleiben beide **im Training** — sonst würde man das Modell an Texten prüfen,
+    die aus denselben Beispielen geschrieben wurden, an denen es gelernt hat.
+    Hat ein Label nur wenige echte Zeilen, kann es deshalb im Holdout ganz fehlen;
+    die Split-Statistik sagt das (`real_kept_in_train`).
   - Ein von 3 auf 100 gehobenes Label hat das Modell trotzdem kaum gesehen. Die
     Prozentzahl in der Vorschau sagt dir, wie sehr ein späterer F1-Wert für dieses
     Label über die Generierung spricht statt über deine Daten.
+  - Die Kreuzvalidierung von api_v3 beim Training kennt diese Markierungen nicht
+    und bezieht erzeugte Zeilen mit ein. Beurteile ein Modell am Holdout.
 
 ## Beliebige Tabellen bearbeiten (Reiter „Tabellen")
 
