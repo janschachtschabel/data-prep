@@ -93,6 +93,40 @@ def test_combine_fills_unmapped_targets_with_empty():
     assert combined.iloc[0][TITLE] == "nur Titel"
 
 
+def test_combine_keeps_the_marks_that_say_where_a_row_came_from():
+    """A balanced dataset combined with another lost `generated_for` — the mapping
+    only carries target columns — and its generated rows could then reach a holdout
+    as if they were real (review #14)."""
+    from app.refine.combine import combine_datasets
+
+    balanced = pd.DataFrame(
+        [["Echt", "Text eins.", "k", "disc/1", "", "disc/1"],
+         ["Erzeugt", "Text zwei.", "k", "disc/1", "disc/1", ""]],
+        columns=[TITLE, DESC, KEYW, LABEL, "generated_for", "example_for"])
+    plain = pd.DataFrame([["Anders", "Text drei.", "k", "disc/2"]], columns=TARGET)
+    identity = {c: c for c in TARGET}
+    sources = [{"df": balanced, "label": "a", "mapping": identity},
+               {"df": plain, "label": "b", "mapping": identity}]
+
+    combined, _ = combine_datasets(sources, TARGET, text_columns=[TITLE, DESC, KEYW])
+
+    by_title = combined.set_index(TITLE)
+    assert by_title.loc["Erzeugt", "generated_for"] == "disc/1"
+    assert by_title.loc["Echt", "example_for"] == "disc/1"
+    assert by_title.loc["Anders", "generated_for"] == ""
+
+
+def test_combine_adds_no_mark_columns_when_no_source_has_any():
+    from app.refine.combine import combine_datasets
+
+    df = pd.DataFrame([["T", "D", "K", "disc/1"]], columns=TARGET)
+    sources = [{"df": df, "label": "a", "mapping": {c: c for c in TARGET}}]
+
+    combined, _ = combine_datasets(sources, TARGET, text_columns=[TITLE, DESC, KEYW])
+
+    assert list(combined.columns) == [*TARGET, "source"]
+
+
 def test_combine_rejects_text_columns_outside_target():
     """text_columns must be a subset of target_columns; otherwise the combined
     frame lacks that column and the old code raised a bare KeyError -> HTTP 500.

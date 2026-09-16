@@ -9,6 +9,7 @@ import re
 import pandas as pd
 
 from .analyze import _combined_texts
+from .provenance import MARK_COLUMNS, is_marked
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -64,6 +65,10 @@ def combine_datasets(
     missing = [c for c in text_columns if c not in target_columns]
     if missing:
         raise ValueError(f"text_columns must be within target_columns; not in target: {', '.join(missing)}")
+    # The provenance marks travel along even though nobody maps them: a generated row
+    # that loses its mark here reaches a later holdout as if it were real.
+    carried = [mark for mark in MARK_COLUMNS
+               if mark not in target_columns and any(mark in s["df"].columns for s in sources)]
     frames: list[pd.DataFrame] = []
     per_source: list[dict] = []
     for src in sources:
@@ -72,11 +77,14 @@ def combine_datasets(
         for target in target_columns:
             source_col = mapping.get(target)
             out[target] = df[source_col].fillna("") if source_col and source_col in df.columns else ""
+        for mark in carried:
+            out[mark] = [c if is_marked(c) else "" for c in df[mark]] if mark in df.columns else ""
         out["source"] = label
         frames.append(out)
         per_source.append({"label": label, "rows_in": int(len(df))})
 
-    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=[*target_columns, "source"])
+    combined = (pd.concat(frames, ignore_index=True) if frames
+                else pd.DataFrame(columns=[*target_columns, *carried, "source"]))
     if not combined.empty:
         key = pd.Series(_combined_texts(combined, text_columns), index=combined.index)
         combined = combined[~key.duplicated(keep="first")].reset_index(drop=True)
