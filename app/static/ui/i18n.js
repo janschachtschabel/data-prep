@@ -297,10 +297,11 @@ const I18n = (() => {
       "refine.fields.guidance.ph": "one line, e.g. what this field should contain",
       "refine.balance.legend": "Minimum rows per label (LLM)",
       "refine.balance.help": `Generates the rows each under-represented label is missing,
-         from that label&rsquo;s own examples. Preview first: it says how many rows and how
+         from that label&rsquo;s own real rows. Preview first: it says how many rows and how
          many model calls that would be, without calling anything. Generated rows are
-         marked and are kept out of the holdout when you split, so the evaluation stays
-         honest.`,
+         marked, and so are the real rows shown as examples; both stay out of the holdout
+         when you split here. api_v3&rsquo;s own cross-validation during training still
+         includes generated rows — judge a model by the holdout.`,
       "refine.balance.target": "Rows per label (minimum)",
       "refine.balance.limit": "Generate at most",
       "refine.balance.name": "New dataset name",
@@ -408,12 +409,21 @@ const I18n = (() => {
       "js.refine.enriching": "Enriching…",
       "js.refine.enriched": "Enriched {enriched} of {rows} rows ({field}) → \"{target}\". LLM calls: {calls}, tokens: {tokens}.",
       "js.refine.thLabel": "label", "js.refine.thSupport": "support",
-      "js.refine.thDeficit": "missing", "js.refine.thSynthetic": "would be generated",
+      "js.refine.thDeficit": "missing", "js.refine.thPlanned": "this run",
+      "js.refine.thSynthetic": "synthetic afterwards",
+      "js.refine.needsTextColumns": "Choose the text columns first — the preview needs to know which fields to generate.",
+      "js.refine.balanceStale": "The preview no longer matches the form (dataset, fields or numbers changed). Run the preview again first.",
+      "js.refine.balanceCut.one": `The limit does not reach every label: one stays below the
+         target ({labels}). Another run on the result continues.`,
+      "js.refine.balanceCut.other": `The limit does not reach every label: {count} stay below
+         the target ({labels}). Another run on the result continues.`,
       "js.refine.enrichNeedsField": "Choose the field to fill (pick text columns above first).",
       "js.refine.balancePlan.one": `1 label is below {target}. To generate — rows: {rows},
-         model calls: {calls}. Preview only, nothing has been generated yet.`,
+         model calls: {calls}, at most {maxCalls} (budget: {budget}). Preview only, nothing
+         has been generated yet.`,
       "js.refine.balancePlan.other": `{count} labels are below {target}. To generate — rows:
-         {rows}, model calls: {calls}. Preview only, nothing has been generated yet.`,
+         {rows}, model calls: {calls}, at most {maxCalls} (budget: {budget}). Preview only,
+         nothing has been generated yet.`,
       "js.refine.balanceNothing": "Nothing to do — no label is below {target}.",
       "js.refine.balanceMore.one": "… and one more label below the target.",
       "js.refine.balanceMore.other": "… and {count} more labels below the target.",
@@ -868,10 +878,11 @@ const I18n = (() => {
       "refine.fields.guidance.ph": "eine Zeile, z. B. was in diesem Feld stehen soll",
       "refine.balance.legend": "Mindestanzahl Zeilen je Label (KI)",
       "refine.balance.help": `Erzeugt die Zeilen, die jedem unterbesetzten Label fehlen — aus
-         den eigenen Beispielen dieses Labels. Erst die Vorschau: sie nennt die Zahl der
-         Zeilen und der Modellaufrufe, ohne etwas aufzurufen. Erzeugte Zeilen werden
-         markiert und beim Split aus dem Holdout herausgehalten, damit die Auswertung
-         ehrlich bleibt.`,
+         den echten Zeilen dieses Labels. Erst die Vorschau: sie nennt die Zahl der Zeilen
+         und der Modellaufrufe, ohne etwas aufzurufen. Erzeugte Zeilen werden markiert,
+         ebenso die echten Zeilen, die als Beispiel dienten; beide bleiben beim Split hier
+         aus dem Holdout. Die Kreuzvalidierung von api_v3 beim Training bezieht erzeugte
+         Zeilen trotzdem ein — beurteile ein Modell am Holdout.`,
       "refine.balance.target": "Zeilen je Label (mindestens)",
       "refine.balance.limit": "Höchstens erzeugen",
       "refine.balance.name": "Name des neuen Datensatzes",
@@ -983,12 +994,21 @@ const I18n = (() => {
       "js.refine.enriching": "Reichere an…",
       "js.refine.enriched": "{enriched} von {rows} Zeilen angereichert ({field}) → „{target}“. LLM-Aufrufe: {calls}, Tokens: {tokens}.",
       "js.refine.thLabel": "Label", "js.refine.thSupport": "Belegung",
-      "js.refine.thDeficit": "fehlen", "js.refine.thSynthetic": "würden erzeugt",
+      "js.refine.thDeficit": "fehlen", "js.refine.thPlanned": "dieser Lauf",
+      "js.refine.thSynthetic": "danach synthetisch",
+      "js.refine.needsTextColumns": "Wähle zuerst die Textspalten — die Vorschau muss wissen, welche Felder erzeugt werden.",
+      "js.refine.balanceStale": "Die Vorschau passt nicht mehr zum Formular (Datensatz, Felder oder Zahlen geändert). Bitte zuerst neu berechnen.",
+      "js.refine.balanceCut.one": `Die Obergrenze reicht nicht für alle Label: eines bleibt
+         unter dem Ziel ({labels}). Ein weiterer Lauf auf dem Ergebnis setzt fort.`,
+      "js.refine.balanceCut.other": `Die Obergrenze reicht nicht für alle Label: {count} bleiben
+         unter dem Ziel ({labels}). Ein weiterer Lauf auf dem Ergebnis setzt fort.`,
       "js.refine.enrichNeedsField": "Wähle das zu füllende Feld (oben zuerst Textspalten auswählen).",
       "js.refine.balancePlan.one": `1 Label liegt unter {target}. Zu erzeugen — Zeilen:
-         {rows}, Modellaufrufe: {calls}. Nur Vorschau, es wurde noch nichts erzeugt.`,
+         {rows}, Modellaufrufe: {calls}, höchstens {maxCalls} (Budget: {budget}). Nur
+         Vorschau, es wurde noch nichts erzeugt.`,
       "js.refine.balancePlan.other": `{count} Label liegen unter {target}. Zu erzeugen —
-         Zeilen: {rows}, Modellaufrufe: {calls}. Nur Vorschau, es wurde noch nichts erzeugt.`,
+         Zeilen: {rows}, Modellaufrufe: {calls}, höchstens {maxCalls} (Budget: {budget}).
+         Nur Vorschau, es wurde noch nichts erzeugt.`,
       "js.refine.balanceNothing": "Nichts zu tun — kein Label liegt unter {target}.",
       "js.refine.balanceMore.one": "… und ein weiteres Label unter dem Ziel.",
       "js.refine.balanceMore.other": "… und {count} weitere Label unter dem Ziel.",
@@ -1159,17 +1179,22 @@ const I18n = (() => {
 
   /* A key given a `count` may carry `.one` / `.other` variants; the count picks one.
      Two forms is exactly what German and English need — a language with more (Polish,
-     Arabic) would need Intl.PluralRules here. Keys without variants are untouched. */
-  function pluralVariant(table, key, params) {
-    if (!params || params.count === undefined) return undefined;
-    const variant = key + (Number(params.count) === 1 ? ".one" : ".other");
-    return table[variant] !== undefined ? table[variant] : DICT.en[variant];
+     Arabic) would need Intl.PluralRules here. The current language is asked first,
+     plural before plain, and only then English: an English plural must not win over
+     a plain entry in the language on screen. */
+  function lookup(table, key, params) {
+    if (params && params.count !== undefined) {
+      const variant = table[key + (Number(params.count) === 1 ? ".one" : ".other")];
+      if (variant !== undefined) return variant;
+    }
+    return table[key];
   }
 
   function t(key, params) {
     const table = DICT[current()] || DICT.en;
-    let value = pluralVariant(table, key, params);
-    if (value === undefined) value = table[key] !== undefined ? table[key] : (DICT.en[key] !== undefined ? DICT.en[key] : key);
+    let value = lookup(table, key, params);
+    if (value === undefined) value = lookup(DICT.en, key, params);
+    if (value === undefined) value = key;
     if (params) value = value.replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined ? String(params[k]) : m));
     return value;
   }

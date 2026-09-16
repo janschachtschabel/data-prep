@@ -20,8 +20,24 @@ const RefineFields = (() => {
     return $("#refine-text-cols").value.split(",").map((s) => s.trim()).filter(Boolean);
   }
 
+  // What the WLO export's own columns hold, so its keyword column starts as the list
+  // it is. The hints are PROMPT text: they reach a German prompt whatever language
+  // the UI shows, so they are not translated. They repeat the guidance the enrich
+  // route gives requests in the old shape (routes/refine_prep.py).
+  const DEFAULTS = {
+    "properties.cclom:general_keyword": {
+      list: true, separator: ",", min: 3,
+      guidance: "Nenne 3-6 treffende deutsche Schlagwörter (kommagetrennt), die den Inhalt erschließen.",
+    },
+    "properties.cclom:general_description": {
+      list: false, separator: ",", min: 1,
+      guidance: "Schreibe eine sachliche Beschreibung (100-400 Zeichen), was dieses Material bietet.",
+    },
+  };
+  const BLANK = { list: false, separator: ",", min: 1, guidance: "" };
+
   function row(column) {
-    const saved = declared.get(column) || { list: false, separator: ",", min: 1, guidance: "" };
+    const saved = declared.get(column) || DEFAULTS[column] || BLANK;
     const wrap = document.createElement("div");
     wrap.className = "field-spec";
     wrap.dataset.column = column;
@@ -102,6 +118,7 @@ const RefineFields = (() => {
     const previous = picker.value;
     picker.replaceChildren(...columns.map((col) => new Option(col, col)));
     if (columns.includes(previous)) picker.value = previous;
+    invalidatePreview();   // the fields changed, or the dataset they came from did
   }
 
   /* What the API calls send: one entry per chosen column. A column not ticked as a
@@ -123,8 +140,30 @@ const RefineFields = (() => {
 
   /* ---- balancing: preview what it would cost, then generate ---- */
 
+  // The request the plan on screen was made for. The run button follows it, and a
+  // run is sent only for exactly that request: dataset, fields, label, target and
+  // limit can all change without an event this module sees — refine.js switches
+  // the dataset after every write — so the click compares against what would be
+  // sent NOW.
+  let armedFor = null;
+
+  function currentRequest() {
+    return JSON.stringify([$("#refine-dataset").value, balanceBody({})]);
+  }
+
+  function syncRunButton() {
+    $("#balance-run-btn").disabled = armedFor === null;
+  }
+
   function invalidatePreview() {
-    $("#balance-run-btn").disabled = true;
+    armedFor = null;
+    syncRunButton();
+  }
+
+  function hasFields() {
+    if (spec().length) return true;
+    Refine.showError(I18n.t("js.refine.needsTextColumns"));
+    return false;
   }
 
   function balanceBody(extra) {
@@ -145,6 +184,11 @@ const RefineFields = (() => {
     return new Intl.NumberFormat(I18n.current(), { style: "percent" }).format(share);
   }
 
+  // "100.000.000", not "100000000": a budget has to be readable at a glance.
+  function number(value) {
+    return new Intl.NumberFormat(I18n.current()).format(value);
+  }
+
   /* The preview is also the empty state: "nothing is short" has to be said, or an
      empty table reads as a failure. */
   function renderPlan(plan) {
@@ -153,10 +197,11 @@ const RefineFields = (() => {
     const short = Object.entries(plan.per_label).filter(([, e]) => e.deficit > 0);
     summary.textContent = plan.rows_to_add
       ? I18n.t("js.refine.balancePlan", {
-        count: plan.labels_below_target, rows: plan.rows_to_add,
-        calls: plan.batches, target: plan.target,
+        count: plan.labels_below_target, rows: number(plan.rows_to_add),
+        calls: number(plan.batches), maxCalls: number(plan.max_calls),
+        budget: number(plan.call_budget), target: number(plan.target_per_label),
       })
-      : I18n.t("js.refine.balanceNothing", { target: plan.target });
+      : I18n.t("js.refine.balanceNothing", { target: number(plan.target_per_label) });
     out.replaceChildren(summary);
 
     if (short.length) {
@@ -164,9 +209,11 @@ const RefineFields = (() => {
       const table = document.createElement("div");
       Refine.renderTable(table, [
         I18n.t("js.refine.thLabel"), I18n.t("js.refine.thSupport"),
-        I18n.t("js.refine.thDeficit"), I18n.t("js.refine.thSynthetic"),
+        I18n.t("js.refine.thDeficit"), I18n.t("js.refine.thPlanned"),
+        I18n.t("js.refine.thSynthetic"),
       ], short.slice(0, MAX_ROWS_SHOWN).map(([label, e]) =>
-        [label, e.support, e.deficit, percent(e.synthetic_share)]));
+        [label, number(e.support), number(e.deficit), number(e.planned),
+          percent(e.synthetic_share)]));
       out.appendChild(table);
       if (short.length > MAX_ROWS_SHOWN) {
         const more = document.createElement("p");
@@ -176,6 +223,7 @@ const RefineFields = (() => {
         out.appendChild(more);
       }
     }
+    note(out, "js.refine.balanceCut", plan.labels_cut_by_limit);
     if (plan.skipped_without_examples.length) {
       const skipped = document.createElement("p");
       skipped.className = "muted";
@@ -188,43 +236,66 @@ const RefineFields = (() => {
     out.hidden = false;
   }
 
-  async function withBusy(button, labelKey, work) {
-    const restore = button.textContent;
+  /* A muted line naming up to five labels, when there are any. */
+  function note(out, key, labels) {
+    if (!labels || !labels.length) return;
+    const line = document.createElement("p");
+    line.className = "muted";
+    line.textContent = I18n.t(key, { count: labels.length, labels: labels.slice(0, 5).join(", ") });
+    out.appendChild(line);
+  }
+
+  /* Busy while `work` runs. Afterwards the label comes from its key — a language
+     switch meanwhile would otherwise bring the old language back — and the
+     disabled state from `settle`, so a finished run cannot re-arm the run button. */
+  async function withBusy(button, busyKey, idleKey, settle, work) {
     button.disabled = true;
-    button.textContent = I18n.t(labelKey);
+    button.textContent = I18n.t(busyKey);
     try {
       await work();
     } finally {
-      button.disabled = false;
-      button.textContent = restore;
+      button.textContent = I18n.t(idleKey);
+      settle();
     }
   }
 
   $("#balance-preview-btn").addEventListener("click", () => {
     const button = $("#balance-preview-btn");
-    return withBusy(button, "js.refine.balancePreviewing", () =>
-      Refine.runOp("balance", balanceBody({ dry_run: true }), (plan) => {
+    invalidatePreview();
+    if (!hasFields()) return undefined;
+    const request = currentRequest();
+    return withBusy(button, "js.refine.balancePreviewing", "refine.balance.preview",
+      () => { button.disabled = false; },
+      () => Refine.runOp("balance", balanceBody({ dry_run: true }), (plan) => {
         renderPlan(plan);
-        // Only a preview may arm the run: the cost has to have been shown once.
-        $("#balance-run-btn").disabled = plan.rows_to_add === 0;
+        // Only a preview arms the run, and only for the request it was made for.
+        armedFor = plan.rows_to_add > 0 ? request : null;
+        syncRunButton();
       }, null));
   });
 
   $("#balance-run-btn").addEventListener("click", () => {
     const button = $("#balance-run-btn");
+    if (armedFor === null || armedFor !== currentRequest()) {
+      // No preview, or the form changed since: the cost has to be shown again first.
+      invalidatePreview();
+      Refine.showError(I18n.t("js.refine.balanceStale"));
+      return undefined;
+    }
     const target = $("#balance-name").value.trim();
     if (!target) { Refine.showError(I18n.t("js.refine.balanceNeedsName")); return undefined; }
-    return withBusy(button, "js.refine.balanceRunning", () =>
-      Refine.runOp("balance", balanceBody({ target }), async (res) => {
+    return withBusy(button, "js.refine.balanceRunning", "refine.balance.run", syncRunButton,
+      () => Refine.runOp("balance", balanceBody({ target }), async (res) => {
+        invalidatePreview();          // the plan described the source, not the result
         const out = $("#balance-result");
         const done = document.createElement("p");
         done.textContent = I18n.t("js.refine.balanced", {
-          count: res.rows_added, labels: res.labels_filled, target: res.target,
-          calls: res.usage.calls, tokens: res.usage.tokens_total,
+          count: res.rows_added, labels: number(res.labels_filled), target: res.target,
+          calls: number(res.usage.calls), tokens: number(res.usage.tokens_total),
         });
         out.replaceChildren(done);
+        note(out, "js.refine.balanceCut", res.labels_cut_by_limit);
         out.hidden = false;
-        invalidatePreview();          // the plan described the source, not the result
         await Refine.refreshDatasets(res.target);
       }, target));
   });

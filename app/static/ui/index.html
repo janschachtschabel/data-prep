@@ -728,10 +728,12 @@
           <fieldset>
             <legend data-i18n="refine.balance.legend">Minimum rows per label (LLM)</legend>
             <p class="muted" data-i18n="refine.balance.help">Generates the rows each
-               under-represented label is missing, from that label&rsquo;s own examples.
+               under-represented label is missing, from that label&rsquo;s own real rows.
                Preview first: it says how many rows and how many model calls that would
-               be, without calling anything. Generated rows are marked and are kept out
-               of the holdout when you split, so the evaluation stays honest.</p>
+               be, without calling anything. Generated rows are marked, and so are the real
+               rows shown as examples; both stay out of the holdout when you split here.
+               api_v3&rsquo;s own cross-validation during training still includes generated
+               rows — judge a model by the holdout.</p>
             <div class="row">
               <div>
                 <label for="balance-target" data-i18n="refine.balance.target">Rows per label (minimum)</label>

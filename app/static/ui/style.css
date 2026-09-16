@@ -133,7 +133,10 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea {
   width: 100%; padding: var(--s-2) var(--s-3);
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
 }
-fieldset { border: 1px solid var(--border); border-radius: var(--radius); margin: var(--s-3) 0; }
+/* min-width: 0 — a fieldset defaults to min-content, so a wide table inside one
+   widened the whole page on a phone instead of scrolling in its own box. */
+fieldset { border: 1px solid var(--border); border-radius: var(--radius); margin: var(--s-3) 0;
+           min-width: 0; }
 legend { font-weight: 600; padding: 0 var(--s-2); }
 .row { display: flex; gap: var(--s-4); flex-wrap: wrap; align-items: flex-start; }
 .row > div { flex: 1 1 200px; min-width: 0; }

@@ -176,7 +176,7 @@ const Refine = (() => {
     clearError();
     try {
       const res = await Api.postGuarded(`/refine/${encodeURIComponent(name)}/${path}`, body, shown);
-      render(res);
+      await render(res);  // an async render's failure belongs in the error box too
     } catch (err) {
       showError(err.message || I18n.t("js.refine.opFailed"));
     }

@@ -30,6 +30,18 @@ const Api = (() => {
     }
   }
 
+  /* FastAPI answers a validation failure with a LIST of {loc, msg}; handed to
+     Error as it was, it read "[object Object]". */
+  function describe(detail) {
+    if (Array.isArray(detail)) {
+      return detail.map((item) => {
+        const where = Array.isArray(item.loc) ? item.loc.filter((p) => p !== "body").join(".") : "";
+        return where ? `${where}: ${item.msg}` : String(item.msg || "");
+      }).join("; ");
+    }
+    return typeof detail === "string" ? detail : "";
+  }
+
   async function request(path, { method = "GET", json, form } = {}) {
     const headers = {};
     const key = getKey();
@@ -58,7 +70,7 @@ const Api = (() => {
     }
     if (!res.ok) {
       let detail = "";
-      try { detail = (await res.json()).detail; } catch { /* non-JSON error body */ }
+      try { detail = describe((await res.json()).detail); } catch { /* non-JSON error body */ }
       throw new ApiError(res.status, detail);
     }
     const type = res.headers.get("content-type") || "";
