@@ -86,6 +86,13 @@ def session_for(
     )
 
 
+def _summary(exc: ValidationError) -> str:
+    """Where and why the output broke the schema — never the offending value itself."""
+    return "; ".join(
+        f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:3]
+    )
+
+
 @dataclass
 class LlmSession:
     """One budgeted channel to one endpoint — typically one session per run."""
@@ -200,8 +207,18 @@ class LlmSession:
                 response_format=schema,
                 **params,
             )
-        except openai.APIError as exc:
+        except openai.LengthFinishReasonError as exc:
+            # Out of output tokens. Not an APIError, so it used to escape every
+            # handler as a 500 and take a whole paid run with it.
+            raise LlmError(
+                "Model answer was cut off at the output limit (finish_reason=length)."
+            ) from exc
+        except openai.OpenAIError as exc:  # APIError and the other finish-reason errors
             raise LlmError(f"LLM call failed: {exc.__class__.__name__}.") from exc
+        except ValidationError as exc:
+            # A ValueError to anyone catching broadly, and its message quotes the
+            # model's output; neither belongs in an HTTP answer.
+            raise LlmError(f"Model output did not match the schema: {_summary(exc)}") from exc
         self._record_tokens(response)
         parsed = response.choices[0].message.parsed
         if parsed is None:
@@ -229,9 +246,7 @@ class LlmSession:
             try:
                 return schema.model_validate_json(content)
             except ValidationError as exc:
-                last_error = "; ".join(
-                    f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()[:3]
-                )
+                last_error = _summary(exc)
                 if attempt == 1:
                     messages = [
                         *messages,

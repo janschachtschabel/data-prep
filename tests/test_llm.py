@@ -308,3 +308,44 @@ def test_the_llm_entry_point_still_exposes_what_callers_import():
                  "LlmSession", "SpendLedger", "Usage", "apply_override",
                  "process_ledger", "session_for"):
         assert hasattr(llm, name), name
+
+
+# ------------------------------------------------ strict-path failure mapping ----
+
+
+def test_a_truncated_strict_answer_is_an_llm_error(monkeypatch):
+    """The SDK raises LengthFinishReasonError when the output budget ran out. It is an
+    OpenAIError but not an APIError, so it escaped every handler as a 500 — and a
+    balancing run lost everything it had generated (review #11)."""
+    from app.llm import LlmError
+
+    truncated = _chat_response('{"items": ["Phys')
+    truncated["choices"][0]["finish_reason"] = "length"
+    transport, _ = _transport([truncated])
+    session = _session("gpt-5.4-nano", transport, monkeypatch)
+
+    with pytest.raises(LlmError, match="length|truncat"):
+        asyncio.run(session.complete("p", Items))
+
+
+def test_a_strict_answer_breaking_the_schema_is_an_llm_error_without_the_output(monkeypatch):
+    """A value over a length bound raised pydantic's ValidationError — a ValueError, so
+    the balance route answered 400 with the model's output in the message."""
+    from typing import Annotated
+
+    from pydantic import StringConstraints
+
+    from app.llm import LlmError
+
+    class Short(BaseModel):
+        items: list[Annotated[str, StringConstraints(max_length=5)]]
+
+    secret = "a value far longer than five characters"
+    transport, _ = _transport([_chat_response(json.dumps({"items": [secret]}))])
+    session = _session("gpt-5.4-nano", transport, monkeypatch)
+
+    with pytest.raises(LlmError) as caught:
+        asyncio.run(session.complete("p", Short))
+
+    assert not isinstance(caught.value, ValueError)
+    assert secret not in str(caught.value)
