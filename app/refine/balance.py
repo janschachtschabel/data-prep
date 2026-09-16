@@ -25,6 +25,7 @@ from ..pii import scrub
 from ..textnorm import split_labels
 from .balance_prompt import BalanceBatch, BalanceItem, build_balance_prompt
 from .fields import TextField, read_values, write_values
+from .provenance import GENERATED_FOR
 
 Complete = Callable[[str, type[BaseModel]], Awaitable[BaseModel]]
 
@@ -89,10 +90,6 @@ def plan_balance(
         "per_label": per_label,
     }
 
-
-# The provenance column. Read by ``holdout_split`` to keep generated text out of an
-# evaluation, and by the UI to show how much of a dataset is synthetic.
-GENERATED_FOR = "generated_for"
 
 # After the planned batches, this many more attempts to replace what the gates
 # rejected. Without a cap a model that keeps repeating itself would be paid for

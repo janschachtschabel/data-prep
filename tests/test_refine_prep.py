@@ -100,6 +100,82 @@ def test_a_dataset_without_the_provenance_column_splits_exactly_as_before():
     assert stats["generated_excluded"] == 0
 
 
+def test_a_row_the_generator_imitated_never_lands_in_the_holdout():
+    """Generated rows are paraphrases of the real rows shown to the generator. If
+    such an example sits in the holdout, its paraphrases sit in training, and the
+    holdout measures recall of text the model has effectively seen (review #2)."""
+    from app.refine.prep import holdout_split
+
+    df = _dataset()
+    df["generated_for"] = ""
+    df["example_for"] = ""
+    df.loc[df[LABEL] == "disc/A", "example_for"] = "disc/A"   # all 8 A rows were examples
+
+    train, holdout, stats = holdout_split(df, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert set(holdout["example_for"]) == {""}
+    assert (train["example_for"] != "").sum() == 8
+    assert stats["real_kept_in_train"] == 8
+    assert len(train) + len(holdout) == len(df)
+
+
+def test_a_real_row_sharing_text_with_a_generated_one_is_kept_and_reported():
+    """The whole text group stays in training to keep the split text-disjoint. That
+    costs the holdout a real row, and the stats have to say so (review #17)."""
+    from app.refine.prep import holdout_split
+
+    df = _dataset()
+    df["generated_for"] = ""
+    twin = df.iloc[[0]].copy()
+    twin["generated_for"] = twin[LABEL]
+    both = pd.concat([df, twin], ignore_index=True)
+
+    train, holdout, stats = holdout_split(both, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    text = both.iloc[0][TITLE]
+    assert text not in set(holdout[TITLE]), "the real twin must stay with its copy"
+    assert stats["real_kept_in_train"] == 1
+    assert stats["generated_excluded"] == 1
+
+
+def test_a_missing_mark_is_not_a_mark():
+    """pandas hands an in-memory caller NaN for a missing cell. `str(nan)` is "nan",
+    which is not blank — every real row was treated as generated and the holdout came
+    out empty (review #16)."""
+    from app.refine.prep import holdout_split
+
+    df = _dataset()
+    df["generated_for"] = pd.Series([float("nan")] * len(df), dtype=object)
+    df.loc[0, "generated_for"] = df.loc[0, LABEL]
+
+    train, holdout, stats = holdout_split(df, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert stats["generated_excluded"] == 1
+    assert len(holdout) > 0
+
+
+def test_the_split_does_not_depend_on_a_unique_index():
+    """The holdout was selected by index LABEL. With a repeated label, a generated row
+    sharing it with a holdout row went into the holdout too — while the stats still
+    said it had been excluded (review #17)."""
+    from app.refine.prep import holdout_split
+
+    df = _dataset()
+    df["generated_for"] = ""
+    generated = df.copy()
+    generated[TITLE] = [f"Erzeugt {i}" for i in range(len(generated))]
+    generated[DESC] = [f"Ein erzeugter Text nummer {i}" for i in range(len(generated))]
+    generated["generated_for"] = generated[LABEL]
+    both = pd.concat([df, generated])          # index 0..31 twice
+    assert not both.index.is_unique
+
+    train, holdout, stats = holdout_split(both, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert len(holdout) > 0
+    assert set(holdout["generated_for"]) == {""}
+    assert len(train) + len(holdout) == len(both)
+
+
 def test_balance_report_counts_and_recommends_min_samples():
     from app.refine.prep import balance_report
 
