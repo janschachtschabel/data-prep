@@ -13,7 +13,7 @@ import asyncio
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..apiv3 import PushError, predict_batch, push_csv
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, session_for
@@ -85,6 +85,13 @@ class FieldSpec(BaseModel):
     separator: str | None = Field(default=None, max_length=3)
     min_values: int = Field(default=1, ge=1, le=50)
     guidance: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def _is_a_field(self) -> FieldSpec:
+        # TextField owns the rule; asking it here turns its ValueError into a 422 at
+        # the boundary instead of a 500 wherever the spec is first used.
+        self.to_field()
+        return self
 
     def to_field(self) -> TextField:
         return TextField(column=self.column, separator=self.separator,

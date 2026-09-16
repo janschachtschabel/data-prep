@@ -205,3 +205,17 @@ def test_balance_needs_the_api_key(make_client):
     r = client.post("/refine/quelle/balance", json={
         "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "dry_run": True})
     assert r.status_code == 401
+
+
+def test_a_field_the_domain_refuses_is_a_validation_error_not_a_crash(make_client):
+    """An empty separator and a single value asked for several are refused by
+    `TextField`; at the HTTP boundary that has to be a 422 naming the field, not a
+    500 from deep inside the engine (review #6, #10)."""
+    client = make_client()
+    _import(client, _unbalanced())
+
+    for bad in ({"column": KEYW, "separator": ""}, {"column": DESC, "min_values": 2}):
+        r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+            "fields": [{"column": TITLE}, bad], "label_column": LABEL,
+            "target_per_label": 4, "dry_run": True})
+        assert r.status_code == 422, (bad, r.status_code, r.text)

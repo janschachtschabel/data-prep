@@ -9,7 +9,9 @@ single-valued field whose text happens to contain the separator.
 
 from __future__ import annotations
 
-from app.refine.fields import TextField, is_gap, read_values, write_values
+import pytest
+
+from app.refine.fields import TextField, is_gap, merge_values, read_values, write_values
 
 
 def test_a_single_valued_cell_is_one_value_even_with_a_comma_in_it():
@@ -70,3 +72,37 @@ def test_a_gap_is_fewer_values_than_the_field_asks_for():
     assert is_gap("Mathe, Algebra, Gleichung", keywords) is False
     assert is_gap("", description) is True
     assert is_gap("ein Satz", description) is False
+
+
+def test_an_empty_separator_is_refused_at_construction():
+    """`str.split("")` raises, so an empty separator would surface as a 500 the first
+    time a cell is read — far from the request that sent it (review #10)."""
+    with pytest.raises(ValueError, match="separator"):
+        TextField(column="keywords", separator="")
+
+
+def test_asking_a_single_value_for_several_is_refused():
+    """A single-valued cell holds at most one value, so `min_values=2` makes EVERY
+    cell a gap — and enrichment then overwrote every curated description in the
+    dataset (review #6)."""
+    with pytest.raises(ValueError, match="min_values"):
+        TextField(column="description", min_values=2)
+
+
+def test_a_space_separated_list_is_joined_with_single_spaces():
+    """The join adds one space after the separator for readability ("a, b"); for a
+    separator that IS whitespace that doubled it (review #24)."""
+    tags = TextField(column="tags", separator=" ")
+
+    assert write_values(["Optik", "Licht"], tags) == "Optik Licht"
+    assert read_values("Optik Licht", tags) == ["Optik", "Licht"]
+
+
+def test_merging_keeps_what_is_there_and_adds_only_what_is_new():
+    """Filling a list gap must not discard the curated values that made it a SHORT
+    list rather than an empty one; a new value that repeats one in a different case
+    is the same keyword (review #6)."""
+    assert merge_values(["Mathe", "Algebra"], ["algebra", "Geometrie", "Mathe"]) == [
+        "Mathe", "Algebra", "Geometrie"]
+    assert merge_values([], ["Optik"]) == ["Optik"]
+    assert merge_values(["Optik"], []) == ["Optik"]

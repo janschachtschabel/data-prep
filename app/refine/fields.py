@@ -30,6 +30,18 @@ class TextField:
     min_values: int = 1
     guidance: str = ""
 
+    def __post_init__(self) -> None:
+        # Refused here rather than where they would fail: an empty separator raises
+        # inside str.split on the first read, and a single value asked for several
+        # makes every cell a gap -- enrichment then overwrites every curated one.
+        if self.separator is not None and not self.separator:
+            raise ValueError(f"Field {self.column!r}: separator must not be empty.")
+        if self.separator is None and self.min_values > 1:
+            raise ValueError(
+                f"Field {self.column!r}: min_values > 1 needs a separator — a "
+                "single-valued cell holds at most one value."
+            )
+
 
 def read_values(cell: object, field: TextField) -> list[str]:
     """The values in ``cell``, stripped, without the empties an export leaves behind.
@@ -54,7 +66,26 @@ def write_values(values: list[str], field: TextField) -> str:
     cleaned = [value.strip() for value in values if value and value.strip()]
     if field.separator is None:
         return cleaned[0] if cleaned else ""
-    return f"{field.separator} ".join(cleaned)
+    # "a, b" reads better than "a,b"; for a separator that is itself whitespace the
+    # extra space would only double it.
+    joiner = field.separator if field.separator.isspace() else f"{field.separator} "
+    return joiner.join(cleaned)
+
+
+def merge_values(existing: list[str], new: list[str]) -> list[str]:
+    """``existing`` followed by whatever in ``new`` it does not already hold.
+
+    A list below its minimum is a SHORT list, not an empty one: the values that are
+    there were curated, so filling the gap adds to them rather than replacing them.
+    The comparison ignores case — "Algebra" and "algebra" are one keyword.
+    """
+    merged = list(existing)
+    known = {value.casefold() for value in existing}
+    for value in new:
+        if value.casefold() not in known:
+            merged.append(value)
+            known.add(value.casefold())
+    return merged
 
 
 def is_gap(cell: object, field: TextField) -> bool:
