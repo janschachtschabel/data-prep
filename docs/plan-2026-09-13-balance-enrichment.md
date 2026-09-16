@@ -357,3 +357,37 @@ already in that file cover both languages automatically.
 routes and tests; both keep their current behaviour for frames and requests that do
 not use the new parameters, and their existing tests stay in place unchanged as the
 proof.
+
+---
+
+# Review remediation (2026-09-16)
+
+An independent review of `dc4731b..cf5707e` reported 9 major, 11 minor and 6 small
+findings, 24 of them reproduced with scripts. All were checked against the source
+before this section was written. One is older than this work: the keyword
+enrichment has always REPLACED a short list rather than adding to it (see D3).
+
+## Design decisions the findings forced
+
+| # | Decision | Why | Rejected alternative |
+|---|---|---|---|
+| D1 | Real rows shown to the generator are marked `example_for` and stay on the training side of a split, like generated rows. | Paraphrases of a holdout row in the training data are leakage; for a label with ≤ 4 rows every real row is an example. | "Split first, then balance `_train`": correct, but depends on the user remembering an order. The mark holds in either order. |
+| D2 | The preview states `max_calls` (planned batches plus the retry allowance, `limit` applied, ×2 for endpoints without strict parsing). The run is refused before its first call when that exceeds the per-request call budget. | The review's run was previewed at 1,500 calls, made 2,100, hit the 2,000 cap and saved nothing. | Saving partial results on budget exhaustion. Useful, but a separate change (follow-up). |
+| D3 | A list field's gap is filled by MERGING: existing values first, new ones appended, deduplicated case-insensitively. An empty answer changes nothing and is not counted. | "Never overwrites curated content" was the documented promise, and the plan already said "merge". | Replacing, as before: it silently discards curated keywords. |
+| D4 | Balancing never writes in place: `target == source` is a 400. | The plan said so. The UI's re-armed button made a second, unpreviewed run into the source possible. | — |
+| D5 | A `generated_for` column counts as the app's own when the dataset's history contains a `balance` op, whatever label column that op used. | A second balance on another label column was refused with advice ("rename it") that would have made the split treat generated rows as real. | — |
+| D6 | A generated single-valued cell shorter than half the shortest example of that field (at least 3 characters) is discarded as `discarded_short`. | The plan named "too short" as a rejection reason; a one-character description was accepted. | A fixed corridor: fields have no common length. |
+| D7 | The output budget per batch follows the run worker's formula, sized from the longest example: `min(16000, 500 + n × max(300, chars // 2))`. | The default of 2,000 tokens truncates a batch of ten entries with descriptions. | — |
+| D8 | The enrichment prompt names the field to fill, whether it is a list, its separator and its minimum. The UI pre-fills the WLO keyword column as a list (`,`, 3) and the two WLO guidance texts. | The UI sent a prompt with no instruction at all, and stored only the first keyword. | — |
+
+## Commits
+
+1. **fields** — `TextField` rejects an empty separator and `min_values > 1` without one; a whitespace separator joins without doubling; `merge_values` for D3. (#6c, #10, #24)
+2. **provenance + split** — `refine/provenance.py` holds the mark columns and a NaN-safe test; `holdout_split` masks by position, keeps `example_for` rows in training (D1), and reports the real rows it kept there. (#2, #16, #17, #25)
+3. **balance engine** — seed fingerprints normalised (#1); examples and support from real rows only, the synthetic share counts earlier generated rows (#3); example rows marked (D1); `missing`/`labels_filled` correct under `limit`, and skipped labels listed (#4); PII scrubbed before the split (#5); the D6 length gate; a private rejection exception (#23); sanitised avoid list, no empty examples (#22); NaN-safe, with no dtype change on concat (#16); the output budget (D7); `max_calls` (D2); `target_per_label` as the stat key and the share in the result (#25); vectorised preparation (#8).
+4. **enrichment** — D3 merge, skip empty answers, D8 prompt. (#6a, #6b, #7)
+5. **llm** — every `OpenAIError` and a schema violation become `LlmError`. (#11)
+6. **routes** — balance: off the event loop (#8), D4, D2 preflight, only the provenance error maps to 400 (#11), fields may not name the label or mark columns or repeat (#25), separators non-empty (#10), D5. Enrich: `target_field` must be among the fields (#10); same field checks.
+7. **combine** — carries the mark columns through. (#14)
+8. **UI** — the run button stays disabled after a run, and programmatic changes disarm it (#9); render callbacks are awaited; no request without text columns, and a readable 422 (#18); D8 defaults; plural lookup order and a busy label that survives a language switch (#26).
+9. **docs** — README sentence repaired (#20); the legacy-shape claim made precise (#21); the help text says honestly that api_v3's own cross-validation still sees generated rows.
