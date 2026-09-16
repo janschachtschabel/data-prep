@@ -251,3 +251,97 @@ def test_a_request_with_neither_shape_is_refused(make_client, monkeypatch):
     r = client.post("/refine/curated/enrich", headers=HEADERS, json={"target": "out"})
     assert r.status_code == 400
     assert "fields" in r.json()["detail"]
+
+
+# -------------------------------------------------------- review remediation ----
+
+
+def test_a_short_list_keeps_its_curated_values_and_gains_new_ones():
+    """Two keywords below a minimum of three is a SHORT list, not an empty one. The
+    gap was filled by replacing it — 'Mathe, Algebra' became 'Optik' — although the
+    promise was never to overwrite curated content (review #6, D3)."""
+    from app.refine.enrich import enrich_dataset
+
+    df = pd.DataFrame([["Zahlen", "Rechnen lernen", "Mathe, Algebra"]],
+                      columns=[TITLE, DESC, KEYW])
+
+    async def more(prompt, schema):
+        return schema(values=["algebra", "Geometrie", "Zahlen"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=more))
+
+    assert new.iloc[0][KEYW] == "Mathe, Algebra, Geometrie, Zahlen"
+    assert stats["enriched"] == 1
+
+
+def test_the_model_is_shown_what_the_list_already_holds():
+    """Without the existing values it cannot add to them — it can only guess again."""
+    from app.refine.enrich import enrich_dataset
+
+    df = pd.DataFrame([["Zahlen", "Rechnen lernen", "Mathe, Algebra"]],
+                      columns=[TITLE, DESC, KEYW])
+    prompts: list[str] = []
+
+    async def capture(prompt, schema):
+        prompts.append(prompt)
+        return schema(values=["Geometrie"])
+
+    asyncio.run(enrich_dataset(df, fields=_wlo_fields(), target_field=KEYW, complete=capture))
+
+    assert "Mathe" in prompts[0] and "Algebra" in prompts[0]
+
+
+def test_an_empty_answer_changes_nothing_and_is_not_counted():
+    """An empty answer wiped the cell and still counted as enriched (review #6)."""
+    from app.refine.enrich import enrich_dataset
+
+    df = pd.DataFrame([["Zahlen", "Rechnen lernen", "Mathe"]], columns=[TITLE, DESC, KEYW])
+
+    async def nothing(prompt, schema):
+        return schema(values=[])
+
+    new, stats = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=nothing))
+
+    assert new.iloc[0][KEYW] == "Mathe"
+    assert new.iloc[0]["enriched_fields"] == ""
+    assert stats["enriched"] == 0
+
+
+def test_an_answer_that_adds_nothing_new_is_not_counted():
+    from app.refine.enrich import enrich_dataset
+
+    df = pd.DataFrame([["Zahlen", "Rechnen lernen", "Mathe"]], columns=[TITLE, DESC, KEYW])
+
+    async def repeat(prompt, schema):
+        return schema(values=["mathe"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=repeat))
+
+    assert new.iloc[0][KEYW] == "Mathe"
+    assert stats["enriched"] == 0
+
+
+def test_the_prompt_names_the_field_and_its_shape_even_without_guidance():
+    """The UI sends no guidance unless someone types one, and the prompt never said
+    which field to fill: the model got context lines and a PII rule, nothing else
+    (review #7, D8)."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    fields = [TextField(column=TITLE),
+              TextField(column=KEYW, separator=";", min_values=4)]
+    df = pd.DataFrame([["Zahlen", ""]], columns=[TITLE, KEYW])
+    prompts: list[str] = []
+
+    async def capture(prompt, schema):
+        prompts.append(prompt)
+        return schema(values=["a", "b", "c", "d"])
+
+    asyncio.run(enrich_dataset(df, fields=fields, target_field=KEYW, complete=capture))
+
+    assert KEYW in prompts[0]
+    assert "4" in prompts[0]
+    assert '";"' in prompts[0] or "';'" in prompts[0]

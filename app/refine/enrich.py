@@ -1,7 +1,8 @@
 """Refine enrichment: ADDITIVE LLM completion of missing fields.
 
 Only fills gaps — a field holding fewer values than it asks for — and never
-overwrites existing curated content. Every change is recorded in an
+overwrites existing curated content: a short LIST is extended, not replaced, and an
+answer that adds nothing leaves the cell alone. Every change is recorded in an
 ``enriched_fields`` column so the provenance is auditable. LLM outputs are
 PII-scrubbed as defense in depth. The LLM call is injected as ``complete`` so the
 engine is testable without a real model.
@@ -22,7 +23,7 @@ import pandas as pd
 from pydantic import BaseModel, Field, StringConstraints
 
 from ..pii import scrub
-from .fields import TextField, is_gap, read_values, write_values
+from .fields import TextField, is_gap, merge_values, read_values, write_values
 
 Complete = Callable[[str, type[BaseModel]], Awaitable[BaseModel]]
 
@@ -44,8 +45,18 @@ class FieldValues(BaseModel):
 
 _PROMPT = """Kontext: Metadaten für ein Lernmaterial (Bildungsinhalt).
 {context}
-{guidance}
-KEINE Personennamen, E-Mails, Telefonnummern, URLs oder Anbieternamen."""
+
+Aufgabe: Ergänze das Feld "{column}". {shape}
+{existing}{guidance}KEINE Personennamen, E-Mails, Telefonnummern, URLs oder Anbieternamen."""
+
+
+def _shape(target: TextField) -> str:
+    """The task, stated even when nobody typed a guidance line — without it the model
+    was shown context and a PII rule and asked for nothing in particular."""
+    if target.separator is None:
+        return "Es enthält genau EINEN Wert."
+    return (f'Es enthält eine Liste (in der Zelle getrennt durch "{target.separator}"); '
+            f"gib mindestens {target.min_values} Werte zurück, jeden als eigenen Eintrag.")
 
 
 def _mark(existing: str, field: str) -> str:
@@ -55,8 +66,11 @@ def _mark(existing: str, field: str) -> str:
     return ",".join(marks)
 
 
-def _prompt_for(row: pd.Series, fields: list[TextField], target: TextField) -> str:
-    """The other fields as context, the target's own guidance as the instruction."""
+def _prompt_for(
+    row: pd.Series, fields: list[TextField], target: TextField, existing: list[str]
+) -> str:
+    """The other fields as context; the task, what the list already holds, and the
+    target's own guidance as the instruction."""
     context = []
     for field in fields:
         if field.column == target.column:
@@ -64,7 +78,12 @@ def _prompt_for(row: pd.Series, fields: list[TextField], target: TextField) -> s
         values = read_values(row.get(field.column), field)
         if values:
             context.append(f'{field.column}: "{write_values(values, field)}"')
-    return _PROMPT.format(context="\n".join(context), guidance=target.guidance)
+    held = (f"Bereits vorhanden, nicht wiederholen: {write_values(existing, target)}\n"
+            if existing else "")
+    return _PROMPT.format(
+        context="\n".join(context), column=target.column, shape=_shape(target),
+        existing=held, guidance=f"{target.guidance}\n" if target.guidance else "",
+    )
 
 
 async def enrich_dataset(
@@ -95,11 +114,19 @@ async def enrich_dataset(
     for idx in new.index:
         if enriched >= limit:
             break
-        if not is_gap(new.at[idx, target.column], target):
+        cell = new.at[idx, target.column]
+        if not is_gap(cell, target):
             continue
-        result = await complete(_prompt_for(new.loc[idx], fields, target), FieldValues)
-        values = [scrub(value)[0] for value in result.values]  # type: ignore[attr-defined]
-        new.at[idx, target.column] = write_values(values, target)
+        existing = read_values(cell, target)
+        result = await complete(_prompt_for(new.loc[idx], fields, target, existing), FieldValues)
+        # Scrubbed per value, as the model returned it; a list value that still holds
+        # the separator ("Optik, Licht") is split so the merge can see both parts.
+        answered = [part for value in result.values  # type: ignore[attr-defined]
+                    for part in read_values(scrub(value)[0], target)]
+        merged = merge_values(existing, answered) if target.separator else answered[:1]
+        if not merged or merged == existing:
+            continue  # nothing new: the cell stays as it was, and is not counted
+        new.at[idx, target.column] = write_values(merged, target)
         new.at[idx, "enriched_fields"] = _mark(new.at[idx, "enriched_fields"], target.column)
         enriched += 1
 
