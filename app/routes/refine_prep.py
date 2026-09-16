@@ -24,11 +24,11 @@ from ..refine.enrich import enrich_dataset
 from ..refine.fields import TextField
 from ..refine.label_audit import audit_predictions
 from ..refine.prep import balance_report, holdout_split
-from ..refine.provenance import MARK_COLUMNS
 from ..refine.store import dataset_path, read_ops, save_dataset, write_ops
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..textnorm import split_labels
+from .field_spec import FieldSpec, check_fields
 from .refine import DEFAULT_LABEL_COLUMN, DEFAULT_TEXT_COLUMNS, AnalyzeRequest, load_or_404
 
 router = APIRouter(prefix="/refine", tags=["Refine"], dependencies=[Depends(require_key)])
@@ -77,41 +77,6 @@ _WLO_KEYWORD_GUIDANCE = (
 _WLO_DESCRIPTION_GUIDANCE = (
     "Schreibe eine sachliche Beschreibung (100-400 Zeichen), was dieses Material bietet."
 )
-
-
-class FieldSpec(BaseModel):
-    """One text field of the dataset — the request mirror of ``refine.fields.TextField``."""
-
-    column: str = Field(max_length=200)
-    separator: str | None = Field(default=None, max_length=3)
-    min_values: int = Field(default=1, ge=1, le=50)
-    guidance: str = Field(default="", max_length=1000)
-
-    @model_validator(mode="after")
-    def _is_a_field(self) -> FieldSpec:
-        # TextField owns the rule; asking it here turns its ValueError into a 422 at
-        # the boundary instead of a 500 wherever the spec is first used.
-        self.to_field()
-        return self
-
-    def to_field(self) -> TextField:
-        return TextField(column=self.column, separator=self.separator,
-                         min_values=self.min_values, guidance=self.guidance)
-
-
-def check_fields(specs: list[FieldSpec], *, label_column: str | None = None) -> None:
-    """Refuse fields an engine would misuse: a column named twice would be filled
-    twice, a provenance column would have its marks overwritten by generated text,
-    and the label column must not be rewritten as if it were text."""
-    columns = [spec.column for spec in specs]
-    repeated = sorted({c for c in columns if columns.count(c) > 1})
-    if repeated:
-        raise ValueError(f"Field {repeated[0]!r} is named more than once.")
-    reserved = [c for c in columns if c in MARK_COLUMNS]
-    if reserved:
-        raise ValueError(f"{reserved[0]!r} is where this app marks rows; it cannot be a text field.")
-    if label_column is not None and label_column in columns:
-        raise ValueError(f"The label column {label_column!r} cannot also be a text field.")
 
 
 class EnrichRequest(BaseModel):

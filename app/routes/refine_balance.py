@@ -20,8 +20,8 @@ from ..refine.balance import ForeignProvenanceError, balance_dataset, plan_balan
 from ..refine.store import read_ops, save_dataset, write_ops
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
+from .field_spec import FieldSpec, check_fields
 from .refine import DEFAULT_LABEL_COLUMN, load_or_404
-from .refine_prep import FieldSpec, check_fields
 
 router = APIRouter(prefix="/refine", tags=["Refine"], dependencies=[Depends(require_key)])
 
