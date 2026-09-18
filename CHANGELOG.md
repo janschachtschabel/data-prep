@@ -24,12 +24,17 @@ Keep a Changelog; the project is pre-1.0 and versions track milestones.
   with several threads both writers passed the check, which on Windows failed
   the second rename and on Linux would have replaced the first table unasked.
   Pushing to api_v3 serialises the table off the loop too.
-- **A result's history belongs to the table it was made from.** Split,
-  enrichment and balancing read a table and its history in one store step; read
-  apart, a write in between put a newer version's steps into the result's
-  provenance (balancing had this gap before). `/ops` checks and reads in one
-  step too: it answers 404 or the real history, never an empty history for a
-  table deleted meanwhile.
+- **A result's history belongs to the table it was made from.** Every step that
+  records provenance -- split, enrichment, balancing, filters, table operations,
+  joins -- reads the source table and its history in one store step. Read apart,
+  a write in between put a newer version's steps into the result's provenance;
+  filters, table operations, joins and balancing had this gap before (they read
+  the history only when writing), split and enrichment got it with the move off
+  the loop. `/ops` checks and reads in one step too: it answers 404 or the real
+  history, never an empty history for a table deleted meanwhile.
+- **A preview never waits for the store.** A filter or table-operation preview
+  writes nothing, so it no longer queues behind other requests' saves on the
+  store's thread.
 
 ## [Unreleased] — second review of the balancing work (2026-09-18)
 

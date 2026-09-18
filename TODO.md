@@ -47,9 +47,12 @@ gruen.** Container `data-prep:local` neu gebaut, healthy; gegen den Container
 geprueft: 409 fuer einen vergebenen Namen, Split, echte Anreicherung (2 Aufrufe)
 und echtes Balancing (1 Aufruf), zusammen 1037 Tokens, Testdaten entfernt. Fuenf
 alte data-prep-Images entfernt (verwaiste Images anderer Projekte unberuehrt).
-Offen: `preview_or_apply` liest die Historie der Quelle erst beim Schreiben — die
-gleiche Art Luecke, wenn die Quelle waehrenddessen an Ort und Stelle geaendert
-wird (aelteres Muster, im Review als vorbestehend markiert).
+Danach auf Wunsch auch die letzten zwei Befunde behoben, je test-first:
+filter/op/join lesen die Historie der Quelle jetzt mit der Tabelle statt erst
+beim Schreiben (`preview_or_apply(..., history=...)`, die im Review als
+vorbestehend markierte Luecke), und Vorschauen laufen nicht mehr ueber den
+Speicher-Thread, warten also nicht hinter fremden Speichervorgaengen
+(Review-Befund 2, zuerst abgelehnt). **728 Tests gruen.**
 
 **Zweites Review abgearbeitet, gepusht, Container neu gebaut (2026-09-18).** Ein
 frisches Review der Korrekturen fand 2 schwere, 6 mittlere und 5 kleine Befunde,
