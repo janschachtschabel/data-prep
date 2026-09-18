@@ -62,13 +62,17 @@ def holdout_split(
     holdout_count: dict[str, int] = defaultdict(int)
     holdout_rows: set[int] = set()
     real_kept = 0
+    kept_labels: set[str] = set()
     for key in keys:
         rows = groups[key]
         if any(train_only[i] for i in rows):
             # Train-only. Skipping the whole GROUP rather than the single row keeps
             # the text-disjointness promise: a generated row sharing a real row's
             # text would otherwise put that text on both sides.
-            real_kept += sum(1 for i in rows if not generated[i])
+            for i in rows:
+                if not generated[i]:
+                    real_kept += 1
+                    kept_labels.update(labels[i])
             continue
         group_labels = {lab for i in rows for lab in labels[i]}
         if any(holdout_count[lab] < target.get(lab, 0) for lab in group_labels):
@@ -91,6 +95,11 @@ def holdout_split(
         # Real rows the holdout could not have: examples of the generator, and rows
         # sharing their text with a marked one. Said, not implied.
         "real_kept_in_train": real_kept,
+        # ...and the labels this left without any holdout row: they cannot be
+        # evaluated on this split. Splitting first and balancing the training part
+        # avoids it — the examples then come from rows the holdout never had.
+        "labels_without_holdout": sorted(
+            lab for lab in kept_labels if support.get(lab) and not holdout_count[lab]),
     }
     return train, holdout, stats
 

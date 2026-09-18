@@ -410,6 +410,24 @@ const Refine = (() => {
         rec: res.balance.recommended_min_samples,
       });
       out.replaceChildren(p);
+      // What the marks of a balance run kept out of the holdout — said, not implied.
+      if (res.generated_excluded || res.real_kept_in_train) {
+        const marks = document.createElement("p");
+        marks.className = "muted";
+        marks.textContent = I18n.t("js.refine.splitMarks", {
+          generated: res.generated_excluded, kept: res.real_kept_in_train,
+        });
+        out.appendChild(marks);
+      }
+      const lost = res.labels_without_holdout || [];
+      if (lost.length) {
+        const line = document.createElement("p");
+        line.className = "muted";
+        line.textContent = I18n.t("js.refine.splitNoHoldout", {
+          count: lost.length, labels: lost.slice(0, 5).join(", "),
+        });
+        out.appendChild(line);
+      }
       const rows = Object.entries(res.balance.label_support).slice(0, 20).map(([k, v]) => [k, v]);
       const table = document.createElement("div");
       renderTable(table, [I18n.t("js.refine.thLabel"), I18n.t("js.refine.thTrainSupport")], rows);

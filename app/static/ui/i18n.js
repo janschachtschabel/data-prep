@@ -301,7 +301,9 @@ const I18n = (() => {
          many model calls that would be, without calling anything. Generated rows are
          marked, and so are the real rows shown as examples; both stay out of the holdout
          when you split here. api_v3&rsquo;s own cross-validation during training still
-         includes generated rows — judge a model by the holdout.`,
+         includes generated rows — judge a model by the holdout. Best: split first, then
+         balance the _train part; the examples then come from rows the holdout never had,
+         and rare labels stay evaluable.`,
       "refine.balance.target": "Rows per label (minimum)",
       "refine.balance.limit": "Generate at most",
       "refine.balance.name": "New dataset name",
@@ -399,6 +401,13 @@ const I18n = (() => {
       "js.refine.errCombine": "Combine failed.",
       "js.refine.enterSplitName": "Enter an output name for the split.",
       "js.refine.split": "Split \"{target}\": {train} train + {holdout} holdout ({pct}% held out). Recommended min_samples: {rec}.",
+      "js.refine.splitMarks": "Kept in training — generated rows: {generated}; real rows (shown as examples, or sharing their text): {kept}.",
+      "js.refine.splitNoHoldout.one": `One label has no holdout row left and cannot be evaluated
+         on this split: {labels}. Split first, then balance the _train part, to keep it
+         evaluable.`,
+      "js.refine.splitNoHoldout.other": `{count} labels have no holdout row left and cannot be
+         evaluated on this split: {labels}. Split first, then balance the _train part, to keep
+         them evaluable.`,
       "js.refine.enterApplyName": "Enter a new dataset name to apply.",
       "js.refine.choosePush": "Choose a dataset to push.",
       "js.refine.confirmPush": "Push dataset \"{name}\" to the configured api_v3?",
@@ -888,7 +897,9 @@ const I18n = (() => {
          und der Modellaufrufe, ohne etwas aufzurufen. Erzeugte Zeilen werden markiert,
          ebenso die echten Zeilen, die als Beispiel dienten; beide bleiben beim Split hier
          aus dem Holdout. Die Kreuzvalidierung von api_v3 beim Training bezieht erzeugte
-         Zeilen trotzdem ein — beurteile ein Modell am Holdout.`,
+         Zeilen trotzdem ein — beurteile ein Modell am Holdout. Am besten erst aufteilen und
+         dann den _train-Teil auffüllen: Die Beispiele stammen dann aus Zeilen, die der
+         Holdout nie hatte, und seltene Label bleiben auswertbar.`,
       "refine.balance.target": "Zeilen je Label (mindestens)",
       "refine.balance.limit": "Höchstens erzeugen",
       "refine.balance.name": "Name des neuen Datensatzes",
@@ -990,6 +1001,13 @@ const I18n = (() => {
       "js.refine.errCombine": "Kombinieren fehlgeschlagen.",
       "js.refine.enterSplitName": "Gib einen Ausgabenamen für den Split ein.",
       "js.refine.split": "Split „{target}“: {train} train + {holdout} holdout ({pct}% zurückgehalten). Empfohlene min_samples: {rec}.",
+      "js.refine.splitMarks": "Im Training gehalten — erzeugte Zeilen: {generated}; echte Zeilen (als Beispiel gezeigt oder mit gleichem Text): {kept}.",
+      "js.refine.splitNoHoldout.one": `Ein Label hat keine Holdout-Zeile mehr und lässt sich mit
+         diesem Split nicht auswerten: {labels}. Erst aufteilen, dann den _train-Teil
+         auffüllen, damit es auswertbar bleibt.`,
+      "js.refine.splitNoHoldout.other": `{count} Label haben keine Holdout-Zeile mehr und lassen
+         sich mit diesem Split nicht auswerten: {labels}. Erst aufteilen, dann den _train-Teil
+         auffüllen, damit sie auswertbar bleiben.`,
       "js.refine.enterApplyName": "Gib einen Namen für den neuen Datensatz ein.",
       "js.refine.choosePush": "Wähle einen Datensatz zum Senden.",
       "js.refine.confirmPush": "Datensatz „{name}“ an das konfigurierte api_v3 senden?",

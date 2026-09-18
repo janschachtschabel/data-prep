@@ -733,7 +733,9 @@
                be, without calling anything. Generated rows are marked, and so are the real
                rows shown as examples; both stay out of the holdout when you split here.
                api_v3&rsquo;s own cross-validation during training still includes generated
-               rows — judge a model by the holdout.</p>
+               rows — judge a model by the holdout. Best: split first, then balance the
+               _train part; the examples then come from rows the holdout never had, and rare
+               labels stay evaluable.</p>
             <div class="row">
               <div>
                 <label for="balance-target" data-i18n="refine.balance.target">Rows per label (minimum)</label>

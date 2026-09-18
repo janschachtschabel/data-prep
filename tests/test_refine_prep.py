@@ -176,6 +176,31 @@ def test_the_split_does_not_depend_on_a_unique_index():
     assert len(train) + len(holdout) == len(both)
 
 
+def test_the_split_names_the_labels_whose_holdout_the_marks_emptied():
+    """A label whose every real row served as an example keeps them all in training
+    and has no holdout at all. `real_kept_in_train` is one total across labels; which
+    labels became unevaluable has to be said by name (round 2, finding 7)."""
+    from app.refine.prep import holdout_split
+
+    df = _dataset()
+    df["generated_for"] = ""
+    df["example_for"] = ""
+    df.loc[df[LABEL] == "disc/A", "example_for"] = "disc/A"
+
+    _, holdout, stats = holdout_split(df, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert stats["labels_without_holdout"] == ["disc/A"]
+    assert "disc/A" not in set(holdout[LABEL])
+
+
+def test_an_unmarked_split_names_no_label():
+    from app.refine.prep import holdout_split
+
+    _, _, stats = holdout_split(_dataset(), COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert stats["labels_without_holdout"] == []
+
+
 def test_balance_report_counts_and_recommends_min_samples():
     from app.refine.prep import balance_report
 
