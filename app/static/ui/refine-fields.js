@@ -224,6 +224,15 @@ const RefineFields = (() => {
       }
     }
     note(out, "js.refine.balanceCut", plan.labels_cut_by_limit);
+    const foreign = plan.foreign_marks;
+    if (foreign && foreign.rows) {
+      const line = document.createElement("p");
+      line.className = "muted";
+      line.textContent = I18n.t("js.refine.balanceForeign", {
+        count: foreign.rows, example: foreign.example, column: foreign.column,
+      });
+      out.appendChild(line);
+    }
     if (plan.skipped_without_examples.length) {
       const skipped = document.createElement("p");
       skipped.className = "muted";

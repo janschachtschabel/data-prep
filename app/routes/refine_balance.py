@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, call_profile, session_for
 from ..refine.apply import replaces_another
-from ..refine.balance import ForeignProvenanceError, balance_dataset, plan_balance
+from ..refine.balance import balance_dataset, plan_balance
 from ..refine.store import read_ops, save_dataset, write_ops
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
@@ -92,21 +92,15 @@ async def balance(
             f"{budget}. Lower the target or the limit and run it in several steps."))
 
     history = read_ops(settings, name)
-    # The dataset's own history says whether 'generated_for' is this app's.
-    provenance_known = any(op.get("op") == "balance" for op in history)
     try:
         session = session_for(req.llm_purpose, settings, override)
         new_df, stats = await balance_dataset(
             df, **plan_args, complete=session.complete,  # type: ignore[arg-type]
             examples_per_label=req.examples_per_label, limit=req.limit,
-            provenance_known=provenance_known,
             # A cap no preview can predict (tokens, the process-wide ceiling) ends
             # the run early instead of discarding what it already paid for.
             stop_on=(BudgetExceeded,),
         )
-    except ForeignProvenanceError as exc:
-        # The caller can rename their column; nothing else from the engine is theirs to fix.
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except LlmConfigError as exc:

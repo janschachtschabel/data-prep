@@ -147,20 +147,21 @@ def test_an_unknown_label_column_is_refused_too(make_client, monkeypatch):
     assert "kein_label" in r.json()["detail"]
 
 
-def test_a_foreign_provenance_column_is_a_bad_request_not_a_crash(make_client, monkeypatch):
-    """The engine refuses; the route has to turn that into an answer the user can act
-    on rather than a 500."""
+def test_marks_from_elsewhere_are_named_in_the_preview(make_client, monkeypatch):
+    """A column named generated_for that holds something else is no longer refused
+    (D5'): the preview names it, and its rows count as generated — here that leaves
+    Physik without a real example, which the preview says too."""
     client = make_client()
     df = _unbalanced()
     df["generated_for"] = "Notiz"
     _import(client, df)
-    _use(_mock_session([["A", "B", "c, d, e"]], monkeypatch), monkeypatch)
 
     r = client.post("/refine/quelle/balance", headers=HEADERS, json={
-        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "target": "out"})
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "dry_run": True})
 
-    assert r.status_code == 400
-    assert "generated_for" in r.json()["detail"]
+    assert r.status_code == 200, r.text
+    assert r.json()["foreign_marks"] == {"rows": 5, "example": "Notiz", "column": LABEL}
+    assert r.json()["skipped_without_examples"] == ["Physik"]
 
 
 def test_a_missing_llm_key_is_503_like_every_other_llm_route(make_client, monkeypatch):

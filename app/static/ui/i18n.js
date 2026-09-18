@@ -414,6 +414,11 @@ const I18n = (() => {
       "js.refine.needsTextColumns": "Choose the text columns first — the preview needs to know which fields to generate.",
       "js.refine.balanceStale": "The preview no longer matches the form (dataset, fields or numbers changed). Run the preview again first.",
       "js.refine.balanceStopped": "Stopped early ({reason}). The rows generated until then are saved; another run on the result continues.",
+      "js.refine.balanceForeign.one": `One row carries a generated_for mark that is not a label
+         in "{column}" (e.g. "{example}"). It counts as generated and is not used as an example.`,
+      "js.refine.balanceForeign.other": `{count} rows carry a generated_for mark that is not a
+         label in "{column}" (e.g. "{example}"). They count as generated and are not used as
+         examples.`,
       "js.refine.balanceCut.one": `The limit does not reach every label: one stays below the
          target ({labels}). Another run on the result continues.`,
       "js.refine.balanceCut.other": `The limit does not reach every label: {count} stay below
@@ -1000,6 +1005,12 @@ const I18n = (() => {
       "js.refine.needsTextColumns": "Wähle zuerst die Textspalten — die Vorschau muss wissen, welche Felder erzeugt werden.",
       "js.refine.balanceStale": "Die Vorschau passt nicht mehr zum Formular (Datensatz, Felder oder Zahlen geändert). Bitte zuerst neu berechnen.",
       "js.refine.balanceStopped": "Vorzeitig beendet ({reason}). Die bis dahin erzeugten Zeilen sind gespeichert; ein weiterer Lauf auf dem Ergebnis setzt fort.",
+      "js.refine.balanceForeign.one": `Eine Zeile trägt eine generated_for-Markierung, die kein
+         Label in „{column}“ ist (z. B. „{example}“). Sie gilt als erzeugt und dient nicht als
+         Beispiel.`,
+      "js.refine.balanceForeign.other": `{count} Zeilen tragen eine generated_for-Markierung, die
+         kein Label in „{column}“ ist (z. B. „{example}“). Sie gelten als erzeugt und dienen nicht
+         als Beispiel.`,
       "js.refine.balanceCut.one": `Die Obergrenze reicht nicht für alle Label: eines bleibt
          unter dem Ziel ({labels}). Ein weiterer Lauf auf dem Ergebnis setzt fort.`,
       "js.refine.balanceCut.other": `Die Obergrenze reicht nicht für alle Label: {count} bleiben

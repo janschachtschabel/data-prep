@@ -292,23 +292,29 @@ def test_limit_caps_what_one_call_may_generate():
     assert len(new) == 4
 
 
-def test_a_foreign_generated_for_column_stops_the_run():
-    """If a dataset already has a column of that name holding something else, writing
-    provenance into it would make holdout_split drop REAL rows from the evaluation.
-    That is silent, so the run refuses instead."""
+def test_marks_the_app_cannot_place_are_named_not_refused():
+    """A `generated_for` value that is not a label here used to refuse the run. But
+    combine and re-import lose the history that proved such marks were the app's own,
+    so the refusal struck exactly the datasets this app produces (round 2, finding 5,
+    D5'). The rows are named instead, and still treated as generated."""
     import asyncio
 
-    import pytest
+    from app.refine.balance import balance_dataset, plan_balance
 
-    from app.refine.balance import balance_dataset
+    df = _rows([("Physik", "Optik"), ("Physik", "Mechanik")])
+    df["generated_for"] = ["", "Sek I"]
+    complete, calls = _scripted([[_item("Akustik")]])
 
-    df = _rows([("Physik", "Optik")])
-    df["generated_for"] = "Notiz der Redaktion"
-    complete, _ = _scripted([])
+    plan = plan_balance(df, fields=_fields(), label_column=LABEL, target_per_label=3)
+    new, stats = asyncio.run(balance_dataset(
+        df, fields=_fields(), label_column=LABEL, target_per_label=3, complete=complete))
 
-    with pytest.raises(ValueError, match="generated_for"):
-        asyncio.run(balance_dataset(df, fields=_fields(), label_column=LABEL,
-                                    target_per_label=3, complete=complete))
+    expected = {"rows": 1, "example": "Sek I", "column": LABEL}
+    assert plan["foreign_marks"] == expected
+    assert stats["foreign_marks"] == expected
+    assert stats["rows_added"] == 1
+    examples = calls[0].split("NICHT kopieren):", 1)[1].split("Erzeuge", 1)[0]
+    assert "Mechanik" not in examples, "a marked row is not an example"
 
 
 # ------------------------------------------------------- review remediation ----
@@ -559,29 +565,26 @@ def test_each_batch_gets_an_output_budget_sized_to_the_entries():
     assert budgets[0] >= 500 + 10 * 300
 
 
-def test_a_generated_for_column_from_an_earlier_balance_is_trusted():
-    """Balancing on a second label column found the first run's marks, called them
-    foreign and advised renaming the column — which would have made the split treat
-    every generated row as real (review #15)."""
+def test_an_example_mark_is_a_list_of_labels_in_the_label_separator():
+    """Marks were split on ",", so with `label_separator="|"` the label "Politik,
+    Gesellschaft" was not recognised as already present and was written twice
+    after two runs (round 2, NIT 10)."""
     import asyncio
 
-    import pytest
+    from app.refine.balance import balance_dataset
 
-    from app.refine.balance import ForeignProvenanceError, balance_dataset
+    label = "Politik, Gesellschaft"
+    df = _rows([(label, "Wahlen erklärt")])
+    first, _ = _scripted([[_item("Parteien")]])
+    once, _ = asyncio.run(balance_dataset(
+        df, fields=_fields(), label_column=LABEL, label_separator="|",
+        target_per_label=2, complete=first))
+    second, _ = _scripted([[_item("Parlament")]])
+    twice, _ = asyncio.run(balance_dataset(
+        once, fields=_fields(), label_column=LABEL, label_separator="|",
+        target_per_label=3, complete=second))
 
-    df = _rows([("Physik", "Optik"), ("Physik", "Mechanik")])
-    df["stufe"] = "Sek I"
-    df["generated_for"] = ["", "Physik"]   # the second row came from a balance on LABEL
-    complete, _ = _scripted([[_item("Akustik")]])
-
-    with pytest.raises(ForeignProvenanceError):
-        asyncio.run(balance_dataset(df, fields=_fields(), label_column="stufe",
-                                    target_per_label=3, complete=complete))
-
-    new, stats = asyncio.run(balance_dataset(
-        df, fields=_fields(), label_column="stufe", target_per_label=3,
-        complete=complete, provenance_known=True))
-    assert stats["rows_added"] == 1
+    assert twice.iloc[0]["example_for"] == label
 
 
 def test_the_result_states_the_synthetic_share_it_produced():
