@@ -3,6 +3,34 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — second review of the balancing work (2026-09-18)
+
+A fresh review of the first round's fixes found 2 major, 6 minor and 5 small
+issues, all reproduced; two were introduced by that round. Decisions D2, D5 and
+D6 are revised in the plan.
+
+### Fixed
+
+- **The length check discarded what the prompt asked for.** It judged answers
+  against full example cells while the model saw 400 characters of them; on the
+  WLO export about 200 of 500 planned rows would have been paid for and thrown
+  away. Prompt, length floor, output budget and duplicate check now all use the
+  examples as shown, and the floor only catches fragments.
+- **Enrichment's `limit` no longer capped calls** after the first round; it does
+  again.
+- **A cap that stops a balancing run keeps what was paid for** instead of losing
+  the whole run; the result says where it stopped.
+- **Marks from a combine or re-import no longer refuse a run.** The preview names
+  them instead.
+- **Tokens of truncated answers** reach the token cap and the process-wide ledger.
+- **The split names labels left without a holdout**, the UI shows what the marks
+  kept back, and the docs recommend splitting before balancing.
+- **UI:** no preview while a run is in flight (it re-armed the run button); the
+  result names what the checks discarded.
+- **Small:** copies of shown or scrubbed examples count as duplicates; labels and
+  cells from the data enter prompts as single lines; the source check ignores
+  case; enrichment refuses the label column as a field.
+
 ## [Unreleased] — review of the balancing work (2026-09-16)
 
 An independent review found 9 major, 11 minor and 6 small issues in the work

@@ -120,8 +120,14 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
 
   Die Vorschau nennt außerdem, wie viele Modellaufrufe der Lauf **höchstens**
   brauchen kann, und das Budget daneben. Passt das nicht, wird der Lauf gar nicht
-  erst gestartet. „Höchstens erzeugen" begrenzt einen Lauf; ein weiterer Lauf auf
-  dem Ergebnis macht weiter, wo der erste aufgehört hat. Ändert sich nach der
+  erst gestartet. Stoppt ein Lauf unterwegs an einer anderen Grenze (etwa dem
+  Token-Budget), bleiben die bis dahin erzeugten Zeilen erhalten, und das Ergebnis
+  sagt, warum er endete. „Höchstens erzeugen" begrenzt einen Lauf; ein weiterer
+  Lauf auf dem Ergebnis macht weiter, wo der erste aufgehört hat.
+
+  **Am besten erst aufteilen, dann den `_train`-Teil auffüllen.** Die Beispiele
+  stammen dann aus Zeilen, die der Holdout nie hatte, und auch seltene Label
+  bleiben auswertbar. Ändert sich nach der
   Vorschau etwas am Formular — Datensatz, Felder, Zahlen —, muss sie neu berechnet
   werden, bevor erzeugt wird. Das Ergebnis ist immer ein neuer Datensatz.
 
@@ -133,13 +139,16 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
     als Beispiel diente, die Spalte `example_for`. Beim Aufteilen in train/holdout
     bleiben beide **im Training** — sonst würde man das Modell an Texten prüfen,
     die aus denselben Beispielen geschrieben wurden, an denen es gelernt hat.
-    Hat ein Label nur wenige echte Zeilen, kann es deshalb im Holdout ganz fehlen;
-    die Split-Statistik sagt das (`real_kept_in_train`).
+    Wer erst auffüllt und dann aufteilt, riskiert deshalb, dass ein Label mit
+    wenigen echten Zeilen im Holdout ganz fehlt; das Split-Ergebnis nennt solche
+    Label beim Namen.
   - Ein von 3 auf 100 gehobenes Label hat das Modell trotzdem kaum gesehen. Die
     Prozentzahl in der Vorschau sagt dir, wie sehr ein späterer F1-Wert für dieses
     Label über die Generierung spricht statt über deine Daten.
   - Die Kreuzvalidierung von api_v3 beim Training kennt diese Markierungen nicht
     und bezieht erzeugte Zeilen mit ein. Beurteile ein Modell am Holdout.
+  - Das Ergebnis nennt, was die Prüfungen verworfen haben (Wiederholungen, zu
+    kurz, unvollständig) — auch diese Aufrufe sind bezahlt.
 
 ## Beliebige Tabellen bearbeiten (Reiter „Tabellen")
 

@@ -188,9 +188,16 @@ from that label's own real rows, so the new text resembles the material the labe
 actually describes. Send `dry_run: true` first. Without opening an LLM session it
 answers with, per label, the deficit, what this run would generate, and the share
 that would end up synthetic, plus the worst-case number of model calls next to
-the call budget. A run that could exceed the budget is refused before its first
-call. `limit` caps one run; running again on the result continues where it
-stopped.
+the call budget. A run that could exceed the call budget is refused before its
+first call. A cap no preview can predict — the token cap, the process-wide
+ceiling — ends a run early instead of losing it: the rows generated until then
+are saved, and the result says where it stopped. `limit` caps one run; running
+again on the result continues where it stopped.
+
+Split first, then balance the `_train` part. Balancing first is safe from
+leakage too, but the rows shown as examples then leave the holdout, and a rare
+label can lose its holdout entirely — the split names such labels
+(`labels_without_holdout`).
 
 Three properties make the result safe to train on:
 
@@ -198,7 +205,9 @@ Three properties make the result safe to train on:
   generator as an example carries `example_for`. `POST /refine/{name}/split`
   keeps both on the **training** side: a holdout containing generated text — or
   the real text it paraphrases — measures how well a model learned the generator.
-  `combine` carries both marks along.
+  `combine` carries both marks along. A `generated_for` value that is not a label
+  of the column being balanced is named in the preview (`foreign_marks`) and
+  treated as generated; it does not stop the run.
 - A label whose real rows carry no text is skipped rather than invented from its
   name or from earlier generated rows, and reported under
   `skipped_without_examples`.
