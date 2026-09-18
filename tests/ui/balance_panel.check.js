@@ -1,4 +1,5 @@
-// The balance panel, driven through the REAL UI scripts in a minimal DOM stub.
+// The balance panel, driven through the REAL UI scripts in a minimal DOM stub —
+// plus the enrich result, which reports a stopped run the same way (H).
 // Exit code 1 on any failed check; tests/test_ui_balance_panel.py runs it.
 //
 // Pins the review findings a markup test cannot see: a finished run must not
@@ -193,6 +194,21 @@ const balanceCalls = () => sent.filter((s) => s.url.endsWith("/balance"));
   const said = $("#balance-result").children.map((c) => c.textContent).join(" | ");
   check(said.includes(I18n.t("js.refine.balanceDiscarded",
     { duplicate: 1, short: 2, incomplete: 0 })), `G: the discards are named (${said})`);
+
+  // H. an enrichment a cap ended early says so; what it enriched until then is saved
+  const REASON = "Budget reached: 14 tokens (cap 10).";
+  respond = (url) => (url.endsWith("/enrich")
+    ? { status: 200, body: { field: "t", rows: 3, enriched: 1, target: "angereichert",
+                             stopped: REASON, usage: { calls: 1, tokens_total: 14 } } }
+    : { status: 200, body: { datasets: [{ name: "quelle", rows: 3, columns: ["t"] }], ops: [] } });
+  rows = [fieldRow("t")];
+  $("#refine-dataset").value = "quelle";
+  $("#enrich-target").value = "angereichert";
+  $("#enrich-field").value = "t";
+  await $("#enrich-btn").fire("click"); await settle();
+  const told = $("#refine-result").children.map((c) => c.textContent).join(" | ");
+  check(told.includes(I18n.t("js.refine.enrichStopped", { reason: REASON })),
+        `H: an enrichment stopped by a cap says so (${told})`);
 
   // E. a 422 reads as text, not "[object Object]"
   respond = (url) => url.endsWith("/balance")

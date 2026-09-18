@@ -446,3 +446,109 @@ def test_enrichment_refuses_to_fill_the_label_column(make_client):
         "label_column": LABEL, "target": "out"})
 
     assert r.status_code == 422, r.text
+
+
+# ------------------------------------------------ follow-up of round 2 ----
+
+
+class _Stop(Exception):
+    """Stands in for BudgetExceeded: the engine does not know the LLM layer."""
+
+
+def _gap_rows(n: int) -> pd.DataFrame:
+    return pd.DataFrame([[f"Titel {i}", "Ein Text zum Thema.", ""] for i in range(n)],
+                        columns=[TITLE, DESC, KEYW])
+
+
+def test_a_stop_keeps_the_rows_enriched_so_far():
+    """A cap no preview can predict — tokens, the process-wide ceiling — threw away
+    every row the run had already paid for. Balancing keeps them since round 2."""
+    from app.refine.enrich import enrich_dataset
+
+    answered: list[str] = []
+
+    async def complete(prompt, schema):
+        if answered:
+            raise _Stop("token budget exhausted")
+        answered.append(prompt)
+        return schema(values=["Optik", "Licht", "Physik"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        _gap_rows(3), fields=_wlo_fields(), target_field=KEYW,
+        complete=complete, stop_on=(_Stop,)))
+
+    assert stats["enriched"] == 1
+    assert stats["stopped"] == "token budget exhausted"
+    assert list(new[KEYW]) == ["Optik, Licht, Physik", "", ""]
+    assert list(new["enriched_fields"]) == [KEYW, "", ""]
+
+
+def test_without_a_stop_signal_an_enrichment_error_still_propagates():
+    import pytest
+
+    from app.refine.enrich import enrich_dataset
+
+    async def refuses(prompt, schema):
+        raise _Stop("cap")
+
+    with pytest.raises(_Stop):
+        asyncio.run(enrich_dataset(_gap_rows(1), fields=_wlo_fields(), target_field=KEYW,
+                                   complete=refuses))
+
+
+def test_a_completed_enrichment_says_it_was_not_stopped():
+    from app.refine.enrich import enrich_dataset
+
+    _, stats = asyncio.run(enrich_dataset(
+        _gap_rows(1), fields=_wlo_fields(), target_field=KEYW, complete=_fake_keywords))
+
+    assert stats["stopped"] is None
+
+
+def _budgeted_session(payload: dict, monkeypatch, **budgets):
+    session = _mock_session(payload, monkeypatch)
+    session.budgets = Budgets(**budgets)
+    return session
+
+
+_KEYWORD_FIELDS = [{"column": TITLE}, {"column": DESC},
+                   {"column": KEYW, "separator": ",", "min_values": 3}]
+
+
+def test_an_enrichment_stopped_by_a_cap_saves_what_it_enriched(make_client, monkeypatch):
+    """Every mocked answer costs 14 tokens; a 10-token cap lets the first call through
+    and refuses the second. The first row was paid for, so it is saved."""
+    import app.routes.refine_prep as refine_route
+
+    client = make_client()
+    _import(client, _gap_rows(3))
+    session = _budgeted_session({"values": ["Optik", "Licht", "Physik"]}, monkeypatch,
+                                max_tokens_total=10)
+    monkeypatch.setattr(refine_route, "session_for", lambda purpose, settings, override=None: session)
+
+    r = client.post("/refine/curated/enrich", headers=HEADERS, json={
+        "fields": _KEYWORD_FIELDS, "target_field": KEYW, "target": "teil"})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["enriched"] == 1
+    assert "token" in r.json()["stopped"].lower()
+    rows = client.get("/refine/teil/rows?limit=50", headers=HEADERS).json()["rows"]
+    assert [row[KEYW] for row in rows] == ["Optik, Licht, Physik", "", ""]
+    ops = client.get("/refine/teil/ops", headers=HEADERS).json()["ops"]
+    assert ops[-1]["stopped"] == r.json()["stopped"]
+
+
+def test_an_enrichment_stopped_before_its_first_change_saves_nothing(make_client, monkeypatch):
+    import app.routes.refine_prep as refine_route
+
+    client = make_client()
+    _import(client, _gap_rows(2))
+    session = _budgeted_session({"values": ["Optik"]}, monkeypatch, max_tokens_total=0)
+    monkeypatch.setattr(refine_route, "session_for", lambda purpose, settings, override=None: session)
+
+    r = client.post("/refine/curated/enrich", headers=HEADERS, json={
+        "fields": _KEYWORD_FIELDS, "target_field": KEYW, "target": "leer"})
+
+    assert r.status_code == 429
+    names = {d["name"] for d in client.get("/refine/datasets", headers=HEADERS).json()["datasets"]}
+    assert "leer" not in names

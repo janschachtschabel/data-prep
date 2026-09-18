@@ -3,6 +3,16 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — follow-ups of the second review (2026-09-18)
+
+### Fixed
+
+- **A cap that stops an enrichment run keeps what it enriched**, as balancing
+  already did: the rows filled until then are saved, the result and the
+  operation history say why the run ended, and another run on the result fills
+  the remaining gaps. A run stopped before its first change still answers 429
+  and writes nothing.
+
 ## [Unreleased] — second review of the balancing work (2026-09-18)
 
 A fresh review of the first round's fixes found 2 major, 6 minor and 5 small

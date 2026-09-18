@@ -508,6 +508,13 @@ const Refine = (() => {
             calls: res.usage.calls, tokens: res.usage.tokens_total,
           }),
         }));
+        if (res.stopped) {
+          // A cap ended the run early; what it enriched so far is saved.
+          out.appendChild(Object.assign(document.createElement("p"), {
+            className: "muted",
+            textContent: I18n.t("js.refine.enrichStopped", { reason: res.stopped }),
+          }));
+        }
         out.hidden = false;
         await refreshDatasets(res.target);  // continue from the enriched result
       });

@@ -214,6 +214,9 @@ async def enrich(
         new_df, stats = await enrich_dataset(
             df, fields=fields, target_field=target_field,
             complete=session.complete, limit=req.limit,
+            # A cap no request can predict (tokens, the process-wide ceiling) ends
+            # the run early instead of discarding what it already paid for.
+            stop_on=(BudgetExceeded,),
         )
     except BudgetExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
@@ -223,12 +226,16 @@ async def enrich(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except LlmError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if stats["stopped"] and not stats["enriched"]:
+        # Stopped before its first change: there is nothing to keep.
+        raise HTTPException(status_code=429, detail=stats["stopped"])
     # Again at the write: the LLM calls can take minutes.
     refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     save_dataset(settings, target, new_df)
     write_ops(settings, target, [*history, {
         "op": "enrich", "field": target_field, "source": name,
-        "enriched": stats["enriched"], "usage": session.usage.as_dict()}])
+        "enriched": stats["enriched"], "stopped": stats["stopped"],
+        "usage": session.usage.as_dict()}])
     return {**stats, "target": target, "usage": session.usage.as_dict()}
 
 

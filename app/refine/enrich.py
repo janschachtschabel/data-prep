@@ -99,9 +99,14 @@ async def enrich_dataset(
     target_field: str,
     complete: Complete,
     limit: int = 5000,
+    stop_on: tuple[type[BaseException], ...] = (),
 ) -> tuple[pd.DataFrame, dict]:
     """Fill gaps in ``target_field`` via ``complete``; returns the new frame and
-    ``{field, rows, enriched}``.
+    ``{field, rows, enriched, stopped}``.
+
+    An exception in ``stop_on`` — a budget cap, typically — ends the run early
+    instead of discarding it: the rows enriched until then are returned, and
+    ``stopped`` says why the run ended. Anything else propagates.
 
     Raises ``ValueError`` when the target is not one of ``fields`` — a silent no-op
     there would be indistinguishable from "nothing needed enrichment".
@@ -118,6 +123,7 @@ async def enrich_dataset(
 
     enriched = 0
     calls = 0  # what `limit` caps: model calls, whether or not they changed a row
+    stopped: str | None = None
     for idx in new.index:
         if calls >= limit:
             break
@@ -125,7 +131,11 @@ async def enrich_dataset(
         if not is_gap(cell, target):
             continue
         existing = read_values(cell, target)
-        result = await complete(_prompt_for(new.loc[idx], fields, target, existing), FieldValues)
+        try:
+            result = await complete(_prompt_for(new.loc[idx], fields, target, existing), FieldValues)
+        except stop_on as signal:
+            stopped = str(signal) or signal.__class__.__name__
+            break
         calls += 1
         # Scrubbed per value, as the model returned it; a list value that still holds
         # the separator ("Optik, Licht") is split so the merge can see both parts.
@@ -138,4 +148,5 @@ async def enrich_dataset(
         new.at[idx, "enriched_fields"] = _mark(new.at[idx, "enriched_fields"], target.column)
         enriched += 1
 
-    return new, {"field": target.column, "rows": int(len(df)), "enriched": enriched}
+    return new, {"field": target.column, "rows": int(len(df)), "enriched": enriched,
+                 "stopped": stopped}
