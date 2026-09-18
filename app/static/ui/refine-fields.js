@@ -294,6 +294,13 @@ const RefineFields = (() => {
           calls: number(res.usage.calls), tokens: number(res.usage.tokens_total),
         });
         out.replaceChildren(done);
+        if (res.stopped) {
+          // A cap ended the run early; what it generated so far is saved.
+          const stop = document.createElement("p");
+          stop.className = "muted";
+          stop.textContent = I18n.t("js.refine.balanceStopped", { reason: res.stopped });
+          out.appendChild(stop);
+        }
         note(out, "js.refine.balanceCut", res.labels_cut_by_limit);
         out.hidden = false;
         await Refine.refreshDatasets(res.target);

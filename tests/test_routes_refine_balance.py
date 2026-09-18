@@ -403,3 +403,46 @@ def test_marks_from_an_earlier_balance_on_another_label_column_are_trusted(
         "fields": FIELDS, "label_column": "stufe", "target_per_label": 2, "target": "stufe2"})
 
     assert second.status_code == 200, second.text
+
+
+# ------------------------------------------------------------- review round 2 ----
+
+
+def _budgeted_session(items, monkeypatch, **budgets):
+    session = _mock_session(items, monkeypatch)
+    session.budgets = Budgets(**budgets)
+    return session
+
+
+def test_a_run_stopped_by_a_cap_saves_what_it_generated(make_client, monkeypatch):
+    """Every mocked answer costs 14 tokens; a 10-token cap lets the first call through
+    and refuses the second. The rows of the first are paid for and saved (D2')."""
+    client = make_client()
+    _import(client, _unbalanced())
+    _use(_budgeted_session([["Akustik", "Ein Text über Schall.", "a, b, c"],
+                            ["Thermo", "Ein Text über Wärme.", "d, e, f"],
+                            ["Statik", "Ein Text über Kräfte.", "g, h, i"]],
+                           monkeypatch, max_tokens_total=10), monkeypatch)
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 5, "target": "teil"})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["rows_added"] == 3
+    assert "token" in r.json()["stopped"].lower()
+    rows = client.get("/refine/teil/rows?limit=50", headers=HEADERS).json()["rows"]
+    assert len(rows) == 8
+
+
+def test_a_run_stopped_before_its_first_row_saves_nothing(make_client, monkeypatch):
+    client = make_client()
+    _import(client, _unbalanced())
+    _use(_budgeted_session([["A", "B", "c, d, e"]], monkeypatch, max_tokens_total=0),
+         monkeypatch)
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 5, "target": "leer"})
+
+    assert r.status_code == 429
+    names = {d["name"] for d in client.get("/refine/datasets", headers=HEADERS).json()["datasets"]}
+    assert "leer" not in names

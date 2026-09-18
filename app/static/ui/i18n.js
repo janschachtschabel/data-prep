@@ -413,6 +413,7 @@ const I18n = (() => {
       "js.refine.thSynthetic": "synthetic afterwards",
       "js.refine.needsTextColumns": "Choose the text columns first — the preview needs to know which fields to generate.",
       "js.refine.balanceStale": "The preview no longer matches the form (dataset, fields or numbers changed). Run the preview again first.",
+      "js.refine.balanceStopped": "Stopped early ({reason}). The rows generated until then are saved; another run on the result continues.",
       "js.refine.balanceCut.one": `The limit does not reach every label: one stays below the
          target ({labels}). Another run on the result continues.`,
       "js.refine.balanceCut.other": `The limit does not reach every label: {count} stay below
@@ -998,6 +999,7 @@ const I18n = (() => {
       "js.refine.thSynthetic": "danach synthetisch",
       "js.refine.needsTextColumns": "Wähle zuerst die Textspalten — die Vorschau muss wissen, welche Felder erzeugt werden.",
       "js.refine.balanceStale": "Die Vorschau passt nicht mehr zum Formular (Datensatz, Felder oder Zahlen geändert). Bitte zuerst neu berechnen.",
+      "js.refine.balanceStopped": "Vorzeitig beendet ({reason}). Die bis dahin erzeugten Zeilen sind gespeichert; ein weiterer Lauf auf dem Ergebnis setzt fort.",
       "js.refine.balanceCut.one": `Die Obergrenze reicht nicht für alle Label: eines bleibt
          unter dem Ziel ({labels}). Ein weiterer Lauf auf dem Ergebnis setzt fort.`,
       "js.refine.balanceCut.other": `Die Obergrenze reicht nicht für alle Label: {count} bleiben

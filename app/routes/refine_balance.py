@@ -100,6 +100,9 @@ async def balance(
             df, **plan_args, complete=session.complete,  # type: ignore[arg-type]
             examples_per_label=req.examples_per_label, limit=req.limit,
             provenance_known=provenance_known,
+            # A cap no preview can predict (tokens, the process-wide ceiling) ends
+            # the run early instead of discarding what it already paid for.
+            stop_on=(BudgetExceeded,),
         )
     except ForeignProvenanceError as exc:
         # The caller can rename their column; nothing else from the engine is theirs to fix.
@@ -112,10 +115,15 @@ async def balance(
     except LlmError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    if stats["stopped"] and not stats["rows_added"]:
+        # Stopped before its first row: there is nothing paid for to keep.
+        raise HTTPException(status_code=429, detail=stats["stopped"])
+
     # Again at the write: generating several hundred rows takes minutes.
     refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
     save_dataset(settings, target, new_df)
     write_ops(settings, target, [*history, {
         "op": "balance", "source": name, "target_per_label": req.target_per_label,
-        "rows_added": stats["rows_added"], "usage": session.usage.as_dict()}])
+        "rows_added": stats["rows_added"], "stopped": stats["stopped"],
+        "usage": session.usage.as_dict()}])
     return {**stats, "target": target, "usage": session.usage.as_dict()}

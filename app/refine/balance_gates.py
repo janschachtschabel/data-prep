@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 
 from pydantic import BaseModel
 
@@ -34,6 +36,22 @@ _FLOOR_CAP = 40
 # gates rejected. Without a cap a model that keeps repeating itself would be paid
 # for indefinitely; with one, the shortfall is reported instead.
 EXTRA_BATCHES = 2
+
+
+def _no_discards() -> dict[str, int]:
+    return {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0}
+
+
+@dataclass
+class LabelResult:
+    """What generating for one label produced."""
+
+    accepted: list[list[str]] = dc_field(default_factory=list)
+    counters: dict[str, int] = dc_field(default_factory=_no_discards)
+    # Whether any call went out — only then were the examples shown to the model.
+    sent: bool = False
+    # Why generation ended early, when a stop signal did end it.
+    stopped: str | None = None
 
 
 class _Rejected(Exception):  # noqa: N818 - a verdict, not an error condition
@@ -136,33 +154,39 @@ async def generate_for_label(
     seen: set[str],
     batch_size: int,
     complete: Complete,
-) -> tuple[list[list[str]], dict]:
+    stop_on: tuple[type[BaseException], ...] = (),
+) -> LabelResult:
     """Ask for ``wanted`` accepted items, retrying the shortfall within the budget.
 
-    Returns the accepted cells and a count per rejection reason. ``avoid`` and
-    ``seen`` are extended with what is accepted, so later batches — and later labels
-    — do not repeat it.
+    ``avoid`` and ``seen`` are extended with what is accepted, so later batches —
+    and later labels — do not repeat it. An exception in ``stop_on`` ends the label
+    early instead of failing it: what was accepted so far was paid for and is
+    returned, with the reason in ``stopped``.
     """
-    accepted: list[list[str]] = []
-    counters = {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0}
+    result = LabelResult()
     floors = _min_chars(examples, fields)
     _seed(seen, examples, fields)
     attempts = math.ceil(wanted / batch_size) + EXTRA_BATCHES
 
-    while len(accepted) < wanted and attempts:
+    while len(result.accepted) < wanted and attempts:
         attempts -= 1
-        n = min(wanted - len(accepted), batch_size)
+        n = min(wanted - len(result.accepted), batch_size)
         prompt = build_balance_prompt(label, examples, fields, n=n, avoid_titles=avoid)
-        batch = await complete(prompt, BalanceBatch,
-                               max_output_tokens=output_budget(examples, fields, n))
+        try:
+            batch = await complete(prompt, BalanceBatch,
+                                   max_output_tokens=output_budget(examples, fields, n))
+        except stop_on as signal:
+            result.stopped = str(signal) or signal.__class__.__name__
+            break
+        result.sent = True
         for item in batch.items:  # type: ignore[attr-defined]
-            if len(accepted) >= wanted:
+            if len(result.accepted) >= wanted:
                 break
             try:
                 cells = _accept(item, fields, seen, floors)
             except _Rejected as rejection:
-                counters[rejection.reason] += 1
+                result.counters[rejection.reason] += 1
                 continue
-            accepted.append(cells)
+            result.accepted.append(cells)
             avoid.append(cells[0])
-    return accepted, counters
+    return result

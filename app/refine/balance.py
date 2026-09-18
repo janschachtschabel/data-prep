@@ -22,7 +22,14 @@ from dataclasses import dataclass
 import pandas as pd
 
 from ..textnorm import split_labels
-from .balance_gates import EXTRA_BATCHES, Complete, fingerprint, generate_for_label, pick_examples
+from .balance_gates import (
+    EXTRA_BATCHES,
+    Complete,
+    LabelResult,
+    fingerprint,
+    generate_for_label,
+    pick_examples,
+)
 from .fields import TextField, read_values, write_values
 from .provenance import EXAMPLE_FOR, GENERATED_FOR, MARK_COLUMNS, is_marked
 
@@ -190,12 +197,17 @@ async def balance_dataset(
     batch_size: int = 10,
     limit: int = 500,
     provenance_known: bool = False,
+    stop_on: tuple[type[BaseException], ...] = (),
 ) -> tuple[pd.DataFrame, dict]:
     """Generate the rows each short label is missing; returns the new frame and stats.
 
     The source frame is never modified — the caller saves the result as a NEW dataset.
     Real rows shown to the generator are marked ``example_for``, generated rows
     ``generated_for``; the split keeps both out of a holdout.
+
+    An exception in ``stop_on`` — a budget cap, typically — ends the run early
+    instead of failing it: the rows generated so far were paid for and are kept, and
+    ``stopped`` says why the run ended. Anything else propagates.
 
     Raises :class:`ForeignProvenanceError` when the frame carries a ``generated_for``
     column with values that are not labels in ``label_column`` — unless the caller
@@ -208,37 +220,39 @@ async def balance_dataset(
     generated: list[dict] = []
     shown: list[tuple[int, str]] = []
     per_label: dict[str, dict] = {}
+    stopped: str | None = None
 
     for label, entry in plan["per_label"].items():
         if not entry["deficit"]:
             continue
         rows = prepared.rows_by_label[label]
         synthetic = sum(1 for p in rows if not prepared.real[p])
-        accepted: list[list[str]] = []
-        counters = {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0}
-        if entry["planned"]:
+        result = LabelResult()
+        if entry["planned"] and stopped is None:
             positions = pick_examples(
                 [p for p in rows if prepared.usable(p)], prepared.cells, examples_per_label)
             examples = [dict(zip((f.column for f in fields), prepared.cells[p], strict=True))
                         for p in positions]
-            accepted, counters = await generate_for_label(
+            result = await generate_for_label(
                 label, examples, fields=fields, wanted=entry["planned"],
                 avoid=[prepared.cells[p][0] for p in rows], seen=seen,
-                batch_size=batch_size, complete=complete,
+                batch_size=batch_size, complete=complete, stop_on=stop_on,
             )
-            shown.extend((p, label) for p in positions)
+            if result.sent:  # a call that never went out showed nobody anything
+                shown.extend((p, label) for p in positions)
             generated.extend(
                 {**dict(zip((f.column for f in fields), cells, strict=True)),
                  label_column: label, GENERATED_FOR: label}
-                for cells in accepted
+                for cells in result.accepted
             )
+            stopped = result.stopped
+        added = len(result.accepted)
         per_label[label] = {
             "support": entry["support"],
-            "added": len(accepted),
-            "missing": entry["deficit"] - len(accepted),
-            "synthetic_share": round(
-                (synthetic + len(accepted)) / (entry["support"] + len(accepted)), 3),
-            **counters,
+            "added": added,
+            "missing": entry["deficit"] - added,
+            "synthetic_share": round((synthetic + added) / (entry["support"] + added), 3),
+            **result.counters,
         }
 
     new = await asyncio.to_thread(_assemble, df, generated, shown)
@@ -248,5 +262,6 @@ async def balance_dataset(
         "labels_filled": sum(1 for e in per_label.values() if not e["missing"]),
         "labels_cut_by_limit": plan["labels_cut_by_limit"],
         "skipped_without_examples": plan["skipped_without_examples"],
+        "stopped": stopped,
         "per_label": per_label,
     }
