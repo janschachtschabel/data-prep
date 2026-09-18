@@ -30,7 +30,7 @@ from ..refine.view import page_rows
 from ..security import MAX_NAME_BYTES, read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..tabular import SUPPORTED_READ, read_table, write_table
-from .refine import load_or_404
+from .refine import load_or_404, load_with_history_or_404
 
 # Chosen so a browser saves rather than renders, and so a gzipped export is
 # not silently decompressed by the transfer layer.
@@ -123,7 +123,7 @@ async def run_operation(
     input. With one, the source's history is carried forward and this step
     appended, so a pipeline stays reconstructable.
     """
-    df = await load_or_404(settings, name)
+    df, history = await load_with_history_or_404(settings, name)
     target = safe_name(req.target, "target name") if req.target else None
     if target:
         refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
@@ -135,7 +135,7 @@ async def run_operation(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # The target is checked again at the write: the op ran in a thread meanwhile.
     return await in_store(preview_or_apply, settings, name, target, req.op, req.params,
-                          new_df, stats, overwrite=req.overwrite)
+                          new_df, stats, history=history, overwrite=req.overwrite)
 
 
 @router.get("/{name}/profile", summary="Per-column fill rate, cardinality and ranges")
@@ -206,7 +206,7 @@ async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_set
     sides can multiply them beyond memory. Computing that from the key counts
     costs nothing, while materialising it is the very thing worth avoiding.
     """
-    left = await load_or_404(settings, name)
+    left, history = await load_with_history_or_404(settings, name)
     right = await load_or_404(settings, req.right)
     target = safe_name(req.target, "target name") if req.target else None
     if target:
@@ -225,7 +225,7 @@ async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_set
               "suffix": req.suffix, "coalesce": req.coalesce}
     # The target is checked again at the write: the join ran in a thread meanwhile.
     return await in_store(preview_or_apply, settings, name, target, "join", params,
-                          new_df, stats, overwrite=req.overwrite)
+                          new_df, stats, history=history, overwrite=req.overwrite)
 
 
 @router.get("/{name}/rows", summary="Browse rows, paginated and searchable")

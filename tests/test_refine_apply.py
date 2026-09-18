@@ -28,7 +28,7 @@ class TestPreview:
     def test_it_reports_the_stats_and_writes_nothing(self, tmp_path):
         settings = _settings(tmp_path)
         save_dataset(settings, "src", DF)
-        out = preview_or_apply(settings, "src", None, "rules", {}, RESULT, STATS)
+        out = preview_or_apply(settings, "src", None, "rules", {}, RESULT, STATS, history=[])
         assert out["preview"] is True
         assert out["removed"] == 1
         assert "target" not in out
@@ -36,7 +36,7 @@ class TestPreview:
     def test_the_source_is_left_alone(self, tmp_path):
         settings = _settings(tmp_path)
         save_dataset(settings, "src", DF)
-        preview_or_apply(settings, "src", None, "rules", {}, RESULT, STATS)
+        preview_or_apply(settings, "src", None, "rules", {}, RESULT, STATS, history=[])
         assert len(load_dataset(settings, "src")) == 3
 
 
@@ -44,7 +44,8 @@ class TestApply:
     def test_it_writes_the_target(self, tmp_path):
         settings = _settings(tmp_path)
         save_dataset(settings, "src", DF)
-        out = preview_or_apply(settings, "src", "kept", "rules", {}, RESULT, STATS)
+        out = preview_or_apply(settings, "src", "kept", "rules", {}, RESULT, STATS,
+            history=read_ops(settings, "src"))
         assert out["preview"] is False
         assert out["target"] == "kept"
         assert len(load_dataset(settings, "kept")) == 2
@@ -54,14 +55,16 @@ class TestApply:
         input, which is the whole reason a target is named."""
         settings = _settings(tmp_path)
         save_dataset(settings, "src", DF)
-        preview_or_apply(settings, "src", "kept", "rules", {}, RESULT, STATS)
+        preview_or_apply(settings, "src", "kept", "rules", {}, RESULT, STATS,
+            history=read_ops(settings, "src"))
         assert len(load_dataset(settings, "src")) == 3
 
     def test_the_operation_is_recorded_with_its_params(self, tmp_path):
         settings = _settings(tmp_path)
         save_dataset(settings, "src", DF)
         params = {"rules": [{"column": "a", "op": "ne", "value": "3"}]}
-        preview_or_apply(settings, "src", "kept", "rules", params, RESULT, STATS)
+        preview_or_apply(settings, "src", "kept", "rules", params, RESULT, STATS,
+            history=read_ops(settings, "src"))
         ops = read_ops(settings, "kept")
         assert len(ops) == 1
         assert ops[0]["filter"] == "rules"
@@ -74,9 +77,12 @@ class TestApply:
         pipeline cannot be reconstructed from what was kept."""
         settings = _settings(tmp_path)
         save_dataset(settings, "src", DF)
-        preview_or_apply(settings, "src", "step1", "drop_columns", {}, RESULT, STATS)
-        preview_or_apply(settings, "step1", "step2", "rules", {}, RESULT, STATS)
-        preview_or_apply(settings, "step2", "step3", "dedupe_exact", {}, RESULT, STATS)
+        preview_or_apply(settings, "src", "step1", "drop_columns", {}, RESULT, STATS,
+            history=read_ops(settings, "src"))
+        preview_or_apply(settings, "step1", "step2", "rules", {}, RESULT, STATS,
+            history=read_ops(settings, "step1"))
+        preview_or_apply(settings, "step2", "step3", "dedupe_exact", {}, RESULT, STATS,
+            history=read_ops(settings, "step2"))
         assert [op["filter"] for op in read_ops(settings, "step3")] == [
             "drop_columns", "rules", "dedupe_exact"]
 
@@ -85,7 +91,8 @@ class TestApply:
         it must not duplicate the history it just carried forward."""
         settings = _settings(tmp_path)
         save_dataset(settings, "src", DF)
-        preview_or_apply(settings, "src", "src", "rules", {}, RESULT, STATS)
+        preview_or_apply(settings, "src", "src", "rules", {}, RESULT, STATS,
+            history=read_ops(settings, "src"))
         assert len(load_dataset(settings, "src")) == 2
         assert [op["filter"] for op in read_ops(settings, "src")] == ["rules"]
 
@@ -96,6 +103,7 @@ class TestApply:
         save_dataset(settings, "src", DF)
         stats = {"filter": "drop_columns", "before": 3, "after": 3, "removed": 0,
                  "changed": 1, "columns_before": ["a", "b"], "columns_after": ["a"]}
-        out = preview_or_apply(settings, "src", "slim", "drop_columns", {}, RESULT, stats)
+        out = preview_or_apply(settings, "src", "slim", "drop_columns", {}, RESULT, stats,
+            history=read_ops(settings, "src"))
         assert out["columns_after"] == ["a"]
         assert read_ops(settings, "slim")[0]["changed"] == 1

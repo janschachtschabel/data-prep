@@ -109,7 +109,8 @@ class TestApplyIsConsistent:
         write_ops(settings, "src", [{"filter": "a"}])
         _fail_partway_write_text(monkeypatch, when=1)
         with pytest.raises(OSError):
-            preview_or_apply(settings, "src", "out", "rules", {}, V2, self.STATS)
+            preview_or_apply(settings, "src", "out", "rules", {}, V2, self.STATS,
+                             history=read_ops(settings, "src"))
         assert load_dataset(settings, "out") is not None, "the dataset must land first"
         assert read_ops(settings, "out") == [], "a half-written history is worse than none"
 
@@ -124,7 +125,8 @@ class TestApplyIsConsistent:
         # Raises before the fix (the second write fails) and not after (there is
         # no second write); the assertion below is on the state either way.
         with contextlib.suppress(OSError):
-            preview_or_apply(settings, "src", "out", "rules", {}, V2, self.STATS)
+            preview_or_apply(settings, "src", "out", "rules", {}, V2, self.STATS,
+                             history=read_ops(settings, "src"))
         ops = read_ops(settings, "out")
         assert ops != [{"filter": "a"}], "the source's history without the new step"
         assert ops == [] or [o["filter"] for o in ops] == ["a", "rules"]

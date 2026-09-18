@@ -20,12 +20,12 @@ from collections.abc import Callable
 
 import pandas as pd
 
-from ..security import refuse_existing, safe_name
+from ..security import refuse_existing
 from ..settings import Settings
 from .columns import drop_columns, rename_columns, select_columns
 from .duplicates import dedupe_keys
 from .rules import filter_rows
-from .store import dataset_path, read_ops, save_dataset, write_ops
+from .store import dataset_path, save_dataset, write_ops
 
 # The table layer's operations, mirroring filters.FILTERS for the label layer.
 # Kept beside preview_or_apply so one module answers "run a step, then record
@@ -66,14 +66,17 @@ def preview_or_apply(
     new_df: pd.DataFrame,
     stats: dict,
     *,
+    history: list[dict],
     overwrite: bool = False,
 ) -> dict:
     """Return ``stats`` alone (preview) or write ``new_df`` to ``target``.
 
     ``target`` is ``None`` for a preview, which writes nothing at all -- a wrong
-    filter must never cost the input. When a target IS named, the source's
-    history is carried forward and this operation appended, so three steps read
-    as three steps on the final dataset.
+    filter must never cost the input. When a target IS named, ``history`` is
+    carried forward and this operation appended, so three steps read as three
+    steps on the final dataset. ``history`` is the source's, read together with
+    the table the step ran on (``load_with_history_or_404``): read here, at the
+    write, it could already describe a newer version of the source.
 
     Applying refuses to replace a dataset other than the source unless
     ``overwrite``. That is checked here, at the write: the step itself ran in a
@@ -87,9 +90,6 @@ def preview_or_apply(
         return {**stats, "preview": True}
 
     refuse_existing(replaces_another(settings, source, target), "Dataset", target, overwrite)
-    # Read the source's history BEFORE writing, so that naming the source as the
-    # target (working in place) keeps one history instead of duplicating it.
-    history = read_ops(settings, safe_name(source, "dataset name"))
     # Dataset first, history second, and the history in ONE write. Each write is
     # atomic on its own, so the only window a crash can leave is "new dataset,
     # stale history" -- a valid state whose provenance is merely behind. Written

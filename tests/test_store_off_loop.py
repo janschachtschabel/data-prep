@@ -283,12 +283,13 @@ def _queue_a_write_while_reading(monkeypatch, name: str) -> None:
     monkeypatch.setattr(pd, "read_csv", reading)
 
 
-@pytest.mark.parametrize("route", ["split", "enrich", "balance"])
+@pytest.mark.parametrize("route", ["split", "enrich", "balance", "filter", "op", "join"])
 def test_a_result_records_the_history_of_the_table_it_was_made_from(
         make_client, monkeypatch, route):
     """Read in two store steps, the rows of one version were paired with the history
     of the next: a write queued between the two landed in the result's provenance
-    (review of e2d0204, finding 1)."""
+    (review of e2d0204, finding 1). Filter, op and join had the same gap before
+    it: they read the source's history only when writing the result."""
     import app.routes.refine_balance as balance
     import app.routes.refine_prep as prep
 
@@ -301,6 +302,7 @@ def test_a_result_records_the_history_of_the_table_it_was_made_from(
                         lambda purpose, settings, override=None: balance_session)
     client = make_client()
     _import(client, "quelle", _frame().assign(**{KEYW: ""}))
+    _import(client, "rechts")
     fields = [{"column": TITLE}, {"column": DESC}]
     url, body, result = {
         "split": ("/refine/quelle/split", {"target": "teil", "holdout_fraction": 0.3}, "teil_train"),
@@ -310,6 +312,13 @@ def test_a_result_records_the_history_of_the_table_it_was_made_from(
         "balance": ("/refine/quelle/balance", {
             "fields": fields, "label_column": LABEL, "target_per_label": 8,
             "target": "ausgeglichen"}, "ausgeglichen"),
+        "filter": ("/refine/quelle/filter", {
+            "filter": "dedupe_exact", "target": "gefiltert"}, "gefiltert"),
+        "op": ("/refine/quelle/op", {
+            "op": "select_columns", "params": {"keep": [ID, TITLE]}, "target": "schmal"}, "schmal"),
+        "join": ("/refine/quelle/join", {
+            "right": "rechts", "keys": [{"left": ID, "right": ID}], "target": "verbunden"},
+            "verbunden"),
     }[route]
     _queue_a_write_while_reading(monkeypatch, "quelle")
 

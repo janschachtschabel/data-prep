@@ -121,7 +121,7 @@ async def preflight(name: str, req: PreflightRequest, settings: Settings = Depen
 
 @router.post("/{name}/filter", summary="Preview (no target) or apply (target) a filter")
 async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Depends(get_settings)) -> dict:
-    df = await load_or_404(settings, name)
+    df, history = await load_with_history_or_404(settings, name)
     target = safe_name(req.target, "target name") if req.target else None
     if target:
         refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
@@ -141,7 +141,7 @@ async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Dep
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # The target is checked again at the write: the filter ran in a thread meanwhile.
     return await in_store(preview_or_apply, settings, name, target, req.filter, req.params,
-                          new_df, stats, overwrite=req.overwrite)
+                          new_df, stats, history=history, overwrite=req.overwrite)
 
 
 @router.get("/{name}/ops", summary="Operation history (the applied refine chain)")
