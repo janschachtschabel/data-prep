@@ -2,9 +2,10 @@
 
 The app runs one worker. While a route read or wrote the 81 MB WLO export on the
 event loop, /health and run polling waited up to 2.4 s (import), 1.0 s (a load)
-and 0.8 s (applying a step). These tests spy on the three primitives every load
-and save ends in -- ``pandas.read_csv``, ``DataFrame.to_csv``, ``os.replace`` --
-and collect each call that ran on the loop's own thread.
+and 0.8 s (applying a step). An audit hook collects every file access below the
+store's directory that runs on the loop's own thread -- tables, the history and
+shape sidecars, renames, deletes, listings -- and a spy catches a whole table
+serialised there without any file (the push).
 
 Moving the writes off the loop must not cost what running on it gave for free:
 the check before a write and the write itself stay one step, so a name another
@@ -16,8 +17,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 import time
 import traceback
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -67,22 +70,51 @@ def _caller() -> str:
     return "?"
 
 
+# File access as the interpreter reports it: every open, rename, delete and
+# listing, whichever function asked. Spies on single functions saw only the ones
+# someone thought of -- reading a history, listing, deleting slipped past them
+# (review of e2d0204, finding 3). A check that only stats a path (exists) raises
+# no event and is allowed on the loop.
+_FILE_EVENTS = {"open", "os.remove", "os.rename", "os.scandir", "os.listdir"}
+_watching: dict = {}  # set by the on_loop fixture: {"root": ..., "seen": [...]}
+
+
+def _audit(event: str, args: tuple) -> None:
+    if not _watching or event not in _FILE_EVENTS:
+        return
+    for arg in args[:2] if event == "os.rename" else args[:1]:
+        if not isinstance(arg, (str, os.PathLike)):
+            continue  # an open file descriptor
+        path = os.fspath(arg)
+        if not isinstance(path, str):
+            continue
+        path = os.path.normcase(os.path.abspath(path))
+        root = _watching["root"]
+        if (path == root or path.startswith(root + os.sep)) and _on_loop():
+            _watching["seen"].append(f"{event} {os.path.basename(path)} from {_caller()}")
+            return
+
+
+sys.addaudithook(_audit)  # permanent for the process; inert unless a test watches
+
+
 @pytest.fixture
-def on_loop(monkeypatch) -> list[str]:
-    """Every read_csv / to_csv / os.replace that ran ON the event loop's thread."""
+def on_loop(monkeypatch, tmp_path) -> Iterator[list[str]]:
+    """Every store file access, and every whole-table serialisation, that ran ON the
+    event loop's thread."""
     seen: list[str] = []
+    real = pd.DataFrame.to_csv
 
-    def spy(name, real):
-        def wrapper(*args, **kwargs):
-            if _on_loop():
-                seen.append(f"{name} from {_caller()}")
-            return real(*args, **kwargs)
-        return wrapper
+    def to_csv(*args, **kwargs):
+        if _on_loop():  # serialising a table costs as much as saving it, file or not
+            seen.append(f"to_csv from {_caller()}")
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(pd, "read_csv", spy("read_csv", pd.read_csv))
-    monkeypatch.setattr(pd.DataFrame, "to_csv", spy("to_csv", pd.DataFrame.to_csv))
-    monkeypatch.setattr(os, "replace", spy("os.replace", os.replace))
-    return seen
+    monkeypatch.setattr(pd.DataFrame, "to_csv", to_csv)
+    _watching.update(root=os.path.normcase(os.path.abspath(tmp_path / "data" / "refine")),
+                     seen=seen)
+    yield seen
+    _watching.clear()
 
 
 def _ok(response) -> None:
