@@ -19,12 +19,12 @@ from ..refine.analyze import analyze, training_preflight
 from ..refine.apply import preview_or_apply, replaces_another
 from ..refine.filters import run_filter
 from ..refine.store import (
-    dataset_path,
     delete_dataset,
     in_store,
     list_datasets,
     load_dataset,
-    read_ops,
+    load_with_ops,
+    stored_ops,
 )
 from ..security import MAX_NAME_BYTES, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
@@ -67,13 +67,22 @@ class FilterRequest(BaseModel):
     label_separator: str = Field(default=",", max_length=3)
 
 
+def _found[T](value: T | None, name: str) -> T:
+    if value is None:
+        raise HTTPException(status_code=404, detail=f"Dataset {name!r} not found.")
+    return value
+
+
 async def load_or_404(settings: Settings, name: str) -> pd.DataFrame:
     """The stored dataset ``name`` as a frame, or 404. Shared by every route that
     reads a table; parsed on the store's thread, never on the event loop."""
-    df = await in_store(load_dataset, settings, safe_name(name, "dataset name"))
-    if df is None:
-        raise HTTPException(status_code=404, detail=f"Dataset {name!r} not found.")
-    return df
+    return _found(await in_store(load_dataset, settings, safe_name(name, "dataset name")), name)
+
+
+async def load_with_history_or_404(settings: Settings, name: str) -> tuple[pd.DataFrame, list[dict]]:
+    """The table and the history that describes it, read in one store step -- for a
+    route that records its result's provenance. Or 404."""
+    return _found(await in_store(load_with_ops, settings, safe_name(name, "dataset name")), name)
 
 
 @router.get("/datasets", summary="List refine datasets")
@@ -137,10 +146,9 @@ async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Dep
 
 @router.get("/{name}/ops", summary="Operation history (the applied refine chain)")
 async def dataset_ops(name: str, settings: Settings = Depends(get_settings)) -> dict:
-    safe = safe_name(name, "dataset name")
-    if not dataset_path(settings, safe).exists():
-        raise HTTPException(status_code=404, detail=f"Dataset {name!r} not found.")
-    return {"ops": await in_store(read_ops, settings, safe)}
+    # Checked and read in one store step: apart, a delete in between was answered
+    # with 200 and an empty history instead of 404.
+    return {"ops": _found(await in_store(stored_ops, settings, safe_name(name, "dataset name")), name)}
 
 
 @router.delete("/{name}", summary="Delete a refine dataset")

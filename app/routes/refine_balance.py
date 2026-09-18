@@ -17,11 +17,11 @@ from pydantic import BaseModel, Field, model_validator
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, call_profile, session_for
 from ..refine.apply import replaces_another
 from ..refine.balance import balance_dataset, plan_balance
-from ..refine.store import commit, in_store, read_ops
+from ..refine.store import commit, in_store
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from .field_spec import FieldSpec, check_fields
-from .refine import DEFAULT_LABEL_COLUMN, load_or_404
+from .refine import DEFAULT_LABEL_COLUMN, load_with_history_or_404
 
 router = APIRouter(prefix="/refine", tags=["Refine"], dependencies=[Depends(require_key)])
 
@@ -58,7 +58,7 @@ async def balance(
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
-    df = await load_or_404(settings, name)
+    df, history = await load_with_history_or_404(settings, name)
     fields = [spec.to_field() for spec in req.fields]
     for column in [*(f.column for f in fields), req.label_column]:
         if column not in df.columns:
@@ -92,7 +92,6 @@ async def balance(
             f"This run could need up to {plan['max_calls']} model calls; the call budget is "
             f"{budget}. Lower the target or the limit and run it in several steps."))
 
-    history = await in_store(read_ops, settings, name)
     try:
         session = session_for(req.llm_purpose, settings, override)
         new_df, stats = await balance_dataset(

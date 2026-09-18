@@ -85,6 +85,22 @@ def load_dataset(settings: Settings, name: str) -> pd.DataFrame | None:
     return pd.read_csv(path, sep=";", dtype=str, encoding="utf-8", keep_default_na=False)
 
 
+def load_with_ops(settings: Settings, name: str) -> tuple[pd.DataFrame, list[dict]] | None:
+    """The table and its history, or None when there is no such table.
+
+    One function so that ONE store step reads both: read in two steps, a write
+    queued in between paired the rows of one version with the history of the
+    next -- and a result recorded provenance its rows never went through."""
+    df = load_dataset(settings, name)
+    return None if df is None else (df, read_ops(settings, name))
+
+
+def stored_ops(settings: Settings, name: str) -> list[dict] | None:
+    """The history of a stored table, or None when there is no such table --
+    checked and read in one step, for the same reason as :func:`load_with_ops`."""
+    return read_ops(settings, name) if dataset_path(settings, name).exists() else None
+
+
 def save_dataset(settings: Settings, name: str, df: pd.DataFrame) -> None:
     replace_atomically(
         dataset_path(settings, name),

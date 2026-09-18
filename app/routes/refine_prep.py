@@ -24,12 +24,18 @@ from ..refine.enrich import enrich_dataset
 from ..refine.fields import TextField
 from ..refine.label_audit import audit_predictions
 from ..refine.prep import balance_report, holdout_split
-from ..refine.store import commit, dataset_path, in_store, read_ops
+from ..refine.store import commit, dataset_path, in_store
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..textnorm import split_labels
 from .field_spec import FieldSpec, check_fields
-from .refine import DEFAULT_LABEL_COLUMN, DEFAULT_TEXT_COLUMNS, AnalyzeRequest, load_or_404
+from .refine import (
+    DEFAULT_LABEL_COLUMN,
+    DEFAULT_TEXT_COLUMNS,
+    AnalyzeRequest,
+    load_or_404,
+    load_with_history_or_404,
+)
 
 router = APIRouter(prefix="/refine", tags=["Refine"], dependencies=[Depends(require_key)])
 
@@ -131,7 +137,9 @@ class EnrichRequest(BaseModel):
 
 @router.post("/{name}/split", summary="Stratified text-disjoint holdout split (train + holdout)")
 async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depends(get_settings)) -> dict:
-    df = await load_or_404(settings, name)
+    # The history is read with the table, before anything is written: unreadable,
+    # it must fail the request while both outputs are still untouched.
+    df, history = await load_with_history_or_404(settings, name)
     target = safe_name(req.target, "target name")
     # Both derived names up front: checked at save time, "_train" could land
     # and "_holdout" then fail the bound, leaving half a split behind.
@@ -143,9 +151,6 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
             refuse_existing(replaces_another(settings, name, derived), "Dataset", derived, req.overwrite)
 
     check_outputs()
-    # Read before anything is written: unreadable, it must fail the request
-    # while both outputs are still untouched.
-    history = await in_store(read_ops, settings, name)
     try:
         train, holdout, stats = await asyncio.to_thread(
             holdout_split, df, req.text_columns, req.label_column,
@@ -197,7 +202,7 @@ async def enrich(
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
-    df = await load_or_404(settings, name)
+    df, history = await load_with_history_or_404(settings, name)  # before the LLM is paid for
     target = safe_name(req.target, "target name")
     # Before any LLM call: a refused write must not have been paid for.
     refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
@@ -208,7 +213,6 @@ async def enrich(
     for col in [f.column for f in fields]:
         if col not in df.columns:
             raise HTTPException(status_code=400, detail=f"Column {col!r} not found.")
-    history = await in_store(read_ops, settings, name)  # before the LLM is paid for, not after
     try:
         session = session_for(req.llm_purpose, settings, override)
         new_df, stats = await enrich_dataset(

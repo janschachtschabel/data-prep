@@ -220,3 +220,99 @@ def test_a_name_taken_while_a_step_ran_is_still_refused(make_client, monkeypatch
     winner = next(source for source, code in codes.items() if code == 200)
     ops = client.get("/refine/ziel/ops", headers=HEADERS).json()["ops"]
     assert ops[-1]["source"] == winner
+
+
+# ------------------------------------------ one table, one history ----
+
+
+def _settings():
+    from app.settings import get_settings
+
+    return get_settings()  # the instance the app under test reads
+
+
+def _queue_a_write_while_reading(monkeypatch, name: str) -> None:
+    """While a request reads table ``name`` on the store's thread, queue an in-place
+    write of that table. The store runs one step at a time, so the write lands
+    right after the step that read the table -- deterministically, no timing."""
+    from app.refine import store
+
+    real = pd.read_csv
+    armed = [True]
+
+    def reading(path, *args, **kwargs):
+        df = real(path, *args, **kwargs)
+        if armed[0] and str(path).endswith(f"{os.sep}{name}.csv"):
+            armed[0] = False
+            store._store_thread.submit(
+                store.commit, _settings(), {name: (df, [{"op": "injected"}])})
+        return df
+
+    monkeypatch.setattr(pd, "read_csv", reading)
+
+
+@pytest.mark.parametrize("route", ["split", "enrich", "balance"])
+def test_a_result_records_the_history_of_the_table_it_was_made_from(
+        make_client, monkeypatch, route):
+    """Read in two store steps, the rows of one version were paired with the history
+    of the next: a write queued between the two landed in the result's provenance
+    (review of e2d0204, finding 1)."""
+    import app.routes.refine_balance as balance
+    import app.routes.refine_prep as prep
+
+    enrich_session = _session({"values": ["Optik", "Licht", "Physik"]}, monkeypatch)
+    balance_session = _session({"items": [{"values": [
+        f"Neuer Titel {i}", f"Ein neuer Text über ein anderes Thema {i}."]}
+        for i in range(10)]}, monkeypatch)
+    monkeypatch.setattr(prep, "session_for", lambda purpose, settings, override=None: enrich_session)
+    monkeypatch.setattr(balance, "session_for",
+                        lambda purpose, settings, override=None: balance_session)
+    client = make_client()
+    _import(client, "quelle", _frame().assign(**{KEYW: ""}))
+    fields = [{"column": TITLE}, {"column": DESC}]
+    url, body, result = {
+        "split": ("/refine/quelle/split", {"target": "teil", "holdout_fraction": 0.3}, "teil_train"),
+        "enrich": ("/refine/quelle/enrich", {
+            "fields": [*fields, {"column": KEYW, "separator": ",", "min_values": 3}],
+            "target_field": KEYW, "target": "angereichert", "limit": 2}, "angereichert"),
+        "balance": ("/refine/quelle/balance", {
+            "fields": fields, "label_column": LABEL, "target_per_label": 8,
+            "target": "ausgeglichen"}, "ausgeglichen"),
+    }[route]
+    _queue_a_write_while_reading(monkeypatch, "quelle")
+
+    _ok(client.post(url, headers=HEADERS, json=body))
+
+    history = [op.get("op") for op in
+               client.get(f"/refine/{result}/ops", headers=HEADERS).json()["ops"]]
+    assert "injected" not in history, history
+
+
+def test_the_history_answer_describes_one_state_of_the_store(make_client, monkeypatch):
+    """/ops checked on the loop that the table exists and read its history in a later
+    store step: a delete queued in between was answered with 200 and an empty
+    history for a table that had one (review of e2d0204, finding 1)."""
+    import pathlib
+
+    from app.refine import store
+
+    client = make_client()
+    _import(client, "quelle")
+    _ok(client.post("/refine/quelle/op", headers=HEADERS, json={
+        "op": "select_columns", "params": {"keep": [ID, TITLE]}, "target": "quelle"}))
+    real = pathlib.Path.exists
+    armed = [True]
+
+    def exists(self, *args, **kwargs):
+        found = real(self, *args, **kwargs)
+        if armed[0] and self.name == "quelle.csv":
+            armed[0] = False
+            store._store_thread.submit(store.delete_dataset, _settings(), "quelle")
+        return found
+
+    monkeypatch.setattr(pathlib.Path, "exists", exists)
+
+    r = client.get("/refine/quelle/ops", headers=HEADERS)
+
+    assert r.status_code == 200, r.text
+    assert [op.get("filter") for op in r.json()["ops"]] == ["select_columns"]
