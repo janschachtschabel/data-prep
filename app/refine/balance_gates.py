@@ -14,11 +14,21 @@ from collections.abc import Awaitable, Callable
 from pydantic import BaseModel
 
 from ..pii import scrub
-from .balance_prompt import BalanceBatch, BalanceItem, build_balance_prompt, output_budget
+from .balance_prompt import (
+    BalanceBatch,
+    BalanceItem,
+    build_balance_prompt,
+    output_budget,
+    shown_cells,
+)
 from .fields import TextField, read_values, write_values
 
 # The injected model call. Keyword arguments carry the per-batch output budget.
 Complete = Callable[..., Awaitable[BaseModel]]
+
+# The floor catches degenerate answers, not brief ones: a quarter of the shortest
+# example as shown, never more than this.
+_FLOOR_CAP = 40
 
 # After the planned batches, this many more attempts per label to replace what the
 # gates rejected. Without a cap a model that keeps repeating itself would be paid
@@ -59,17 +69,37 @@ def pick_examples(positions: list[int], cells: list[list[str]], k: int) -> list[
 
 
 def _min_chars(examples: list[dict], fields: list[TextField]) -> list[int]:
-    """Per field, the shortest acceptable single value: half the shortest example.
+    """Per field, the shortest acceptable single value.
 
     Fields have no common length — a title is not a description — so the bar comes
-    from what this label's own rows look like. List fields are gated by
+    from this label's examples AS SHOWN: computed from full cells, a long example
+    set a floor above everything the prompt displayed, and every answer that followed
+    the prompt was discarded after being paid for. List fields are gated by
     ``min_values`` instead.
     """
+    shown = [shown_cells(row, fields) for row in examples]
     floors = []
-    for field in fields:
-        lengths = [len(row[field.column]) for row in examples if row.get(field.column)]
-        floors.append(0 if field.separator or not lengths else min(lengths) // 2)
+    for index, field in enumerate(fields):
+        lengths = [len(cells[index]) for cells in shown if cells[index]]
+        floors.append(0 if field.separator or not lengths
+                      else min(min(lengths) // 4, _FLOOR_CAP))
     return floors
+
+
+def _parts(raw: str, field: TextField) -> list[str]:
+    """A cell's values as the gate sees them: scrubbed WHOLE, then split — split
+    first, "+49 30 1234567" is three harmless numbers."""
+    return read_values(scrub(raw)[0], field)
+
+
+def _seed(seen: set[str], examples: list[dict], fields: list[TextField]) -> None:
+    """Teach the duplicate gate what the model was shown, in the form a copy of it
+    would arrive in: cut to the prompt's length, and scrubbed like every answer."""
+    for row in examples:
+        cells = shown_cells(row, fields)
+        seen.add(fingerprint(cells))
+        seen.add(fingerprint([write_values(_parts(cell, f), f)
+                              for cell, f in zip(cells, fields, strict=True)]))
 
 
 def _accept(item: BalanceItem, fields: list[TextField], seen: set[str],
@@ -77,14 +107,12 @@ def _accept(item: BalanceItem, fields: list[TextField], seen: set[str],
     """The generated cells, or :class:`_Rejected` with the reason.
 
     Completeness first — every field must carry its ``min_values``, the dataset's
-    own definition of a gap — then length, then repetition. Each cell is scrubbed
-    WHOLE before it is split: split first, "+49 30 1234567" is three harmless
-    numbers.
+    own definition of a gap — then length, then repetition.
     """
     values = []
     for index, field in enumerate(fields):
         raw = item.values[index] if index < len(item.values) else ""
-        parts = read_values(scrub(raw)[0], field)
+        parts = _parts(raw, field)
         if len(parts) < field.min_values:
             raise _Rejected("discarded_incomplete")
         values.append(parts)
@@ -118,6 +146,7 @@ async def generate_for_label(
     accepted: list[list[str]] = []
     counters = {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0}
     floors = _min_chars(examples, fields)
+    _seed(seen, examples, fields)
     attempts = math.ceil(wanted / batch_size) + EXTRA_BATCHES
 
     while len(accepted) < wanted and attempts:

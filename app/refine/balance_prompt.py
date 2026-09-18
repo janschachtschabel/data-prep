@@ -65,6 +65,22 @@ Institutionsnamen.
 Antworte NUR mit JSON: {{"items": [{{"values": [{value_slots}]}}]}}"""
 
 
+def shown_cells(row: dict, fields: list[TextField]) -> list[str]:
+    """The cells of ``row`` exactly as the prompt shows them: normalised, and cut to
+    what a prompt can afford.
+
+    Everything that judges or sizes an answer uses this, not the full row — the
+    model can only imitate, or copy, what it was shown. A floor or a budget computed
+    from a 1,500-character cell the model saw 400 characters of asks for the wrong
+    thing.
+    """
+    return [write_values(read_values(row.get(f.column), f), f)[:_EXAMPLE_CHARS] for f in fields]
+
+
+def _one_line(text: str) -> str:
+    return " ".join(str(text).split())
+
+
 def _avoid_block(titles: list[str]) -> str:
     """The titles to avoid, as ONE line.
 
@@ -91,10 +107,7 @@ def output_budget(examples: list[dict], fields: list[TextField], n: int) -> int:
     a configured corridor. The client default of 2,000 tokens — reasoning included —
     truncates a batch of ten entries with descriptions.
     """
-    chars = max(
-        (sum(len(str(row.get(f.column) or "")) for f in fields) for row in examples),
-        default=0,
-    )
+    chars = max((sum(map(len, shown_cells(row, fields))) for row in examples), default=0)
     return min(16000, 500 + n * max(300, chars // 2))
 
 
@@ -125,15 +138,14 @@ def build_balance_prompt(
     """
     rendered: list[str] = []
     for row in examples:
-        cells = [write_values(read_values(row.get(f.column), f), f)[:_EXAMPLE_CHARS]
-                 for f in fields]
+        cells = shown_cells(row, fields)
         if any(cells):  # a row with no text is an example of nothing
             rendered.append(json.dumps(cells, ensure_ascii=False))
     if not rendered:
         raise ValueError(f"Label {label!r} has no examples to generate from.")
 
     return _BALANCE_PROMPT.format(
-        label=label,
+        label=_one_line(label),  # from the data: a line break must not start an instruction
         field_lines="\n".join(_field_line(i, f) for i, f in enumerate(fields, start=1)),
         examples="\n".join(rendered),
         n=n,
