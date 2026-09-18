@@ -170,9 +170,10 @@ def test_rebuilding_a_seed_set_keeps_its_edits_unless_told_otherwise(make_client
 # ------------------------------------------- a name taken while working ----
 # The 409 check runs before the parse / LLM / fetch await and the write after
 # it, so a name created in between was replaced without asking (review
-# finding). The check is repeated at the write, with no await in between.
-# Each test lets the heavy function create the name itself, mid-way: the
-# interleaving is deterministic instead of a race.
+# finding). The check is repeated at the write: for refine datasets in the same
+# store step as the write itself (store.commit), elsewhere with no await in
+# between. Each test lets the heavy function create the name itself, mid-way:
+# the interleaving is deterministic instead of a race.
 
 
 def _settings():
@@ -231,6 +232,76 @@ def test_enrich_refuses_a_target_taken_during_its_llm_calls(client, monkeypatch)
     r = client.post("/refine/src/enrich", headers=H, json={
         "mode": "keywords", "title_column": TITLE, "description_column": DESC,
         "keyword_column": KEYW, "min_keywords": 3, "target": "raced"})
+    assert r.status_code == 409
+    assert _rows(client, "raced") == [{"a": "important"}]
+
+
+# The at-write checks of split, combine and balance moved into store.commit's
+# guard with e2d0204; a commit that ignored its guard failed only the import and
+# enrich tests above (review of e2d0204, finding 4).
+
+
+@pytest.mark.parametrize("taken", ["_train", "_holdout"])
+def test_a_split_refuses_a_name_taken_while_it_ran(client, monkeypatch, taken):
+    import app.routes.refine_prep as refine_route
+    from app.refine.store import save_dataset
+
+    assert _import(client, _dataset(), "src").status_code == 200
+    real = refine_route.holdout_split
+
+    def racing(*args, **kwargs):
+        save_dataset(_settings(), f"raced{taken}", KEEP)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(refine_route, "holdout_split", racing)
+    r = client.post("/refine/src/split", headers=H, json={
+        "text_columns": COLS, "label_column": LABEL, "holdout_fraction": 0.25, "target": "raced"})
+    assert r.status_code == 409
+    assert _rows(client, f"raced{taken}") == [{"a": "important"}]
+    other = "_holdout" if taken == "_train" else "_train"
+    names = {d["name"] for d in client.get("/refine/datasets", headers=H).json()["datasets"]}
+    assert f"raced{other}" not in names, "not half a split either"
+
+
+def test_a_combination_refuses_a_name_taken_while_it_ran(client, monkeypatch):
+    import app.routes.refine_prep as refine_route
+    from app.refine.store import save_dataset
+
+    cols = ["properties.cclom:title", "properties.ccm:taxonid"]
+    assert _import(client, pd.DataFrame([["T1", "u1"]], columns=cols), "a").status_code == 200
+    real = refine_route.combine_datasets
+
+    def racing(*args, **kwargs):
+        save_dataset(_settings(), "raced", KEEP)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(refine_route, "combine_datasets", racing)
+    r = client.post("/refine/combine", headers=H, json={
+        "sources": [{"name": "a", "label": "A", "mapping": {col: col for col in cols}}],
+        "target": "raced", "target_columns": cols, "text_columns": cols[:1]})
+    assert r.status_code == 409
+    assert _rows(client, "raced") == [{"a": "important"}]
+
+
+def test_balancing_refuses_a_target_taken_while_it_generated(client, monkeypatch):
+    import app.routes.refine_balance as balance_route
+    from app.refine.store import save_dataset
+    from tests.test_routes_refine_balance import FIELDS, _unbalanced
+    from tests.test_routes_refine_balance import _mock_session as _balance_session
+
+    assert _import(client, _unbalanced(), "src").status_code == 200
+    session = _balance_session([["Akustik", "Ein Text über Schall.", "a, b, c"]], monkeypatch)
+    monkeypatch.setattr(balance_route, "session_for",
+                        lambda purpose, settings, override=None: session)
+    real = balance_route.balance_dataset
+
+    async def racing(*args, **kwargs):
+        save_dataset(_settings(), "raced", KEEP)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(balance_route, "balance_dataset", racing)
+    r = client.post("/refine/src/balance", headers=H, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 2, "target": "raced"})
     assert r.status_code == 409
     assert _rows(client, "raced") == [{"a": "important"}]
 
