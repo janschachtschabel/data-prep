@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-import pandas as pd
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -26,11 +25,12 @@ from ..refine.apply import preview_or_apply, replaces_another, run_table_op
 from ..refine.duplicates import duplicate_report
 from ..refine.join import DEFAULT_MAX_ROWS, join_datasets, key_cardinality
 from ..refine.profile import profile_columns
-from ..refine.store import dataset_path, load_dataset, save_dataset, write_ops
+from ..refine.store import commit, dataset_path, in_store
 from ..refine.view import page_rows
 from ..security import MAX_NAME_BYTES, read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..tabular import SUPPORTED_READ, read_table, write_table
+from .refine import load_or_404
 
 # Chosen so a browser saves rather than renders, and so a gzipped export is
 # not silently decompressed by the transfer layer.
@@ -86,13 +86,13 @@ async def import_dataset(
     except (ValueError, LookupError) as exc:
         # LookupError: an unknown encoding name is the caller's mistake, not ours.
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    # Again at the write, with no await in between: the name may have been
-    # taken while this request parsed, fetched or waited for the LLM.
-    refuse_existing(dataset_path(settings, resolved).exists(), "Dataset", resolved, overwrite)
-    save_dataset(settings, resolved, df)
-    # A fresh import has no steps yet; without this, re-importing under a used
-    # name kept the previous table's history.
-    write_ops(settings, resolved, [])
+    # A fresh import has no steps yet; without the empty history, re-importing
+    # under a used name kept the previous table's.
+    await in_store(commit, settings, {resolved: (df, [])},
+                   # Again at the write: the name may have been taken while this
+                   # request parsed.
+                   guard=lambda: refuse_existing(
+                       dataset_path(settings, resolved).exists(), "Dataset", resolved, overwrite))
     return {"name": resolved, "rows": int(len(df)), "columns": list(df.columns)}
 
 
@@ -113,13 +113,6 @@ class OperationRequest(BaseModel):
     overwrite: bool = False  # replace an existing target other than this dataset
 
 
-def _load_or_404(settings: Settings, name: str) -> pd.DataFrame:
-    df = load_dataset(settings, safe_name(name, "dataset name"))
-    if df is None:
-        raise HTTPException(status_code=404, detail=f"Dataset {name!r} not found.")
-    return df
-
-
 @router.post("/{name}/op", summary="Preview (no target) or apply (target) a table operation")
 async def run_operation(
     name: str, req: OperationRequest, settings: Settings = Depends(get_settings)
@@ -130,7 +123,7 @@ async def run_operation(
     input. With one, the source's history is carried forward and this step
     appended, so a pipeline stays reconstructable.
     """
-    df = _load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     target = safe_name(req.target, "target name") if req.target else None
     if target:
         refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
@@ -140,9 +133,9 @@ async def run_operation(
         new_df, stats = await asyncio.to_thread(run_table_op, req.op, df, req.params, {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if target:  # again at the write: the op ran in a thread meanwhile
-        refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
-    return preview_or_apply(settings, name, target, req.op, req.params, new_df, stats)
+    # The target is checked again at the write: the op ran in a thread meanwhile.
+    return await in_store(preview_or_apply, settings, name, target, req.op, req.params,
+                          new_df, stats, overwrite=req.overwrite)
 
 
 @router.get("/{name}/profile", summary="Per-column fill rate, cardinality and ranges")
@@ -153,7 +146,7 @@ async def profile_dataset(
 ) -> dict:
     """Describe an unmapped table: what is in each column, before anyone has
     decided which one is the label."""
-    df = _load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     return await asyncio.to_thread(profile_columns, df, top_n=top_n)
 
 
@@ -169,7 +162,7 @@ async def download_dataset(
     The default is the semicolon CSV api_v3 reads, so the common case is one
     click with no options.
     """
-    df = _load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     safe = safe_name(name, "dataset name")
     try:
         body = await asyncio.to_thread(write_table, df, fmt=format, separator=separator)
@@ -196,7 +189,7 @@ async def duplicates(
     ``removable_rows`` is exactly what the ``dedupe_keys`` operation would drop,
     so the report and the removal can never disagree.
     """
-    df = _load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     try:
         return await asyncio.to_thread(duplicate_report, df, list(keys), examples=examples)
     except ValueError as exc:
@@ -213,8 +206,8 @@ async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_set
     sides can multiply them beyond memory. Computing that from the key counts
     costs nothing, while materialising it is the very thing worth avoiding.
     """
-    left = _load_or_404(settings, name)
-    right = _load_or_404(settings, req.right)
+    left = await load_or_404(settings, name)
+    right = await load_or_404(settings, req.right)
     target = safe_name(req.target, "target name") if req.target else None
     if target:
         refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
@@ -230,9 +223,9 @@ async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_set
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     params = {"right": req.right, "keys": req.keys, "how": req.how,
               "suffix": req.suffix, "coalesce": req.coalesce}
-    # Again at the write: the join ran in a thread meanwhile.
-    refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
-    return preview_or_apply(settings, name, target, "join", params, new_df, stats)
+    # The target is checked again at the write: the join ran in a thread meanwhile.
+    return await in_store(preview_or_apply, settings, name, target, "join", params,
+                          new_df, stats, overwrite=req.overwrite)
 
 
 @router.get("/{name}/rows", summary="Browse rows, paginated and searchable")
@@ -250,7 +243,7 @@ async def rows(
     turned into a single response. ``total`` and ``matched`` are both reported,
     because "30 of 60" is how an operator sees that a search did what they meant.
     """
-    df = _load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     try:
         return await asyncio.to_thread(
             page_rows, df, offset=offset, limit=limit, query=q, columns=list(columns) or None

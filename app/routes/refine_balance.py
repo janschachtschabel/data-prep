@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, model_validator
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, call_profile, session_for
 from ..refine.apply import replaces_another
 from ..refine.balance import balance_dataset, plan_balance
-from ..refine.store import read_ops, save_dataset, write_ops
+from ..refine.store import commit, in_store, read_ops
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from .field_spec import FieldSpec, check_fields
@@ -58,7 +58,7 @@ async def balance(
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
-    df = load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     fields = [spec.to_field() for spec in req.fields]
     for column in [*(f.column for f in fields), req.label_column]:
         if column not in df.columns:
@@ -92,7 +92,7 @@ async def balance(
             f"This run could need up to {plan['max_calls']} model calls; the call budget is "
             f"{budget}. Lower the target or the limit and run it in several steps."))
 
-    history = read_ops(settings, name)
+    history = await in_store(read_ops, settings, name)
     try:
         session = session_for(req.llm_purpose, settings, override)
         new_df, stats = await balance_dataset(
@@ -114,11 +114,11 @@ async def balance(
         # Stopped before its first row: there is nothing paid for to keep.
         raise HTTPException(status_code=429, detail=stats["stopped"])
 
-    # Again at the write: generating several hundred rows takes minutes.
-    refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
-    save_dataset(settings, target, new_df)
-    write_ops(settings, target, [*history, {
+    await in_store(commit, settings, {target: (new_df, [*history, {
         "op": "balance", "source": name, "target_per_label": req.target_per_label,
         "rows_added": stats["rows_added"], "stopped": stats["stopped"],
-        "usage": session.usage.as_dict()}])
+        "usage": session.usage.as_dict()}])},
+        # Again at the write: generating several hundred rows takes minutes.
+        guard=lambda: refuse_existing(
+            replaces_another(settings, name, target), "Dataset", target, req.overwrite))
     return {**stats, "target": target, "usage": session.usage.as_dict()}

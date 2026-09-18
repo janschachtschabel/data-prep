@@ -24,7 +24,7 @@ from ..refine.enrich import enrich_dataset
 from ..refine.fields import TextField
 from ..refine.label_audit import audit_predictions
 from ..refine.prep import balance_report, holdout_split
-from ..refine.store import dataset_path, read_ops, save_dataset, write_ops
+from ..refine.store import commit, dataset_path, in_store, read_ops
 from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..textnorm import split_labels
@@ -131,7 +131,7 @@ class EnrichRequest(BaseModel):
 
 @router.post("/{name}/split", summary="Stratified text-disjoint holdout split (train + holdout)")
 async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depends(get_settings)) -> dict:
-    df = load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     target = safe_name(req.target, "target name")
     # Both derived names up front: checked at save time, "_train" could land
     # and "_holdout" then fail the bound, leaving half a split behind.
@@ -145,7 +145,7 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
     check_outputs()
     # Read before anything is written: unreadable, it must fail the request
     # while both outputs are still untouched.
-    history = read_ops(settings, name)
+    history = await in_store(read_ops, settings, name)
     try:
         train, holdout, stats = await asyncio.to_thread(
             holdout_split, df, req.text_columns, req.label_column,
@@ -158,21 +158,21 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
         )
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=f"Split failed: {exc}") from exc
-    check_outputs()  # again at the write: the split ran in a thread meanwhile
-    save_dataset(settings, f"{target}_train", train)
-    save_dataset(settings, f"{target}_holdout", holdout)
     op = {"op": "holdout_split", "source": name, "holdout_fraction": req.holdout_fraction,
           "seed": req.seed, **stats}
     # The source's steps plus this one, REPLACING whatever the target names
     # held: appended, a reused name kept the history of a different table.
-    write_ops(settings, f"{target}_train", [*history, op])
-    write_ops(settings, f"{target}_holdout", [*history, op])
+    # Both names are checked again at the write: the split ran in a thread meanwhile.
+    await in_store(commit, settings, {
+        f"{target}_train": (train, [*history, op]),
+        f"{target}_holdout": (holdout, [*history, op]),
+    }, guard=check_outputs)
     return {**stats, "target": target, "balance": balance}
 
 
 @router.post("/{name}/label-audit", summary="Second opinion from api_v3 — divergence checklist")
 async def label_audit(name: str, req: LabelAuditRequest, settings: Settings = Depends(get_settings)) -> dict:
-    df = load_or_404(settings, name).head(req.limit)
+    df = (await load_or_404(settings, name)).head(req.limit)
     missing = [c for c in (*req.text_columns, req.label_column) if c not in df.columns]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing columns: {', '.join(missing)}.")
@@ -197,7 +197,7 @@ async def enrich(
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
-    df = load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     target = safe_name(req.target, "target name")
     # Before any LLM call: a refused write must not have been paid for.
     refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
@@ -208,7 +208,7 @@ async def enrich(
     for col in [f.column for f in fields]:
         if col not in df.columns:
             raise HTTPException(status_code=400, detail=f"Column {col!r} not found.")
-    history = read_ops(settings, name)  # before the LLM is paid for, not after
+    history = await in_store(read_ops, settings, name)  # before the LLM is paid for, not after
     try:
         session = session_for(req.llm_purpose, settings, override)
         new_df, stats = await enrich_dataset(
@@ -229,20 +229,21 @@ async def enrich(
     if stats["stopped"] and not stats["enriched"]:
         # Stopped before its first change: there is nothing to keep.
         raise HTTPException(status_code=429, detail=stats["stopped"])
-    # Again at the write: the LLM calls can take minutes.
-    refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
-    save_dataset(settings, target, new_df)
-    write_ops(settings, target, [*history, {
+    await in_store(commit, settings, {target: (new_df, [*history, {
         "op": "enrich", "field": target_field, "source": name,
         "enriched": stats["enriched"], "stopped": stats["stopped"],
-        "usage": session.usage.as_dict()}])
+        "usage": session.usage.as_dict()}])},
+        # Again at the write: the LLM calls can take minutes.
+        guard=lambda: refuse_existing(
+            replaces_another(settings, name, target), "Dataset", target, req.overwrite))
     return {**stats, "target": target, "usage": session.usage.as_dict()}
 
 
 @router.post("/{name}/push", summary="Push a refine dataset to the configured api_v3")
 async def push_dataset(name: str, settings: Settings = Depends(get_settings)) -> dict:
-    df = load_or_404(settings, name)
-    csv_text = df.to_csv(sep=";", index=False)
+    df = await load_or_404(settings, name)
+    # As costly as saving it, so off the loop like a save.
+    csv_text = await asyncio.to_thread(lambda: df.to_csv(sep=";", index=False))
     try:
         body = await push_csv(settings, csv_text, f"{safe_name(name, 'dataset name')}.csv")
     except PushError as exc:
@@ -254,7 +255,7 @@ async def push_dataset(name: str, settings: Settings = Depends(get_settings)) ->
 async def combine_suggest(req: SuggestRequest, settings: Settings = Depends(get_settings)) -> dict:
     out: dict[str, dict] = {}
     for name in req.sources:
-        df = load_or_404(settings, name)
+        df = await load_or_404(settings, name)
         result = suggest_mapping(list(df.columns), req.target_columns)
         out[name] = {**result, "columns": list(df.columns)}
     return out
@@ -266,7 +267,7 @@ async def combine(req: CombineRequest, settings: Settings = Depends(get_settings
     refuse_existing(dataset_path(settings, target).exists(), "Dataset", target, req.overwrite)
     sources = []
     for src in req.sources:
-        df = load_or_404(settings, src.name)
+        df = await load_or_404(settings, src.name)
         sources.append({"df": df, "label": src.label, "mapping": src.mapping})
     try:
         combined, stats = await asyncio.to_thread(
@@ -274,12 +275,13 @@ async def combine(req: CombineRequest, settings: Settings = Depends(get_settings
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    # Again at the write: the combination ran in a thread meanwhile.
-    refuse_existing(dataset_path(settings, target).exists(), "Dataset", target, req.overwrite)
-    save_dataset(settings, target, combined)
     # A new table made from several: no single source's history describes it,
     # so the history starts with this step (the op names the sources).
-    write_ops(settings, target, [{"op": "combine", "sources": [s.name for s in req.sources],
-                                  "total_in": stats["total_in"], "total_out": stats["total_out"],
-                                  "conflicts_resolved": stats["conflicts_resolved"]}])
+    await in_store(commit, settings, {target: (combined, [{
+        "op": "combine", "sources": [s.name for s in req.sources],
+        "total_in": stats["total_in"], "total_out": stats["total_out"],
+        "conflicts_resolved": stats["conflicts_resolved"]}])},
+        # Again at the write: the combination ran in a thread meanwhile.
+        guard=lambda: refuse_existing(
+            dataset_path(settings, target).exists(), "Dataset", target, req.overwrite))
     return {**stats, "target": target}

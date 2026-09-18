@@ -6,7 +6,11 @@ as-is (PII handling is an explicit filter operation, not an import side effect).
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -15,6 +19,41 @@ from ..atomic import replace_atomically, write_text_atomic
 from ..security import safe_name
 from ..settings import Settings
 from ..tabular import read_table
+
+# ONE thread for the store's files. Off the event loop, loading or saving a large
+# table no longer stalls /health and run polling (up to 2.4 s for the 81 MB WLO
+# export). One thread rather than the shared pool keeps what running on the loop
+# gave for free: store work happens one step at a time, in the order it arrives.
+# A check and the write it guards (see commit) stay one step no other request
+# comes between, and a file is never replaced while another request reads it —
+# which Windows refuses outright.
+_store_thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="refine-store")
+
+
+async def in_store[T](fn: Callable[..., T], /, *args: object, **kwargs: object) -> T:
+    """Run ``fn`` — a read of the store, or a step that writes it — on the store's
+    thread, and wait for it without blocking the event loop."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_store_thread, partial(fn, *args, **kwargs))
+
+
+def commit(
+    settings: Settings,
+    tables: dict[str, tuple[pd.DataFrame, list[dict]]],
+    *,
+    guard: Callable[[], None] | None = None,
+) -> None:
+    """Check with ``guard``, then write each table and its history — as one step.
+
+    Run it through :func:`in_store`: there nothing comes between the check and the
+    writes, so a name another request took while this one computed is still
+    refused. Each table is written before its history, so a crash between the two
+    leaves a valid table whose provenance is merely behind."""
+    if guard is not None:
+        guard()
+    for name, (df, ops) in tables.items():
+        save_dataset(settings, name, df)
+        write_ops(settings, name, ops)
 
 
 def refine_dir(settings: Settings) -> Path:

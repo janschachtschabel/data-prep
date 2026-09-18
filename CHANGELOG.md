@@ -12,6 +12,16 @@ Keep a Changelog; the project is pre-1.0 and versions track milestones.
   operation history say why the run ended, and another run on the result fills
   the remaining gaps. A run stopped before its first change still answers 429
   and writes nothing.
+- **Loading or saving a table no longer stalls the server.** Every refine route
+  read and wrote its datasets on the event loop; with the 81 MB WLO export,
+  `/health` and run polling waited up to 2.4 s during an import, 1.0 s during a
+  load and 0.8 s while a step was applied (now 0.20 / 0.05 / 0.07 s). The store's
+  files now go through one dedicated thread (`refine.store.in_store`). One thread,
+  not the shared pool: the check before a write and the write itself stay one
+  step (`commit`), so a name another request took meanwhile is still refused —
+  with several threads both writers passed the check, which on Windows failed
+  the second rename and on Linux would have replaced the first table unasked.
+  Pushing to api_v3 serialises the table off the loop too.
 
 ## [Unreleased] — second review of the balancing work (2026-09-18)
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -17,7 +18,14 @@ from ..embeddings import get_encoder
 from ..refine.analyze import analyze, training_preflight
 from ..refine.apply import preview_or_apply, replaces_another
 from ..refine.filters import run_filter
-from ..refine.store import dataset_path, delete_dataset, list_datasets, load_dataset, read_ops
+from ..refine.store import (
+    dataset_path,
+    delete_dataset,
+    in_store,
+    list_datasets,
+    load_dataset,
+    read_ops,
+)
 from ..security import MAX_NAME_BYTES, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 
@@ -59,9 +67,10 @@ class FilterRequest(BaseModel):
     label_separator: str = Field(default=",", max_length=3)
 
 
-def load_or_404(settings: Settings, name: str):
-    """The stored dataset ``name`` as a frame, or 404. Shared with refine_prep."""
-    df = load_dataset(settings, safe_name(name, "dataset name"))
+async def load_or_404(settings: Settings, name: str) -> pd.DataFrame:
+    """The stored dataset ``name`` as a frame, or 404. Shared by every route that
+    reads a table; parsed on the store's thread, never on the event loop."""
+    df = await in_store(load_dataset, settings, safe_name(name, "dataset name"))
     if df is None:
         raise HTTPException(status_code=404, detail=f"Dataset {name!r} not found.")
     return df
@@ -69,12 +78,12 @@ def load_or_404(settings: Settings, name: str):
 
 @router.get("/datasets", summary="List refine datasets")
 async def datasets(settings: Settings = Depends(get_settings)) -> dict:
-    return {"datasets": list_datasets(settings)}
+    return {"datasets": await in_store(list_datasets, settings)}
 
 
 @router.post("/{name}/analyze", summary="Distribution, duplicates and PII overview")
 async def analyze_dataset(name: str, req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> dict:
-    df = load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     try:
         # Offload the whole-frame pandas work so a large dataset does not block
         # the event loop (health checks, progress polling, an in-flight run).
@@ -88,7 +97,7 @@ async def analyze_dataset(name: str, req: AnalyzeRequest, settings: Settings = D
 
 @router.post("/{name}/preflight", summary="Simulate api_v3 preparation (effective training set)")
 async def preflight(name: str, req: PreflightRequest, settings: Settings = Depends(get_settings)) -> dict:
-    df = load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     try:
         return await asyncio.to_thread(
             training_preflight,
@@ -103,7 +112,7 @@ async def preflight(name: str, req: PreflightRequest, settings: Settings = Depen
 
 @router.post("/{name}/filter", summary="Preview (no target) or apply (target) a filter")
 async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Depends(get_settings)) -> dict:
-    df = load_or_404(settings, name)
+    df = await load_or_404(settings, name)
     target = safe_name(req.target, "target name") if req.target else None
     if target:
         refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
@@ -121,9 +130,9 @@ async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Dep
         new_df, stats = await asyncio.to_thread(run_filter, req.filter, df, req.params, ctx)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if target:  # again at the write: the filter ran in a thread meanwhile
-        refuse_existing(replaces_another(settings, name, target), "Dataset", target, req.overwrite)
-    return preview_or_apply(settings, name, target, req.filter, req.params, new_df, stats)
+    # The target is checked again at the write: the filter ran in a thread meanwhile.
+    return await in_store(preview_or_apply, settings, name, target, req.filter, req.params,
+                          new_df, stats, overwrite=req.overwrite)
 
 
 @router.get("/{name}/ops", summary="Operation history (the applied refine chain)")
@@ -131,11 +140,11 @@ async def dataset_ops(name: str, settings: Settings = Depends(get_settings)) -> 
     safe = safe_name(name, "dataset name")
     if not dataset_path(settings, safe).exists():
         raise HTTPException(status_code=404, detail=f"Dataset {name!r} not found.")
-    return {"ops": read_ops(settings, safe)}
+    return {"ops": await in_store(read_ops, settings, safe)}
 
 
 @router.delete("/{name}", summary="Delete a refine dataset")
 async def remove_dataset(name: str, settings: Settings = Depends(get_settings)) -> dict:
-    if not delete_dataset(settings, safe_name(name, "dataset name")):
+    if not await in_store(delete_dataset, settings, safe_name(name, "dataset name")):
         raise HTTPException(status_code=404, detail=f"Dataset {name!r} not found.")
     return {"deleted": name}

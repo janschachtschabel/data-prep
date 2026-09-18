@@ -20,7 +20,7 @@ from collections.abc import Callable
 
 import pandas as pd
 
-from ..security import safe_name
+from ..security import refuse_existing, safe_name
 from ..settings import Settings
 from .columns import drop_columns, rename_columns, select_columns
 from .duplicates import dedupe_keys
@@ -65,6 +65,8 @@ def preview_or_apply(
     params: dict,
     new_df: pd.DataFrame,
     stats: dict,
+    *,
+    overwrite: bool = False,
 ) -> dict:
     """Return ``stats`` alone (preview) or write ``new_df`` to ``target``.
 
@@ -73,11 +75,18 @@ def preview_or_apply(
     history is carried forward and this operation appended, so three steps read
     as three steps on the final dataset.
 
+    Applying refuses to replace a dataset other than the source unless
+    ``overwrite``. That is checked here, at the write: the step itself ran in a
+    worker thread, and the name may have been taken meanwhile. Routes run this
+    through :func:`app.refine.store.in_store`, so nothing comes between the check
+    and the write.
+
     ``target`` must already have passed :func:`safe_name` at the route boundary.
     """
     if target is None:
         return {**stats, "preview": True}
 
+    refuse_existing(replaces_another(settings, source, target), "Dataset", target, overwrite)
     # Read the source's history BEFORE writing, so that naming the source as the
     # target (working in place) keeps one history instead of duplicating it.
     history = read_ops(settings, safe_name(source, "dataset name"))

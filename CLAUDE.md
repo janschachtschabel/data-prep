@@ -32,6 +32,7 @@ the exported CSVs.
 - **LLM key/model may also come per request** (`X-LLM-Key` / `X-LLM-Model` headers → `LlmOverride`) so an instance can run with NO server-wide KI key ("open" mode). The request key wins over `api_key_env`; it is held in memory only (for a background run too) and NEVER persisted to `state.json` or logged. `base_url` stays operator-controlled (no per-request override → no SSRF). Absent the headers, the env key is the fallback (backward compatible).
 - User-supplied names go through `security.safe_name`; the API key compares in constant time.
 - Single-worker design: run store and background tasks are process-local.
+- Refine store files are read and written only through `refine.store.in_store` (one dedicated thread): never on the event loop, and never two steps at once. A write and the check before it go in ONE step (`commit(..., guard=...)`, or `preview_or_apply(..., overwrite=...)`), so a name taken meanwhile is still refused.
 - `app/__init__.py` caps BLAS threads to 1 **before** numpy is imported — keep that the first thing the package does.
 - **Deliberate deviation from api_v3:** HTTPS URL fetch IS allowed (vocabularies, api_v3 push) — host allowlist (default `vocabs.openeduhub.de` + configured api_v3 target), 5 MB cap, timeout, only behind auth.
 - Separation guarantee: `exporter` reads only `runs/<id>/samples.jsonl` (status `passed|approved`) — reference rows can structurally never reach an export; a test pins this.
