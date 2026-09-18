@@ -59,6 +59,12 @@ def _shape(target: TextField) -> str:
             f"gib mindestens {target.min_values} Werte zurück, jeden als eigenen Eintrag.")
 
 
+def _one_line(text: str) -> str:
+    """Dataset text as one line: a line break in a cell must not start a new line —
+    possibly an instruction — in the prompt."""
+    return " ".join(text.split())
+
+
 def _mark(existing: str, field: str) -> str:
     marks = [m for m in str(existing or "").split(",") if m.strip()]
     if field not in marks:
@@ -77,8 +83,8 @@ def _prompt_for(
             continue
         values = read_values(row.get(field.column), field)
         if values:
-            context.append(f'{field.column}: "{write_values(values, field)}"')
-    held = (f"Bereits vorhanden, nicht wiederholen: {write_values(existing, target)}\n"
+            context.append(f'{field.column}: "{_one_line(write_values(values, field))}"')
+    held = (f"Bereits vorhanden, nicht wiederholen: {_one_line(write_values(existing, target))}\n"
             if existing else "")
     return _PROMPT.format(
         context="\n".join(context), column=target.column, shape=_shape(target),
@@ -111,14 +117,16 @@ async def enrich_dataset(
         new["enriched_fields"] = new["enriched_fields"].fillna("")
 
     enriched = 0
+    calls = 0  # what `limit` caps: model calls, whether or not they changed a row
     for idx in new.index:
-        if enriched >= limit:
+        if calls >= limit:
             break
         cell = new.at[idx, target.column]
         if not is_gap(cell, target):
             continue
         existing = read_values(cell, target)
         result = await complete(_prompt_for(new.loc[idx], fields, target, existing), FieldValues)
+        calls += 1
         # Scrubbed per value, as the model returned it; a list value that still holds
         # the separator ("Optik, Licht") is split so the merge can see both parts.
         answered = [part for value in result.values  # type: ignore[attr-defined]
