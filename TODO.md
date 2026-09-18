@@ -26,6 +26,25 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Zweites Review abgearbeitet, gepusht, Container neu gebaut (2026-09-18).** Ein
+frisches Review der Korrekturen fand 2 schwere, 6 mittlere und 5 kleine Befunde,
+alle reproduziert; zwei stammten aus der ersten Runde selbst. Behoben, je ein
+Commit, test-first: Die Mindestlaenge misst am gezeigten Beispiel (400 Zeichen)
+statt an der vollen Zelle — sie haette auf dem WLO-Export rund 200 von 500
+geplanten Zeilen nach der Bezahlung verworfen; Prompt, Budget und
+Dublettenpruefung nutzen dieselbe Sicht. `limit` begrenzt bei der Anreicherung
+wieder die Aufrufe. Ein Budget-Abbruch behaelt die bis dahin erzeugten Zeilen
+(D2'). Fremde `generated_for`-Werte werden benannt statt abgelehnt (D5'), weil
+Kombinieren und Neu-Import die Historie verlieren. Token abgeschnittener
+Antworten zaehlen. Der Split nennt Label ohne Holdout; empfohlen ist erst
+aufteilen, dann `_train` auffuellen. Die UI startet waehrend eines Laufs nichts
+und nennt Verworfenes. **706 Tests gruen, ruff/mypy sauber, 17 UI-Pruefungen in
+node.** Gepusht (`ec383cd..0a85098`); Container `data-prep:local` neu gebaut,
+healthy, Vorschau und Ablehnungen gegen den Container geprueft. Offen: der
+Zwischenstand bei einem Budget-Abbruch der **Anreicherung** geht noch verloren
+(Balancing behaelt ihn); alle Refine-Routen laden und speichern Datensaetze noch
+auf der Event-Loop (0,9 s + 1,6 s bei 30k x 91).
+
 **Review der Balancing-Arbeit abgearbeitet (2026-09-16).** Unabhaengiges Review:
 9 schwer, 11 mittel, 6 klein, 24 per Skript reproduziert. Acht Designentscheidungen
 (D1-D8) vorab im Plan festgehalten, dann je Anliegen ein Commit, test-first.
@@ -39,8 +58,8 @@ liest den Rahmen spaltenweise ausserhalb der Event-Loop (5,5 s -> 0,13 s bei
 `routes/field_spec.py`, `tests/ui/balance_panel.check.js` (echte UI-Skripte in
 node, von pytest getrieben). **687 Tests gruen, ruff/mypy sauber.** Live geprueft:
 ein echter Lauf (1 Aufruf, 670 Tokens), anschliessender Split ohne markierte
-Zeile im Holdout. Offen: Push nach GitHub und Container-Neubau (nicht beauftragt);
-Teilergebnisse bei Budget-Abbruch speichern (Folgearbeit, siehe Plan D2).
+Zeile im Holdout. (Push, Container und Teilergebnisse bei Budget-Abbruch: siehe
+2026-09-18.)
 
 **Feldgenerische Anreicherung + Mindestanzahl je Label (2026-09-13).** Plan:
 `docs/plan-2026-09-13-balance-enrichment.md` (10 Aufgaben, 3 Phasen), test-first
@@ -76,7 +95,7 @@ umgesetzt, je ein Commit. **638 Tests gruen, ruff/mypy sauber.**
   Formen in beiden Tabellen. Im Browser gegen einen bewusst ungleichen Datensatz
   geprueft (Vorschau Chemie 2/+8/80 %, Physik 6/+4/40 %, Label ohne Text
   uebersprungen; Tastaturbedienung, 24-px-Ziel der Checkbox, Umbruch bei 320 px).
-- **Offen:** Push nach GitHub und Container-Neubau (nicht beauftragt).
+- Gepusht und im Container am 2026-09-18, nach zwei Review-Runden (siehe oben).
 
 **Doppelte Namen abgesichert (2026-09-11).** Sieben Probleme gefunden und
 vorher gegen die laufende App reproduziert, je ein Commit: kein Schreibweg
