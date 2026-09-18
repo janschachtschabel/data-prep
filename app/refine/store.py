@@ -30,7 +30,7 @@ from ..tabular import read_table
 _store_thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="refine-store")
 
 
-async def in_store[T](fn: Callable[..., T], /, *args: object, **kwargs: object) -> T:
+async def in_store[**P, T](fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
     """Run ``fn`` — a read of the store, or a step that writes it — on the store's
     thread, and wait for it without blocking the event loop."""
     loop = asyncio.get_running_loop()
