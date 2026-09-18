@@ -26,6 +26,31 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Folgepunkte des zweiten Reviews erledigt, Container neu gebaut (2026-09-18).**
+Die Anreicherung behaelt bei einem Budget-Stopp ihren Zwischenstand, wie das
+Balancing: Ergebnis und Historie nennen den Grund, 429 nur, wenn vor der ersten
+Aenderung gestoppt. Der Refine-Speicher liest und schreibt nicht mehr auf der
+Event-Loop: alle seine Dateien laufen ueber einen eigenen Thread
+(`store.in_store`), Pruefung und Schreiben sind ein Schritt (`commit(guard=...)`,
+`preview_or_apply(overwrite=...)`). Gemessen mit data_30k.csv (81 MB): /health
+wartete bis 2,4 s (Import), 1,0 s (Laden), 0,8 s (Schritt anwenden), jetzt
+0,17 / 0,05 / 0,06 s. Ein Pool statt eines Threads liess zwei Schreiber an der
+Namenspruefung vorbei (Race-Test rot mit 4 Threads). Unabhaengiges Review der
+beiden Commits: 0 kritisch/schwer, 5 mittel, 1 klein. Behoben: Tabelle und
+Historie in einem Speicherschritt (split/enrich/balance, `/ops`), ein
+Audit-Hook-Test sieht jeden Dateizugriff auf der Loop, Guard-Tests fuer
+split/combine/balance, ParamSpec fuer `in_store`, bedingter Stopp-Hinweis.
+Begruendet abgelehnt: Vorschauen am Speicher-Thread vorbeizufuehren — ihr Laden
+wartet ohnehin auf ihn. Das Budget in `config.yaml` bleibt unbegrenzt (bewusste
+Entscheidung, T5). **723 Tests gruen, ruff/mypy sauber, Node-UI-Pruefungen
+gruen.** Container `data-prep:local` neu gebaut, healthy; gegen den Container
+geprueft: 409 fuer einen vergebenen Namen, Split, echte Anreicherung (2 Aufrufe)
+und echtes Balancing (1 Aufruf), zusammen 1037 Tokens, Testdaten entfernt. Fuenf
+alte data-prep-Images entfernt (verwaiste Images anderer Projekte unberuehrt).
+Offen: `preview_or_apply` liest die Historie der Quelle erst beim Schreiben — die
+gleiche Art Luecke, wenn die Quelle waehrenddessen an Ort und Stelle geaendert
+wird (aelteres Muster, im Review als vorbestehend markiert).
+
 **Zweites Review abgearbeitet, gepusht, Container neu gebaut (2026-09-18).** Ein
 frisches Review der Korrekturen fand 2 schwere, 6 mittlere und 5 kleine Befunde,
 alle reproduziert; zwei stammten aus der ersten Runde selbst. Behoben, je ein
