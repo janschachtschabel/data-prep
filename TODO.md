@@ -26,7 +26,7 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
-**Folgepunkte des zweiten Reviews erledigt, Container neu gebaut (2026-09-18).**
+**Folgepunkte des zweiten Reviews erledigt, gepusht, Container neu gebaut (2026-09-18).**
 Die Anreicherung behaelt bei einem Budget-Stopp ihren Zwischenstand, wie das
 Balancing: Ergebnis und Historie nennen den Grund, 429 nur, wenn vor der ersten
 Aenderung gestoppt. Der Refine-Speicher liest und schreibt nicht mehr auf der
@@ -52,7 +52,11 @@ filter/op/join lesen die Historie der Quelle jetzt mit der Tabelle statt erst
 beim Schreiben (`preview_or_apply(..., history=...)`, die im Review als
 vorbestehend markierte Luecke), und Vorschauen laufen nicht mehr ueber den
 Speicher-Thread, warten also nicht hinter fremden Speichervorgaengen
-(Review-Befund 2, zuerst abgelehnt). **728 Tests gruen.**
+(Review-Befund 2, zuerst abgelehnt). **728 Tests gruen.** Gepusht
+(`6e3f1d5..93800c1`); Container danach erneut gebaut, healthy, gegen ihn
+geprueft: Vorschauen legen nichts an, die Historie einer Kette Filter ->
+Spaltenauswahl -> Umbenennen an Ort und Stelle -> Join ist vollstaendig und
+nicht verdoppelt, ein vergebener Name ohne `overwrite` gibt 409.
 
 **Zweites Review abgearbeitet, gepusht, Container neu gebaut (2026-09-18).** Ein
 frisches Review der Korrekturen fand 2 schwere, 6 mittlere und 5 kleine Befunde,
