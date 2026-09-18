@@ -80,9 +80,9 @@ def preview_or_apply(
 
     Applying refuses to replace a dataset other than the source unless
     ``overwrite``. That is checked here, at the write: the step itself ran in a
-    worker thread, and the name may have been taken meanwhile. Routes run this
+    worker thread, and the name may have been taken meanwhile. Routes run an apply
     through :func:`app.refine.store.in_store`, so nothing comes between the check
-    and the write.
+    and the write; a preview touches no file and runs where it is called.
 
     ``target`` must already have passed :func:`safe_name` at the route boundary.
     """

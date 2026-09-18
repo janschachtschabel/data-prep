@@ -357,3 +357,46 @@ def test_the_history_answer_describes_one_state_of_the_store(make_client, monkey
 
     assert r.status_code == 200, r.text
     assert [op.get("filter") for op in r.json()["ops"]] == ["select_columns"]
+
+
+# ------------------------------------------- a preview writes nothing ----
+
+
+@pytest.mark.parametrize("route", ["filter", "op"])
+def test_a_preview_does_not_wait_for_the_store(make_client, monkeypatch, route):
+    """A preview writes nothing, yet its last step queued on the store's thread
+    behind whatever another request had queued meanwhile -- the save of a large
+    table takes seconds (review of e2d0204, finding 2)."""
+    import threading
+
+    import app.routes.refine as refine_route
+    import app.routes.tables as tables_route
+    from app.refine import store
+
+    client = make_client()
+    _import(client, "quelle")
+    module, compute = ((refine_route, "run_filter") if route == "filter"
+                       else (tables_route, "run_table_op"))
+    real = getattr(module, compute)
+    release = threading.Event()
+
+    def computing(*args, **kwargs):
+        store._store_thread.submit(release.wait, 30)  # another request's long save
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(module, compute, computing)
+    body = ({"filter": "dedupe_exact"} if route == "filter"
+            else {"op": "select_columns", "params": {"keep": [ID]}})
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        sent = pool.submit(client.post, f"/refine/quelle/{route}", json=body, headers=HEADERS)
+        try:
+            response = sent.result(timeout=10)
+        except TimeoutError:
+            response = None
+        finally:
+            release.set()  # the store's thread goes on either way
+
+    assert response is not None, "the preview waited for another request's save"
+    _ok(response)
+    assert response.json()["preview"] is True

@@ -133,6 +133,9 @@ async def run_operation(
         new_df, stats = await asyncio.to_thread(run_table_op, req.op, df, req.params, {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if target is None:  # a preview writes nothing: it must not queue behind others' saves
+        return preview_or_apply(settings, name, None, req.op, req.params, new_df, stats,
+                                history=history)
     # The target is checked again at the write: the op ran in a thread meanwhile.
     return await in_store(preview_or_apply, settings, name, target, req.op, req.params,
                           new_df, stats, history=history, overwrite=req.overwrite)
