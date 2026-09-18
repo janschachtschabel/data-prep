@@ -391,3 +391,28 @@ enrichment has always REPLACED a short list rather than adding to it (see D3).
 7. **combine** — carries the mark columns through. (#14)
 8. **UI** — the run button stays disabled after a run, and programmatic changes disarm it (#9); render callbacks are awaited; no request without text columns, and a readable 422 (#18); D8 defaults; plural lookup order and a busy label that survives a language switch (#26).
 9. **docs** — README sentence repaired (#20); the legacy-shape claim made precise (#21); the help text says honestly that api_v3's own cross-validation still sees generated rows.
+
+## Round 2 (2026-09-18)
+
+A fresh review of `e05ff7c..499d374` found 2 major, 6 minor and 5 small issues,
+all reproduced. Two were introduced by round 1 itself. Decisions revised or added:
+
+| # | Decision | Why |
+|---|---|---|
+| D6′ | The length floor is computed from the cells **as shown** to the model (cut to 400 characters), and it only catches degenerate answers: a quarter of the shortest shown example, at most 40 characters. | Computed from full cells, the floor exceeded what the prompt showed: on the WLO export 198 of 500 planned rows belonged to labels whose floor was over 400 characters, and every answer was discarded after being paid for. |
+| D9 | Everything that judges or sizes an answer uses the cells as shown: the prompt, the floor, the output budget, and the duplicate seeds (plus their PII-scrubbed form). | The model can only copy what it saw; a copy of a truncated or scrubbed example passed as new. |
+| D2′ | The call budget is still checked before a run. When a cap stops a run midway — the token cap or the process-wide ceiling, which no preview can predict — the rows generated so far are **saved**, and the result says where it stopped. | A run stopped by a cap used to be lost whole. The run worker has always paused at a budget and kept its samples. |
+| D5′ | A `generated_for` value that is not a label of the current label column no longer refuses the run; the preview and the result name such rows. | Combine and re-import lose the history that proved the column was the app's own, so the refusal struck exactly the datasets this app produces — with advice that would have made the split treat generated rows as real. The column name is the app's; the realistic collision it guarded against was never observed. |
+| D10 | Enrichment's `limit` caps model **calls** again. | Round 1 counted only changed rows, so a model that added nothing new was called for every gap row. |
+
+## Round 2 commits
+
+1. **balance gates** — cells as shown for prompt, floor, budget and seeds (D6′, D9).
+2. **enrich** — `limit` counts calls (D10); context lines are single lines.
+3. **llm** — the tokens of a truncated answer are recorded before it becomes an LlmError.
+4. **balance** — a cap that stops a run keeps what was paid for (D2′).
+5. **balance** — foreign marks are named, not refused (D5′); example marks are joined by the label separator.
+6. **split** — names the labels that lost their holdout; the UI shows the split's mark counts; docs recommend split first, then balance the `_train` part.
+7. **UI** — no preview while a run is in flight; the result names what the gates discarded.
+8. **routes** — balancing into the source is refused regardless of case; enrichment refuses the label column as a field; the ×2 call factor is pinned by a test.
+9. **docs**.
