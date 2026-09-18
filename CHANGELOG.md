@@ -9,9 +9,11 @@ Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
 - **A cap that stops an enrichment run keeps what it enriched**, as balancing
   already did: the rows filled until then are saved, the result and the
-  operation history say why the run ended, and another run on the result fills
-  the remaining gaps. A run stopped before its first change still answers 429
-  and writes nothing.
+  operation history say why the run ended, and once the budget allows another
+  run on the result fills the remaining gaps. A run stopped before its first
+  change still answers 429 and writes nothing. The stop note of both runs no
+  longer promises an immediate continuation: after the process-wide ceiling
+  (`Cross-request budget reached`) that takes a restart or a higher ceiling.
 - **Loading or saving a table no longer stalls the server.** Every refine route
   read and wrote its datasets on the event loop; with the 81 MB WLO export,
   `/health` and run polling waited up to 2.4 s during an import, 1.0 s during a

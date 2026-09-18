@@ -112,8 +112,9 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   `enriched_fields` vermerkt. Für die WLO-Spalten sind Schlagwörter schon als
   Liste (mindestens 3) und mit einem passenden Hinweis vorbelegt. Stoppt ein Lauf
   unterwegs an einer Grenze (etwa dem Token-Budget), bleiben die bis dahin
-  angereicherten Zeilen erhalten, und das Ergebnis sagt, warum er endete; ein
-  weiterer Lauf auf dem Ergebnis füllt die übrigen Lücken.
+  angereicherten Zeilen erhalten, und das Ergebnis sagt, warum er endete. Sobald
+  das Budget es zulässt, füllt ein weiterer Lauf auf dem Ergebnis die übrigen
+  Lücken.
 - **Mindestanzahl Zeilen je Label** — für ungleich verteilte Datensätze: ein Fach
   mit 300 Zeilen und eines mit 3 sind für das Training nicht dasselbe. Gib die
   Mindestzahl an (z. B. 100) und klicke **Vorschau**: sie zeigt je Label, wie viele
