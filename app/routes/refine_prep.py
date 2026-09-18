@@ -89,6 +89,8 @@ class EnrichRequest(BaseModel):
     overwrite: bool = False
     limit: int = Field(default=500, ge=1, le=5000)  # cap the LLM cost per call
     llm_purpose: Literal["seeds", "bulk"] = "bulk"
+    # Only to refuse it as a field: model text in a label cell is an invented label.
+    label_column: str = Field(default=DEFAULT_LABEL_COLUMN, max_length=200)
 
     fields: list[FieldSpec] | None = Field(default=None, max_length=50)
     target_field: str | None = Field(default=None, max_length=200)
@@ -102,7 +104,7 @@ class EnrichRequest(BaseModel):
     @model_validator(mode="after")
     def _fields_are_usable(self) -> EnrichRequest:
         if self.fields:
-            check_fields(self.fields)
+            check_fields(self.fields, label_column=self.label_column)
         return self
 
     def resolve(self) -> tuple[list[TextField], str]:

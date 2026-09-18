@@ -70,10 +70,11 @@ async def balance(
 
     if not req.dry_run:
         target = safe_name(req.target, "target name")
-        if target == name:
+        if target.casefold() == name.casefold():
             # The store treats target == source as working in place; balancing never
             # does — the UI selects the result after a run, and a second click would
-            # otherwise have grown it unpreviewed.
+            # otherwise have grown it unpreviewed. Compared without case: on a
+            # case-insensitive filesystem "Quelle" is the file "quelle".
             raise HTTPException(status_code=400, detail=(
                 "Balancing writes a new dataset; choose a target name other than the source."))
         # Before any LLM call: a refused write must not have been paid for.

@@ -447,3 +447,34 @@ def test_a_run_stopped_before_its_first_row_saves_nothing(make_client, monkeypat
     assert r.status_code == 429
     names = {d["name"] for d in client.get("/refine/datasets", headers=HEADERS).json()["datasets"]}
     assert "leer" not in names
+
+
+def test_the_source_is_not_a_target_whatever_the_case(make_client, monkeypatch):
+    """On a case-insensitive filesystem "Quelle" IS "quelle": with overwrite the
+    source was replaced (round 2, NIT 9)."""
+    client = make_client()
+    _import(client, _unbalanced())
+    _refuse_sessions(monkeypatch)
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4,
+        "target": "Quelle", "overwrite": True})
+
+    assert r.status_code == 400
+
+
+def test_an_endpoint_without_strict_parsing_doubles_the_worst_case(
+        make_client, tmp_path, monkeypatch):
+    """The JSON-object path may retry each completion once. The factor was not pinned
+    by any route test — every test ran against a strict model (round 2)."""
+    config = tmp_path / "json-config.yaml"
+    config.write_text("llm:\n  bulk:\n    model: gpt-4o-mini\n", encoding="utf-8")
+    monkeypatch.setenv("DATAPREP_CONFIG_FILE", str(config))
+    client = make_client()
+    _import(client, _unbalanced())
+
+    r = client.post("/refine/quelle/balance", headers=HEADERS, json={
+        "fields": FIELDS, "label_column": LABEL, "target_per_label": 4, "dry_run": True})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["max_calls"] == 2 * r.json()["max_batches"]

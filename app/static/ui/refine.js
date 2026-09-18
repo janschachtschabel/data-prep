@@ -492,7 +492,10 @@ const Refine = (() => {
     const fields = RefineFields.spec();
     const targetField = $("#enrich-field").value;
     if (!targetField) { showError(I18n.t("js.refine.enrichNeedsField")); return; }
-    const body = { fields, target_field: targetField, target };
+    const body = {
+      fields, target_field: targetField, target,
+      label_column: $("#refine-label-col").value.trim() || undefined,
+    };
     const btn = $("#enrich-btn");
     btn.disabled = true;
     btn.textContent = I18n.t("js.refine.enriching");
