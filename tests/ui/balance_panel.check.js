@@ -78,7 +78,8 @@ const sent = [];
 globalThis.fetch = async (url, opts = {}) => {
   const body = opts.body ? JSON.parse(opts.body) : undefined;
   sent.push({ url, body });
-  const { status, body: out } = respond(url, body);
+  const { status, body: out, delay } = respond(url, body);
+  if (delay) await new Promise((r) => setTimeout(r, delay));   // a request still in flight
   return { status, ok: status < 400, json: async () => out,
            headers: { get: () => "application/json" } };
 };
@@ -153,6 +154,45 @@ const balanceCalls = () => sent.filter((s) => s.url.endsWith("/balance"));
   const before2 = balanceCalls().length;
   await run.fire("click"); await settle();
   check(balanceCalls().length === before2, "D: no run for a plan made with other fields");
+
+  // F. a preview clicked while a run is in flight must not re-arm the run button
+  //    (review round 2, finding 4: it did, and a second paid run went out)
+  rows = [fieldRow("t")];
+  $("#refine-dataset").value = "quelle";
+  respond = (url, body) => {
+    if (url.endsWith("/balance")) {
+      return body.dry_run ? { status: 200, body: PLAN } : { status: 200, body: RUN, delay: 120 };
+    }
+    if (url === "/refine/datasets") return { status: 200, body: { datasets: [
+      { name: "quelle", rows: 5, columns: ["t"] }, { name: "out", rows: 8, columns: ["t"] }] } };
+    return { status: 200, body: { ops: [] } };
+  };
+  await preview.fire("click"); await settle();
+  const runsBefore = balanceCalls().filter((s) => !s.body.dry_run).length;
+  const inFlight = run.fire("click");
+  await settle();
+  const previewsBefore = balanceCalls().filter((s) => s.body.dry_run).length;
+  await preview.fire("click"); await settle();
+  check(run.disabled === true, "F: the run button stays disabled while a run is in flight");
+  check(balanceCalls().filter((s) => s.body.dry_run).length === previewsBefore,
+        "F: no preview is sent while a run is in flight");
+  await run.fire("click"); await settle();
+  await inFlight; await settle();
+  check(balanceCalls().filter((s) => !s.body.dry_run).length === runsBefore + 1,
+        "F: exactly one run went out");
+
+  // G. the result names what the gates discarded
+  const DISCARDING = { ...RUN, per_label: { Physik: { support: 1, added: 1, missing: 2,
+    synthetic_share: 0.5, discarded_duplicate: 1, discarded_short: 2, discarded_incomplete: 0 } } };
+  respond = (url, body) => (url.endsWith("/balance")
+    ? { status: 200, body: body.dry_run ? PLAN : DISCARDING }
+    : { status: 200, body: { datasets: [{ name: "quelle", rows: 5, columns: ["t"] }], ops: [] } });
+  $("#refine-dataset").value = "quelle";
+  await preview.fire("click"); await settle();
+  await run.fire("click"); await settle();
+  const said = $("#balance-result").children.map((c) => c.textContent).join(" | ");
+  check(said.includes(I18n.t("js.refine.balanceDiscarded",
+    { duplicate: 1, short: 2, incomplete: 0 })), `G: the discards are named (${said})`);
 
   // E. a 422 reads as text, not "[object Object]"
   respond = (url) => url.endsWith("/balance")

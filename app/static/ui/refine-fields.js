@@ -151,8 +151,12 @@ const RefineFields = (() => {
     return JSON.stringify([$("#refine-dataset").value, balanceBody({})]);
   }
 
+  // A run in flight. While it lasts nothing else may start: a preview clicked
+  // meanwhile re-armed the run button, and a second paid run went out.
+  let running = false;
+
   function syncRunButton() {
-    $("#balance-run-btn").disabled = armedFor === null;
+    $("#balance-run-btn").disabled = running || armedFor === null;
   }
 
   function invalidatePreview() {
@@ -254,6 +258,25 @@ const RefineFields = (() => {
     out.appendChild(line);
   }
 
+  /* What the checks threw away, summed over labels: those calls were paid for, and
+     a result that only counts what was kept hides why a label is still short. */
+  function discards(out, perLabel) {
+    const sum = { duplicate: 0, short: 0, incomplete: 0 };
+    for (const entry of Object.values(perLabel || {})) {
+      sum.duplicate += entry.discarded_duplicate || 0;
+      sum.short += entry.discarded_short || 0;
+      sum.incomplete += entry.discarded_incomplete || 0;
+    }
+    if (!(sum.duplicate + sum.short + sum.incomplete)) return;
+    const line = document.createElement("p");
+    line.className = "muted";
+    line.textContent = I18n.t("js.refine.balanceDiscarded", {
+      duplicate: number(sum.duplicate), short: number(sum.short),
+      incomplete: number(sum.incomplete),
+    });
+    out.appendChild(line);
+  }
+
   /* Busy while `work` runs. Afterwards the label comes from its key — a language
      switch meanwhile would otherwise bring the old language back — and the
      disabled state from `settle`, so a finished run cannot re-arm the run button. */
@@ -270,6 +293,7 @@ const RefineFields = (() => {
 
   $("#balance-preview-btn").addEventListener("click", () => {
     const button = $("#balance-preview-btn");
+    if (running) return undefined;
     invalidatePreview();
     if (!hasFields()) return undefined;
     const request = currentRequest();
@@ -285,6 +309,7 @@ const RefineFields = (() => {
 
   $("#balance-run-btn").addEventListener("click", () => {
     const button = $("#balance-run-btn");
+    if (running) return undefined;
     if (armedFor === null || armedFor !== currentRequest()) {
       // No preview, or the form changed since: the cost has to be shown again first.
       invalidatePreview();
@@ -293,7 +318,15 @@ const RefineFields = (() => {
     }
     const target = $("#balance-name").value.trim();
     if (!target) { Refine.showError(I18n.t("js.refine.balanceNeedsName")); return undefined; }
-    return withBusy(button, "js.refine.balanceRunning", "refine.balance.run", syncRunButton,
+    const preview = $("#balance-preview-btn");
+    running = true;
+    preview.disabled = true;
+    const settle = () => {
+      running = false;
+      preview.disabled = false;
+      syncRunButton();
+    };
+    return withBusy(button, "js.refine.balanceRunning", "refine.balance.run", settle,
       () => Refine.runOp("balance", balanceBody({ target }), async (res) => {
         invalidatePreview();          // the plan described the source, not the result
         const out = $("#balance-result");
@@ -310,6 +343,7 @@ const RefineFields = (() => {
           stop.textContent = I18n.t("js.refine.balanceStopped", { reason: res.stopped });
           out.appendChild(stop);
         }
+        discards(out, res.per_label);
         note(out, "js.refine.balanceCut", res.labels_cut_by_limit);
         out.hidden = false;
         await Refine.refreshDatasets(res.target);
