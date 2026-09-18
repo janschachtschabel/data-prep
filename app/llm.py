@@ -228,7 +228,10 @@ class LlmSession:
             )
         except openai.LengthFinishReasonError as exc:
             # Out of output tokens. Not an APIError, so it used to escape every
-            # handler as a 500 and take a whole paid run with it.
+            # handler as a 500 and take a whole paid run with it. The answer was
+            # billed all the same: count it, or the token cap and the ledger go blind
+            # to every retry of a truncating batch.
+            self._record_tokens(exc.completion)
             raise LlmError(
                 "Model answer was cut off at the output limit (finish_reason=length)."
             ) from exc

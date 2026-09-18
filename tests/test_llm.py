@@ -380,3 +380,20 @@ def test_the_call_profile_needs_no_session_and_no_endpoint(tmp_path):
     assert call_profile("bulk", Settings(config_file=budget)) == (1, 77)   # gpt-5 default
     assert call_profile("bulk", Settings(config_file=json_path))[0] == 2
     assert call_profile("nonexistent", Settings(config_file=budget)) == (2, 77)
+
+
+def test_the_tokens_of_a_truncated_answer_are_still_counted(monkeypatch):
+    """A truncated answer is billed like any other. Since it became an LlmError the
+    run worker retries it, and none of those tokens reached the token cap or the
+    process-wide ledger: 54,000 tokens billed, 0 counted (round 2, finding 6)."""
+    from app.llm import LlmError
+
+    truncated = _chat_response('{"items": ["Phys', prompt_tokens=100, completion_tokens=2000)
+    truncated["choices"][0]["finish_reason"] = "length"
+    transport, _ = _transport([truncated])
+    session = _session("gpt-5.4-nano", transport, monkeypatch)
+
+    with pytest.raises(LlmError):
+        asyncio.run(session.complete("p", Items))
+
+    assert session.usage.tokens_total == 2100
