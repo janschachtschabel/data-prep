@@ -203,8 +203,9 @@ Three properties make the result safe to train on:
 
 - Every generated row carries `generated_for`, every real row shown to the
   generator as an example carries `example_for`, and every real row enrichment
-  completed carries `enriched_fields` (the columns it filled; exact twins are
-  enriched alike). `POST /refine/{name}/split` keeps all three on the **training**
+  completed carries `enriched_fields` (the columns it filled; twins — one text to
+  the split, the same labels — are enriched alike). `POST /refine/{name}/split`
+  keeps all three on the **training**
   side, with every row sharing their text: a holdout containing generated text —
   or the real text it paraphrases, or a cell the LLM wrote — measures how well a
   model learned the generator. `combine` carries the marks along. A
