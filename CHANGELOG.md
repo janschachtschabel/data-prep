@@ -44,6 +44,12 @@ Plan: `docs/plan-2026-09-19-ai-provenance-prompts.md`; api_v3 reads the same mar
   list never names the label itself or a name twice.
 - **The JSONL export carries `generated_for`** too.
 
+### Security
+
+- **anyio 4.14.1 → 4.14.2** in `requirements.lock` (CVE-2026-63374, CVE-2026-64847,
+  CVE-2026-63349). pip-audit in CI flagged the pin; a patch release of the dependency
+  starlette and httpx share, with the same requirements.
+
 ### Internal
 
 - `app/refine/prompt_context.py` holds what both prompts read from the frame.
