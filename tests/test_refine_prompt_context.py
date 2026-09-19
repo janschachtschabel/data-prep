@@ -525,6 +525,16 @@ def test_each_field_line_carries_its_own_typical_length():
     ("Fläche in m² angeben.", False),
     ("Material der Sekundarstufe 1.", False),
     ("", False),
+    # review 2026-09-19 #7: inflected units, number words, and a grade before a unit
+    ("Beschreibe das Material in 2-3 Sätzen.", True),
+    ("In höchstens 50 Wörtern.", True),
+    ("Schreibe zwei bis drei Sätze.", True),
+    ("Fasse es in einem Satz zusammen.", True),
+    ("Nenne drei treffende Schlagwörter.", True),
+    ("Für Klasse 5 geeignete Begriffe.", False),
+    ("Für die Jahrgangsstufe 7 passende Stichwörter.", False),
+    ("Material der Jahrgangsstufe 9, drei Schlagwörter.", True),
+    ("Eine Liste von Begriffen aus dem Material.", False),
 ])
 def test_only_a_stated_length_overrides_the_datasets(guidance, states):
     """Any digit used to count: "Klasse 5" silently lost the dataset's length (review #4)."""

@@ -43,21 +43,32 @@ class FieldShape:
     values: tuple[int, int] | None = None
 
 
+# What a stated length counts, in every case a German sentence puts it: "2-3 Sätzen",
+# "50 Wörtern".
+_UNIT = (r"(?:Zeichen|W(?:ö|oe)rtern?|Worte?n?|Werte?n?|S(?:ä|ae)tzen?|Satz|Schlagw\w*"
+         r"|Stichw\w*|Begriffe?n?|Keywords?|Tags?|characters?|chars|words?|values?|sentences?)")
+_NUMBER_WORD = r"(?:ein(?:e[mnrs]?)?|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf)"
 # A number or a range, then -- within three words -- what it counts: "100-400 Zeichen",
-# "3-6 treffende deutsche Schlagwörter", "2-3 Sätze". A number that counts nothing of
-# the kind ("Klasse 5", "Sekundarstufe 1") is not a length, and "m²" is not a number.
+# "3-6 treffende deutsche Schlagwörter". Or a number word with at most one word
+# between: "zwei bis drei Sätze", "in einem Satz" -- "eine Liste von Begriffen" counts
+# nothing. "m²" is not a number.
 _STATED_LENGTH = re.compile(
-    r"\b[0-9]+(?:\s*[-–]\s*[0-9]+)?\s+(?:\w+\s+){0,3}?"
-    r"(?:Zeichen|W(?:ö|oe)rter|Worte?|Werte?|S(?:ä|ae)tze|Satz|Schlagw\w*|Stichw\w*|Begriffe?"
-    r"|Keywords?|Tags?|characters?|chars|words?|values?|sentences?)\b",
+    rf"\b[0-9]+(?:\s*[-–]\s*[0-9]+)?\s+(?:\w+\s+){{0,3}}?{_UNIT}\b"
+    rf"|\b{_NUMBER_WORD}(?:\s+bis\s+{_NUMBER_WORD})?\s+(?:\w+\s+)?{_UNIT}\b",
+    re.IGNORECASE)
+# A number that names a grade or a level counts nothing: "für Klasse 5 geeignete
+# Begriffe" states no length, so such a number is taken out before the search.
+_GRADE = re.compile(
+    r"\b(?:Klassen?|Jahrg(?:ang|änge)|\w*stufen?|Level|Niveau|Kapitel|Lektion)\s+"
+    r"[0-9]+(?:\s*(?:[-–]|bis)\s*[0-9]+)?",
     re.IGNORECASE)
 
 
 def guidance_states_a_length(field: TextField) -> bool:
     """Whether the field's guidance states a length -- "100-400 Zeichen", "3-6
-    Schlagwörter". Then it is someone's instruction, and the dataset's range beside it
-    would contradict it; the prompt keeps theirs and adds none."""
-    return bool(_STATED_LENGTH.search(field.guidance))
+    Schlagwörter", "in zwei Sätzen". Then it is someone's instruction, and the dataset's
+    range beside it would contradict it; the prompt keeps theirs and adds none."""
+    return bool(_STATED_LENGTH.search(_GRADE.sub(" ", field.guidance)))
 
 
 def typical_phrase(field: TextField, shape: FieldShape | None) -> str:
