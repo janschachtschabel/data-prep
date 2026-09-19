@@ -33,7 +33,14 @@ from .balance_gates import (
 from .balance_prompt import PromptContext
 from .fields import TextField, read_values, write_values
 from .prompt_context import FieldShape, contrast_labels, display_names, field_shapes
-from .provenance import EXAMPLE_FOR, GENERATED_FOR, MARK_COLUMNS, is_marked
+from .provenance import (
+    ENRICHED_FIELDS,
+    EXAMPLE_FOR,
+    GENERATED_FOR,
+    MARK_COLUMNS,
+    enriched_columns,
+    is_marked,
+)
 
 
 @dataclass(frozen=True)
@@ -50,10 +57,17 @@ class _Prepared:
     foreign_marks: dict                  # marks that are not labels here, named
     labels_of_row: list[list[str]]       # per row: its labels, each once
     names: dict[str, str]                # label -> the name people read (<column>_DISPLAYNAME)
+    completed: list[list[bool]]          # per row and field: a cell enrichment wrote
 
     def usable(self, position: int) -> bool:
         """A real row with some text: the only kind worth showing the generator."""
         return self.real[position] and any(self.cells[position])
+
+    def untouched(self, position: int) -> list[str]:
+        """The row's cells with the ones enrichment wrote blanked: what people wrote,
+        the only thing the dataset's lengths may be measured on."""
+        return ["" if llm else cell
+                for cell, llm in zip(self.cells[position], self.completed[position], strict=True)]
 
 
 def _prepare(
@@ -67,6 +81,8 @@ def _prepare(
         for f in fields
     ]
     marks = df[GENERATED_FOR] if GENERATED_FOR in df.columns else None
+    filled = ([enriched_columns(cell) for cell in df[ENRICHED_FIELDS]]
+              if ENRICHED_FIELDS in df.columns else [frozenset()] * len(df))
     rows: dict[str, list[int]] = defaultdict(list)
     labels_of_row: list[list[str]] = []
     for position, cell in enumerate(df[label_column]):
@@ -88,6 +104,7 @@ def _prepare(
                        "column": label_column},
         labels_of_row=labels_of_row,
         names=display_names(df, label_column, label_separator),
+        completed=[[f.column in columns for f in fields] for columns in filled],
     )
 
 
@@ -182,7 +199,7 @@ def _read_frame(
     """The synchronous part before the first model call — run off the event loop. The
     shapes are the whole dataset's: a label with too few filled cells borrows them."""
     prepared = _prepare(df, fields, label_column, label_separator)
-    real = [cells for position, cells in enumerate(prepared.cells) if prepared.usable(position)]
+    real = [prepared.untouched(p) for p in range(len(prepared.cells)) if prepared.usable(p)]
     return prepared, {fingerprint(row) for row in prepared.cells}, field_shapes(real, fields)
 
 
@@ -191,7 +208,8 @@ def _context(prepared: _Prepared, label: str, usable: list[int], fields: list[Te
     """What the prompt for ``label`` is told about the dataset (``prompt_context``)."""
     others, more = contrast_labels(label, prepared.rows_by_label, prepared.labels_of_row,
                                    prepared.names)
-    shapes = field_shapes([prepared.cells[p] for p in usable], fields, fallback=dataset_shapes)
+    shapes = field_shapes([prepared.untouched(p) for p in usable], fields,
+                          fallback=dataset_shapes)
     return PromptContext(label_name=prepared.names.get(label), others=tuple(others),
                          more_others=more, shapes=tuple(shapes))
 
@@ -238,7 +256,8 @@ async def balance_dataset(
         result = LabelResult()
         if entry["planned"] and stopped is None:
             usable = [p for p in rows if prepared.usable(p)]
-            positions = pick_examples(usable, prepared.cells, examples_per_label)
+            positions = pick_examples(usable, prepared.cells, examples_per_label,
+                                      touched={p for p in usable if any(prepared.completed[p])})
             examples = [dict(zip((f.column for f in fields), prepared.cells[p], strict=True))
                         for p in positions]
             result = await generate_for_label(

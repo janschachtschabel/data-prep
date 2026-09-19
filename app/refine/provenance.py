@@ -32,6 +32,14 @@ def is_marked(cell: object) -> bool:
     return bool(str(cell).strip())
 
 
+def enriched_columns(cell: object) -> frozenset[str]:
+    """The columns an ``enriched_fields`` cell names -- enrichment writes them joined by
+    ",". A blank or missing cell names none."""
+    if not is_marked(cell):
+        return frozenset()
+    return frozenset(part.strip() for part in str(cell).split(",") if part.strip())
+
+
 def marked(df: pd.DataFrame, column: str) -> list[bool]:
     """Per row: does ``column`` carry a mark? A frame without it has none."""
     if column not in df.columns:

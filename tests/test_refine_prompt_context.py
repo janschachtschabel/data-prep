@@ -341,3 +341,105 @@ def test_the_contrast_list_names_neither_the_label_itself_nor_a_name_twice():
                                                              ["uri/che"], ["uri/che2"]], names)
 
     assert named == ["Chemie"] and more == 0
+
+
+def _sized(*sizes: int, keywords: str = "k") -> list[list[str]]:
+    """Rows whose cells add up to ``sizes`` (title "t", keywords as given)."""
+    return [["t", "d" * (size - 1 - len(keywords)), keywords] for size in sizes]
+
+
+def test_the_examples_sit_at_the_labels_median_not_at_either_end():
+    """Fails for longest-first, for shortest-first, and for a choice that ignores
+    completeness: the incomplete row is the one closest to the median."""
+    from app.refine.balance_gates import pick_examples
+
+    cells = _sized(100, 200, 300, 400, 500) + [["t", "d" * 298, ""]]
+
+    picked = pick_examples(list(range(6)), cells, 2)
+
+    assert sorted(sum(map(len, cells[p])) for p in picked) == [300, 400]
+
+
+def test_the_median_is_the_complete_rows_median():
+    """Incomplete rows are shorter; counted into the median they pull the examples
+    toward the label's shortest complete rows (review #5)."""
+    from app.refine.balance_gates import pick_examples
+
+    cells = [["t", "d" * 10, ""] for _ in range(6)] + _sized(117, 217, 317, 417)
+
+    picked = pick_examples(list(range(10)), cells, 2)
+
+    assert sorted(sum(map(len, cells[p])) for p in picked) == [217, 317]
+
+
+def test_between_two_rows_equally_far_from_the_median_the_longer_goes_first():
+    from app.refine.balance_gates import pick_examples
+
+    cells = _sized(100, 300)
+
+    assert pick_examples([0, 1], cells, 1) == [1]
+
+
+def test_a_repeated_row_is_shown_once_and_no_rows_give_no_examples():
+    from app.refine.balance_gates import pick_examples
+
+    cells = [["Optik", "Licht und Linsen", "a, b"], ["Optik", "Licht und Linsen", "a, b"],
+             ["Wärme", "Energie im Alltag", "c, d"]]
+
+    assert len(pick_examples([0, 1, 2], cells, 3)) == 2
+    assert pick_examples([], [], 3) == []
+
+
+def test_a_row_an_llm_completed_is_shown_only_when_no_untouched_row_is_left():
+    """Its enriched cells are the LLM's own words: shown as a "real entry", the model
+    imitates itself (review #3)."""
+    from app.refine.balance_gates import pick_examples
+
+    cells = _sized(100, 200, 300)
+
+    assert sorted(pick_examples([0, 1, 2], cells, 2, touched={1})) == [0, 2]
+    assert sorted(pick_examples([0, 1, 2], cells, 3, touched={1})) == [0, 1, 2]
+
+
+def _physik(llm_description: str) -> pd.DataFrame:
+    real = [[f"Optik Versuch {i}", "d" * length, "Optik, Licht, Linse", "uri/phy", ""]
+            for i, length in enumerate((90, 100, 100, 110, 120))]
+    llm = [[f"Optik Ergänzt {i}", llm_description, "Optik, Licht, Linse", "uri/phy", DESC]
+           for i in range(2)]
+    other = [[f"Chemie {i}", "c" * 100, "Säure, Base, Salz", "uri/che", ""] for i in range(12)]
+    return pd.DataFrame(real + llm + other, columns=[TITLE, DESC, KEYW, LABEL, "enriched_fields"])
+
+
+def _first_prompt(df: pd.DataFrame) -> str:
+    from app.refine.balance import balance_dataset
+
+    prompts: list[str] = []
+
+    async def complete(prompt, schema, **kwargs):
+        prompts.append(prompt)
+        return schema(items=[])
+
+    asyncio.run(balance_dataset(df, fields=_fields(), label_column=LABEL, target_per_label=8,
+                                complete=complete, examples_per_label=4))
+    return prompts[0]
+
+
+def test_cells_an_llm_completed_are_not_the_datasets_lengths():
+    prompt = _first_prompt(_physik("Z" * 1500))
+
+    description = next(line for line in prompt.splitlines() if line.startswith("2. "))
+    assert "100–110 Zeichen" in description
+
+
+def test_rows_an_llm_completed_are_not_the_labels_examples():
+    """Near the median, they would have been the first rows picked."""
+    prompt = _first_prompt(_physik("Z" * 105))
+
+    assert "ZZZZZ" not in prompt
+
+
+def test_each_field_line_carries_its_own_typical_length():
+    prompt = _first_prompt(_physik("Z" * 105))
+
+    keywords = next(line for line in prompt.splitlines() if line.startswith("3. "))
+    assert "mindestens 3 Werte; im Datensatz meist" in keywords and keywords.endswith("Werte)")

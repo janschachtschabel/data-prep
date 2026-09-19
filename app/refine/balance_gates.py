@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 
@@ -74,22 +74,28 @@ def fingerprint(cells: list[str]) -> str:
     return "\n".join(cells).casefold()
 
 
-def pick_examples(positions: list[int], cells: list[list[str]], k: int) -> list[int]:
-    """Up to ``k`` of ``positions``: complete rows first, and among them the ones
-    closest to the label's median length, without repeated rows.
+def pick_examples(
+    positions: list[int], cells: list[list[str]], k: int, touched: Collection[int] = (),
+) -> list[int]:
+    """Up to ``k`` of ``positions``: complete rows first, rows an LLM completed
+    (``touched``) after the untouched ones, and within each the rows closest to the
+    median length of the label's complete rows; no row twice.
 
-    A row missing a field teaches the model nothing about that field. Longest-first --
-    the rule before -- showed a label's four richest rows, and the generated rows came
-    out longer and richer than its real ones: a difference a classifier learns as a
-    feature of the label. Ties go to the longer row.
+    A row missing a field teaches the model nothing about that field, and a completed
+    row shows it the LLM's own words as a "real entry". Longest-first -- the rule before
+    -- showed a label's richest rows, and the generated rows came out longer and richer
+    than its real ones: a difference a classifier learns as a feature of the label. The
+    median is the complete rows' own: counted in, the shorter incomplete ones would pull
+    the choice toward the short end. Ties go to the longer row.
     """
     if not positions:
         return []
     size = {p: sum(map(len, cells[p])) for p in positions}
-    median = statistics.median(size.values())
+    complete = [p for p in positions if all(cells[p])]
+    median = statistics.median(size[p] for p in (complete or positions))
     chosen: dict[str, int] = {}
-    for position in sorted(positions, key=lambda p: (not all(cells[p]), abs(size[p] - median),
-                                                     -size[p])):
+    for position in sorted(positions, key=lambda p: (not all(cells[p]), p in touched,
+                                                     abs(size[p] - median), -size[p])):
         chosen.setdefault(fingerprint(cells[position]), position)
         if len(chosen) == k:
             break

@@ -39,7 +39,7 @@ from .prompt_context import (
     one_line,
     typical_phrase,
 )
-from .provenance import ENRICHED_FIELDS, GENERATED_FOR, is_marked
+from .provenance import ENRICHED_FIELDS, GENERATED_FOR, enriched_columns, is_marked
 
 Complete = Callable[[str, type[BaseModel]], Awaitable[BaseModel]]
 
@@ -100,8 +100,7 @@ def _typical_sentence(df: pd.DataFrame, target: TextField) -> str:
     enriched = df[ENRICHED_FIELDS] if ENRICHED_FIELDS in df.columns else [None] * len(df)
     cells = []
     for cell, made, filled in zip(df[target.column], generated, enriched, strict=True):
-        if is_marked(made) or (is_marked(filled) and target.column in
-                               [part.strip() for part in str(filled).split(",")]):
+        if is_marked(made) or target.column in enriched_columns(filled):
             continue
         cells.append([write_values(read_values(cell, target), target)])
     phrase = typical_phrase(target, field_shapes(cells, [target])[0])
