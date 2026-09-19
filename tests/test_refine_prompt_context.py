@@ -300,18 +300,24 @@ def test_a_typical_length_never_asks_for_more_than_an_answer_may_hold():
     """Every answer value is capped (MAX_VALUE_CHARS); a prompt asking for 2920-3970
     characters gets answers the gate throws away after they were paid for (review #1).
     Nor does the range end AT the cap: a model asked for "1750-2000" aims at 2000 and
-    overshoots it, so it ends at MAX_STATED_CHARS (review 2026-09-19 #2)."""
+    overshoots it, so it ends at MAX_STATED_CHARS (review 2026-09-19 #2). A field typically
+    longer than that, but not than an answer may hold, is stated as about that long:
+    stated nothing, its generated values came out far shorter than its real ones
+    (review of the fixes)."""
     from app.refine.prompt_context import MAX_STATED_CHARS, MAX_VALUE_CHARS, field_shapes
 
     fields = [TextField(column=DESC)]
     long_rows = [["d" * length] for length in (1000, 1200, 1400, 1700, 2000, 2200)]
-    longer_rows = [["d" * length] for length in (1500, 1700, 1900, 2200, 2500, 2600)]
+    near_rows = [["d" * length] for length in (1500, 1700, 1900, 2200, 2500, 2600)]
+    beyond_rows = [["d" * length] for length in (2400, 2900, 3300, 3900, 4200, 4500)]
 
     (clamped,) = field_shapes(long_rows, fields)
-    (beyond,) = field_shapes(longer_rows, fields)
+    (near,) = field_shapes(near_rows, fields)
+    (beyond,) = field_shapes(beyond_rows, fields)
 
     assert MAX_STATED_CHARS <= MAX_VALUE_CHARS * 3 // 4
     assert clamped.chars == (1250, MAX_STATED_CHARS)
+    assert near.chars == (MAX_STATED_CHARS, MAX_STATED_CHARS)
     assert beyond is None or beyond.chars is None, "nothing typical fits an answer: say nothing"
 
 

@@ -194,10 +194,11 @@ def field_shapes(
     handful of filled cells takes ``fallback``'s shape -- the whole dataset's, for a label
     with three rows -- or none. A list field's number of values never goes below what
     the field requires: the gate would discard such an answer after it was paid for. A
-    length never goes above ``MAX_STATED_CHARS``, and a field whose typical entry starts
-    beyond it gets no length at all. Nor does a list whose typical cell is longer get
-    its number of values: balancing returns the list as one string, and the count would
-    ask for that cell -- its characters, capped, say it instead.
+    length never goes above ``MAX_STATED_CHARS``: a field whose typical entry starts
+    beyond it is stated as about that long, and one whose typical entry is longer than an
+    answer may hold gets no length at all. Nor does a list whose typical cell is longer
+    than ``MAX_STATED_CHARS`` get its number of values: balancing returns the list as one
+    string, and the count would ask for that cell -- its characters, capped, say it instead.
     """
     shapes: list[FieldShape | None] = []
     for index, field in enumerate(fields):
@@ -206,7 +207,11 @@ def field_shapes(
             shapes.append(fallback[index] if fallback is not None else None)
             continue
         low, high = _middle_half([len(cell) for cell in filled], 10)
-        chars = (low, min(high, MAX_STATED_CHARS)) if low < MAX_STATED_CHARS else None
+        chars: tuple[int, int] | None = None
+        if low < MAX_STATED_CHARS:
+            chars = (low, min(high, MAX_STATED_CHARS))
+        elif low < MAX_VALUE_CHARS:
+            chars = (MAX_STATED_CHARS, MAX_STATED_CHARS)
         values = None
         if field.separator and high <= MAX_STATED_CHARS:
             fewest, most = _middle_half([len(read_values(cell, field)) for cell in filled], 1)
