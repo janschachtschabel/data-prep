@@ -94,22 +94,44 @@ def _label_filter(df, params, ctx):
         raise ValueError("label_filter needs a 'substring' parameter.")
     sep = ctx["label_separator"]
     col = ctx["label_column"]
+    # The display names go with their labels: left standing, "Chemie,Physik" beside
+    # the one label kept names it wrongly wherever a prompt reads it.
+    names_col = f"{col}_DISPLAYNAME"
+    names = df[names_col].tolist() if names_col in df.columns else None
     new = df.copy()
     kept_rows, examples = [], []
-    new_cells = []
-    for cell in df[col]:
-        kept = [lab for lab in split_labels(cell, sep) if substring in lab]
+    new_cells, new_names = [], []
+    changed = 0  # rows kept with some of their labels stripped
+    for index, cell in enumerate(df[col]):
+        labels = split_labels(cell, sep)
+        keep = [substring in lab for lab in labels]
+        kept = [lab for lab, wanted in zip(labels, keep, strict=True) if wanted]
         new_cells.append(sep.join(kept))
         kept_rows.append(bool(kept))
+        changed += bool(kept) and len(kept) < len(labels)
+        if names is not None:
+            new_names.append(names[index] if all(keep)
+                             else _names_kept(names[index], keep, sep))
         if not kept and len(examples) < _EXAMPLES:
             examples.append(str(cell)[:120])
     new[col] = new_cells
+    if names is not None:
+        new[names_col] = new_names
     new = new[pd.Series(kept_rows, index=new.index)].reset_index(drop=True)
     return new, {
         "filter": "label_filter", "before": int(len(df)), "after": int(len(new)),
-        "removed": int(len(df) - sum(kept_rows)), "changed": 0,
+        "removed": int(len(df) - sum(kept_rows)), "changed": changed,
         "examples": [{"removed": ex} for ex in examples],
     }
+
+
+def _names_kept(cell, keep: list[bool], sep: str) -> str:
+    """The names of the labels ``keep`` marks, when the name cell pairs with the label
+    cell part for part; otherwise none -- a guess would name a label wrongly."""
+    names = split_labels(cell, sep)
+    if len(names) != len(keep):
+        return ""
+    return sep.join(name for name, wanted in zip(names, keep, strict=True) if wanted)
 
 
 def _cap_per_label(df, params, ctx):
