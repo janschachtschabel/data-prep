@@ -107,7 +107,7 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   und die Mindestanzahl an. Der Hinweis daneben ist die eine Zeile, die die KI
   über dieses Feld zu sehen bekommt — je konkreter, desto brauchbarer das
   Ergebnis. Wie lang ein Eintrag sein soll, ergänzt die App selbst aus den echten
-  Zeilen des Datensatzes; schreibst du eine Zahl in den Hinweis (etwa „100–400
+  Zeilen des Datensatzes; schreibst du eine Länge in den Hinweis (etwa „100–400
   Zeichen“), gilt deine. Diese Angaben gelten für beide KI-Werkzeuge darunter.
 - **Enrich** — füllt Lücken in **einem frei gewählten Feld** per KI: Schlagwörter,
   Beschreibung, oder jede andere Textspalte deines Datensatzes. Vorhandene Inhalte

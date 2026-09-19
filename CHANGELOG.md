@@ -27,9 +27,22 @@ Plan: `docs/plan-2026-09-19-ai-provenance-prompts.md`; api_v3 reads the same mar
   covers the typical length asked for.
 - **The enrichment prompt names the row's labels** and asks for text that fits them,
   and states the field's typical length measured on rows people wrote.
-- **A guidance that names a number keeps it:** neither prompt adds the dataset's range
-  beside it, so a request in the old `mode` shape keeps its "100-400 Zeichen". The
-  UI's default guidance for the WLO fields names no number any more.
+- **A guidance that states a length keeps it** ("100-400 Zeichen", "3-6
+  Schlagwörter"): neither prompt adds the dataset's range beside it, so a request in the
+  old `mode` shape keeps its instructions. A number that is no length ("Klasse 5") does
+  not count. The UI's default guidance for the WLO fields names no number any more.
+- **A stated typical length never exceeds what an answer may hold** (2,000 characters,
+  the answer schemas' cap): on long descriptions the prompt would otherwise ask for more,
+  a complying model would be refused, and the paid run would fail. A field whose typical
+  entry starts beyond the cap gets no length at all.
+- **What enrichment wrote is not the dataset:** balancing measures lengths without the
+  cells an earlier enrichment filled and shows rows carrying them as examples only when
+  no untouched row is left. Examples sit at the median of the label's complete rows.
+- **Enrichment of a list field** states the typical count of the whole cell
+  ("insgesamt"), not of the values to add.
+- **Every name from the dataset is bounded** (one line, 60 characters) and the contrast
+  list never names the label itself or a name twice.
+- **The JSONL export carries `generated_for`** too.
 
 ### Internal
 

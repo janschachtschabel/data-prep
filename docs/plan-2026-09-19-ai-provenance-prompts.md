@@ -95,7 +95,13 @@ def contrast_labels(label: str, rows_by_label: dict[str, list[int]],
 def field_shapes(rows: list[list[str]], fields: list[TextField],
                  fallback: list[FieldShape | None] | None = None) -> list[FieldShape | None]
 def typical_phrase(field: TextField, shape: FieldShape | None) -> str
-def guidance_names_a_number(field: TextField) -> bool
+def guidance_states_a_length(field: TextField) -> bool   # "100-400 Zeichen", "3-6 Schlagwörter"
+def one_line(text: str, limit: int | None = None) -> str
+MAX_VALUE_CHARS = 2000   # the answer schemas' cap; no typical length is stated above it
+NAME_CHARS = 60          # every name from the dataset, as the prompts show it
+
+# app/refine/balance_gates.py
+def pick_examples(positions, cells, k, touched: Collection[int] = ()) -> list[int]
 
 # app/refine/balance_prompt.py
 @dataclass(frozen=True)
