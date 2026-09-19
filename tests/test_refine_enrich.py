@@ -385,6 +385,39 @@ def test_a_target_field_that_is_not_among_the_fields_is_a_bad_request(make_clien
     assert KEYW in r.json()["detail"]
 
 
+def test_a_target_its_mark_cannot_name_is_a_bad_request(make_client):
+    """enriched_fields joins column names with "," and its readers strip each: a target
+    named with a comma, or with spaces around it, read back as another column, and the
+    row lost its mark wherever it is checked per column (review 2026-09-19 #13)."""
+    client = make_client()
+    for column in ("Schlagwort, Thema", " Schlagwort"):
+        _import(client, pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, column]))
+
+        by_fields = client.post("/refine/curated/enrich", headers=HEADERS, json={
+            "fields": [{"column": TITLE}, {"column": DESC}, {"column": column}],
+            "target_field": column, "target": "out"})
+        by_mode = client.post("/refine/curated/enrich", headers=HEADERS, json={
+            "mode": "keywords", "title_column": TITLE, "description_column": DESC,
+            "keyword_column": column, "target": "out"})
+
+        for r in (by_fields, by_mode):
+            assert r.status_code == 400, (column, r.text)
+            assert "enriched_fields" in r.json()["detail"]
+
+
+def test_a_mark_already_in_the_cell_is_not_added_twice():
+    """Written by another tool as "title, keywords", the cell got the same column again."""
+    from app.refine.enrich import enrich_dataset
+
+    df = pd.DataFrame([["Optik", "Licht", "", f" {TITLE} , {KEYW}"]],
+                      columns=[TITLE, DESC, KEYW, "enriched_fields"])
+
+    new, _ = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=_fake_keywords))
+
+    assert new.iloc[0]["enriched_fields"] == f"{TITLE},{KEYW}"
+
+
 def test_enrichment_refuses_fields_it_would_misuse(make_client):
     """`enriched_fields` as a text field would have its provenance overwritten by
     generated text; a column named twice would be filled twice (#25)."""

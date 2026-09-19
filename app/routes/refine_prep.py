@@ -153,7 +153,7 @@ class EnrichRequest(BaseModel):
                 raise ValueError(
                     f"target_field {self.target_field!r} is not among the fields."
                 )
-            return [spec.to_field() for spec in self.fields], self.target_field
+            return [spec.to_field() for spec in self.fields], _markable(self.target_field)
         if self.mode is None:
             raise ValueError(
                 "Send either 'fields' with 'target_field', or 'mode' with the column names."
@@ -165,7 +165,19 @@ class EnrichRequest(BaseModel):
                       min_values=self.min_keywords, guidance=_WLO_KEYWORD_GUIDANCE),
         ]
         target = self.keyword_column if self.mode == "keywords" else self.description_column
-        return fields, target
+        return fields, _markable(target)
+
+
+def _markable(column: str) -> str:
+    """``column``, when ``enriched_fields`` can name it: that cell joins the columns it
+    names with "," and its readers strip each, so a comma or surrounding spaces would
+    read back as another column -- and the row lose its mark wherever it is checked per
+    column."""
+    if "," in column or column != column.strip():
+        raise ValueError(
+            f"Column {column!r} cannot be enriched: enriched_fields names columns joined by ',', "
+            "so the name must hold no comma and no leading or trailing spaces.")
+    return column
 
 
 @router.post("/{name}/split", summary="Stratified text-disjoint holdout split (train + holdout)")

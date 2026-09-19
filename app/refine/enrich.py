@@ -80,7 +80,7 @@ def _shape(target: TextField) -> str:
 
 
 def _mark(existing: str, field: str) -> str:
-    marks = [m for m in str(existing or "").split(",") if m.strip()]
+    marks = [m.strip() for m in str(existing or "").split(",") if m.strip()]
     if field not in marks:
         marks.append(field)
     return ",".join(marks)
