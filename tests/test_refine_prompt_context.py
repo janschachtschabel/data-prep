@@ -497,6 +497,18 @@ def test_an_untouched_row_goes_before_a_complete_one_an_llm_completed():
     assert pick_examples([0, 1, 2, 3], moved, 1, touched={3}) == [1]
 
 
+def test_without_a_complete_untouched_row_the_median_is_the_untouched_rows():
+    """Lacking a complete untouched row, the median fell back to the complete rows --
+    every one of them completed by the LLM -- and pulled the choice toward its lengths
+    (review of the fixes)."""
+    from app.refine.balance_gates import pick_examples
+
+    untouched = [["t", "d" * (size - 1), ""] for size in (100, 150, 400)]  # no keywords
+    completed = _sized(420, 440)
+
+    assert pick_examples(list(range(5)), untouched + completed, 1, touched={3, 4}) == [1]
+
+
 def _physik(llm_description: str) -> pd.DataFrame:
     real = [[f"Optik Versuch {i}", "d" * length, "Optik, Licht, Linse", "uri/phy", ""]
             for i, length in enumerate((90, 100, 100, 110, 120))]

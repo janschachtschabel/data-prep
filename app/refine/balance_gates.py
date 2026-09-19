@@ -89,15 +89,17 @@ def pick_examples(
     two. Longest-first -- the rule before -- showed a label's richest rows, and the
     generated rows came out longer and richer than its real ones: a difference a
     classifier learns as a feature of the label. The median is the complete untouched
-    rows' own: counted in, the shorter incomplete ones would pull the choice toward the
-    short end, and the completed ones toward the LLM's lengths. Ties go to the longer row.
+    rows' own -- lacking those, the untouched rows': counted in, the shorter incomplete
+    ones would pull the choice toward the short end, and the completed ones toward the
+    LLM's lengths. Ties go to the longer row.
     """
     if not positions:
         return []
     size = {p: sum(map(len, cells[p])) for p in positions}
     complete = [p for p in positions if all(cells[p])]
-    untouched = [p for p in complete if p not in touched]
-    median = statistics.median(size[p] for p in (untouched or complete or positions))
+    untouched = [p for p in positions if p not in touched]
+    basis = [p for p in complete if p not in touched] or untouched or complete or positions
+    median = statistics.median(size[p] for p in basis)
     chosen: dict[str, int] = {}
     for position in sorted(positions, key=lambda p: (p in touched, not all(cells[p]),
                                                      abs(size[p] - median), -size[p])):
