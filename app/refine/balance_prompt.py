@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Annotated
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field
 
 from .fields import TextField, read_values, write_values
 from .prompt_context import (
-    MAX_VALUE_CHARS,
     NAME_CHARS,
     FieldShape,
     guidance_states_a_length,
@@ -23,8 +21,10 @@ from .prompt_context import (
     typical_phrase,
 )
 
-# Bounded per value: a model that runs away must not write a megabyte into one cell.
-Value = Annotated[str, StringConstraints(max_length=MAX_VALUE_CHARS)]
+# A cell is bounded by the gate, not here (``balance_gates``: an item holding one over
+# MAX_VALUE_CHARS is discarded): one such value failed the schema of the whole answer,
+# and the run it was paid in. The answer's size is bounded by its output tokens.
+Value = str
 
 
 class BalanceItem(BaseModel):

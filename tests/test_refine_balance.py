@@ -488,6 +488,26 @@ def test_a_value_far_shorter_than_any_example_is_discarded():
     assert stats["per_label"]["Physik"]["discarded_short"] == 1
 
 
+def test_a_value_longer_than_an_answer_may_hold_is_discarded_alone():
+    """One value past MAX_VALUE_CHARS failed the whole answer's schema: the batch, and
+    with it the paid run, was lost. Now that item is discarded with its reason, and the
+    rest of the batch counts (review 2026-09-19 #2)."""
+    import asyncio
+
+    from app.refine.balance import balance_dataset
+    from app.refine.prompt_context import MAX_VALUE_CHARS
+
+    df = _rows([("Physik", "Optik")])
+    runaway = ["Akustik", "x" * (MAX_VALUE_CHARS + 1), "a, b, c"]
+    complete, _ = _scripted([[runaway, _item("Thermo")]])
+
+    new, stats = asyncio.run(balance_dataset(
+        df, fields=_fields(), label_column=LABEL, target_per_label=3, complete=complete))
+
+    assert stats["per_label"]["Physik"]["discarded_long"] == 1
+    assert len(new) == 2, "the other item of the batch was kept"
+
+
 def test_a_bug_while_gating_is_raised_not_counted_as_a_rejection(monkeypatch):
     """Rejections travelled as LookupError, and KeyError is one: a genuine bug inside
     the gate was counted as a discarded item (review #23)."""

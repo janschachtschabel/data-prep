@@ -325,6 +325,17 @@ def test_both_answer_schemas_hold_the_length_the_prompts_may_ask_for():
     FieldValues(values=["x" * MAX_VALUE_CHARS])
 
 
+def test_a_value_past_the_cap_does_not_fail_the_answer():
+    """The gates turn it away, one item or value at a time: in the schema it failed
+    every other item of the answer with it (review 2026-09-19 #2)."""
+    from app.refine.balance_prompt import BalanceItem
+    from app.refine.enrich import FieldValues
+    from app.refine.prompt_context import MAX_VALUE_CHARS
+
+    BalanceItem(values=["x" * (MAX_VALUE_CHARS + 1)])
+    FieldValues(values=["x" * (MAX_VALUE_CHARS + 1)])
+
+
 def test_a_display_name_reaches_the_prompt_bounded_and_on_one_line():
     """It is repeated three or four times per batch; unbounded, a 5,000-character cell
     made a 15,789-character prompt (review #2)."""

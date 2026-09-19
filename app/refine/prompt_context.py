@@ -20,9 +20,9 @@ import pandas as pd
 from ..textnorm import split_labels
 from .fields import TextField, read_values
 
-# The most one answer value may hold -- both answer schemas cap it here. A typical
-# length is never stated above it: a model that complied would be refused by the
-# schema, and the paid run would fail with it.
+# The most one answer value may hold. A longer one is turned away where the answer is
+# read -- the item it is in (balancing), or the value alone (enrichment) -- not by the
+# answer's schema, where it failed the whole answer and the run it was paid in.
 MAX_VALUE_CHARS = 2000
 # The most a prompt states as a typical length. Not the cap itself: a model asked for
 # "1750-2000" aims at the upper end and overshoots it.

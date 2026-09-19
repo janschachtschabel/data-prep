@@ -184,7 +184,8 @@ const balanceCalls = () => sent.filter((s) => s.url.endsWith("/balance"));
 
   // G. the result names what the gates discarded
   const DISCARDING = { ...RUN, per_label: { Physik: { support: 1, added: 1, missing: 2,
-    synthetic_share: 0.5, discarded_duplicate: 1, discarded_short: 2, discarded_incomplete: 0 } } };
+    synthetic_share: 0.5, discarded_duplicate: 1, discarded_short: 2, discarded_long: 3,
+    discarded_incomplete: 0 } } };
   respond = (url, body) => (url.endsWith("/balance")
     ? { status: 200, body: body.dry_run ? PLAN : DISCARDING }
     : { status: 200, body: { datasets: [{ name: "quelle", rows: 5, columns: ["t"] }], ops: [] } });
@@ -193,7 +194,7 @@ const balanceCalls = () => sent.filter((s) => s.url.endsWith("/balance"));
   await run.fire("click"); await settle();
   const said = $("#balance-result").children.map((c) => c.textContent).join(" | ");
   check(said.includes(I18n.t("js.refine.balanceDiscarded",
-    { duplicate: 1, short: 2, incomplete: 0 })), `G: the discards are named (${said})`);
+    { duplicate: 1, short: 2, long: 3, incomplete: 0 })), `G: the discards are named (${said})`);
 
   // H. an enrichment a cap ended early says so; what it enriched until then is saved
   const REASON = "Budget reached: 14 tokens (cap 10).";

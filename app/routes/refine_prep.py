@@ -252,7 +252,7 @@ async def enrich(
     """Fill the gaps of one field with the LLM, additively: a cell with fewer than `min_values` values is a
     gap, and a short list is extended, never replaced. Each prompt shows the row's other fields and names
     its labels (from `label_column`, by display name where known) and the field's typical length in the
-    rows people wrote, never above the 2,000-character answer cap; a length stated in the field's
+    rows people wrote, at most 1,500 characters (an answer value over 2,000 is dropped); a length stated in the field's
     `guidance` replaces it. Answers are PII-scrubbed; changed rows are marked in `enriched_fields`, which
     keeps them out of a holdout. Saves the result as `target`. Paid LLM calls; honours
     `X-LLM-Key`/`X-LLM-Model`. A budget cap mid-way keeps what was paid for (`stopped` says why).

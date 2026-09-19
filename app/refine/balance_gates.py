@@ -26,6 +26,7 @@ from .balance_prompt import (
     shown_cells,
 )
 from .fields import TextField, read_values, write_values
+from .prompt_context import MAX_VALUE_CHARS
 
 # The injected model call. Keyword arguments carry the per-batch output budget.
 Complete = Callable[..., Awaitable[BaseModel]]
@@ -41,7 +42,8 @@ EXTRA_BATCHES = 2
 
 
 def _no_discards() -> dict[str, int]:
-    return {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0}
+    return {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0,
+            "discarded_long": 0}
 
 
 @dataclass
@@ -141,7 +143,8 @@ def _accept(item: BalanceItem, fields: list[TextField], seen: set[str],
     """The generated cells, or :class:`_Rejected` with the reason.
 
     Completeness first — every field must carry its ``min_values``, the dataset's
-    own definition of a gap — then length, then repetition.
+    own definition of a gap — then length, then repetition. Too long is a cell above
+    ``MAX_VALUE_CHARS``, the most an answer value may hold.
     """
     values = []
     for index, field in enumerate(fields):
@@ -153,6 +156,8 @@ def _accept(item: BalanceItem, fields: list[TextField], seen: set[str],
     cells = [write_values(parts, field) for parts, field in zip(values, fields, strict=True)]
     if any(len(cell) < floor for cell, floor in zip(cells, min_chars, strict=True)):
         raise _Rejected("discarded_short")
+    if any(len(cell) > MAX_VALUE_CHARS for cell in cells):
+        raise _Rejected("discarded_long")
     key = fingerprint(cells)
     if key in seen:
         raise _Rejected("discarded_duplicate")

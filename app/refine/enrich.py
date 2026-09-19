@@ -22,10 +22,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Annotated
 
 import pandas as pd
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field
 
 from ..pii import scrub
 from ..textnorm import split_labels
@@ -43,10 +42,10 @@ from .provenance import ENRICHED_FIELDS, GENERATED_FOR, enriched_columns, is_mar
 
 Complete = Callable[[str, type[BaseModel]], Awaitable[BaseModel]]
 
-# Bounded per value and per list: a model that runs away must not write a megabyte
-# into one cell. The bound is the prompts' own (MAX_VALUE_CHARS), so no stated typical
-# length ever asks for more than an answer may hold.
-Value = Annotated[str, StringConstraints(max_length=MAX_VALUE_CHARS)]
+# Bounded per list here, per value where the answer is read: a value over
+# MAX_VALUE_CHARS is dropped alone -- in the schema it failed the call, and the run it
+# was paid in. The answer's size is bounded by its output tokens.
+Value = str
 
 
 class FieldValues(BaseModel):
@@ -215,7 +214,8 @@ async def enrich_dataset(
         # Scrubbed per value, as the model returned it; a list value that still holds
         # the separator ("Optik, Licht") is split so the merge can see both parts.
         answered = [part for value in result.values  # type: ignore[attr-defined]
-                    for part in read_values(scrub(value)[0], target)]
+                    for part in read_values(scrub(value)[0], target)
+                    if len(part) <= MAX_VALUE_CHARS]
         merged = merge_values(existing, answered) if target.separator else answered[:1]
         if not merged or merged == existing:
             continue  # nothing new: the cell stays as it was, and is not counted

@@ -324,6 +324,31 @@ def test_an_answer_that_adds_nothing_new_is_not_counted():
     assert stats["enriched"] == 0
 
 
+def test_a_value_longer_than_an_answer_may_hold_is_dropped_alone():
+    """In the schema it failed the call, and a paid run with it; now only that value is
+    dropped (review 2026-09-19 #2)."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.prompt_context import MAX_VALUE_CHARS
+
+    df = pd.DataFrame([["Zahlen", "Rechnen lernen", "Mathe"],
+                       ["Brüche", "", "Bruch, Nenner, Zähler"]], columns=[TITLE, DESC, KEYW])
+
+    async def runaway(prompt, schema):
+        return schema(values=["x" * (MAX_VALUE_CHARS + 1), "Rechnen"])
+
+    async def runaway_only(prompt, schema):
+        return schema(values=["x" * (MAX_VALUE_CHARS + 1)])
+
+    keywords, _ = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=runaway))
+    descriptions, stats = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=DESC, complete=runaway_only))
+
+    assert keywords.iloc[0][KEYW] == "Mathe, Rechnen"
+    assert descriptions.iloc[1][DESC] == "", "a single value too long leaves the cell as it was"
+    assert stats["enriched"] == 0
+
+
 def test_the_prompt_names_the_field_and_its_shape_even_without_guidance():
     """The UI sends no guidance unless someone types one, and the prompt never said
     which field to fill: the model got context lines and a PII rule, nothing else

@@ -424,7 +424,7 @@ const I18n = (() => {
       "js.refine.balanceStale": "The preview no longer matches the form (dataset, fields or numbers changed). Run the preview again first.",
       "js.refine.balanceStopped": "Stopped early ({reason}). The rows generated until then are saved; once the budget allows, another run on the result continues.",
       "js.refine.enrichStopped": "Stopped early ({reason}). The rows enriched until then are saved; once the budget allows, another run on the result fills the remaining gaps.",
-      "js.refine.balanceDiscarded": "Discarded by the checks — repeats: {duplicate}, too short: {short}, incomplete: {incomplete}.",
+      "js.refine.balanceDiscarded": "Discarded by the checks — repeats: {duplicate}, too short: {short}, too long: {long}, incomplete: {incomplete}.",
       "js.refine.balanceForeign.one": `One row carries a generated_for mark that is not a label
          in "{column}" (e.g. "{example}"). It counts as generated and is not used as an example.`,
       "js.refine.balanceForeign.other": `{count} rows carry a generated_for mark that is not a
@@ -1026,7 +1026,7 @@ const I18n = (() => {
       "js.refine.balanceStale": "Die Vorschau passt nicht mehr zum Formular (Datensatz, Felder oder Zahlen geändert). Bitte zuerst neu berechnen.",
       "js.refine.balanceStopped": "Vorzeitig beendet ({reason}). Die bis dahin erzeugten Zeilen sind gespeichert; sobald das Budget es zulässt, setzt ein weiterer Lauf auf dem Ergebnis fort.",
       "js.refine.enrichStopped": "Vorzeitig beendet ({reason}). Die bis dahin angereicherten Zeilen sind gespeichert; sobald das Budget es zulässt, füllt ein weiterer Lauf auf dem Ergebnis die übrigen Lücken.",
-      "js.refine.balanceDiscarded": "Von den Prüfungen verworfen — Wiederholungen: {duplicate}, zu kurz: {short}, unvollständig: {incomplete}.",
+      "js.refine.balanceDiscarded": "Von den Prüfungen verworfen — Wiederholungen: {duplicate}, zu kurz: {short}, zu lang: {long}, unvollständig: {incomplete}.",
       "js.refine.balanceForeign.one": `Eine Zeile trägt eine generated_for-Markierung, die kein
          Label in „{column}“ ist (z. B. „{example}“). Sie gilt als erzeugt und dient nicht als
          Beispiel.`,

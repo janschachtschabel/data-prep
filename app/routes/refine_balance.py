@@ -82,10 +82,11 @@ async def balance(
     prompt shows real example rows, names the label by its display name (`<label_column>_DISPLAYNAME`,
     else the value), lists up to 30 other labels the new rows must not read like, and states each
     field's kind (one value, or a list with its minimum) and typical length measured on real rows,
-    never above the 2,000-character answer cap; a length stated in the field's `guidance` replaces it.
-    Answers are PII-scrubbed; incomplete, too short or duplicate rows are discarded, and up to two extra
-    batches per label replace them. New rows are marked `generated_for=<label>`, the example rows
-    `example_for`, which keeps both out of a holdout. Labels without a real row with text are skipped.
+    at most 1,500 characters, well below the 2,000-character answer cap; a length stated in the field's
+    `guidance` replaces it. Answers are PII-scrubbed; incomplete, too short, too long or duplicate rows
+    are discarded, and up to two extra batches per label replace them. New rows are marked
+    `generated_for=<label>`, the example rows `example_for`, which keeps both out of a holdout. Labels
+    without a real row with text are skipped.
     `dry_run` returns the plan (per label: support, deficit, planned rows, batches, resulting synthetic
     share) and the worst-case call count against the call budget. Paid LLM calls; honours
     `X-LLM-Key`/`X-LLM-Model`. A budget cap mid-way keeps the rows paid for (`stopped` says why).
