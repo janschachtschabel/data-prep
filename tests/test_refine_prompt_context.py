@@ -261,3 +261,18 @@ def test_every_prompt_of_a_run_is_one_that_builds(names):
                                 complete=complete))
 
     assert len(prompts) >= 2
+
+
+def test_a_guidance_that_names_a_number_gets_no_second_one():
+    """A number someone wrote into a field's guidance is their instruction; the dataset's
+    range beside it would contradict it. The other fields keep theirs."""
+    from app.refine.balance_prompt import build_balance_prompt
+
+    fields = [TextField(column=TITLE), TextField(column=DESC, guidance="Schreibe 100-400 Zeichen."),
+              TextField(column=KEYW, separator=",", min_values=3)]
+
+    prompt = build_balance_prompt("uri", _examples(), fields, n=5, avoid_titles=[],
+                                  context=_context())
+
+    assert "150–450 Zeichen" not in prompt
+    assert "40–80 Zeichen" in prompt

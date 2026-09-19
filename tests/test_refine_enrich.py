@@ -552,3 +552,121 @@ def test_an_enrichment_stopped_before_its_first_change_saves_nothing(make_client
     assert r.status_code == 429
     names = {d["name"] for d in client.get("/refine/datasets", headers=HEADERS).json()["datasets"]}
     assert "leer" not in names
+
+
+# ------------------------------------------------ what the prompt knows ----
+
+
+def _capture(answer: str = "Eine sachliche Beschreibung des Materials."):
+    prompts: list[str] = []
+
+    async def complete(prompt, schema):
+        prompts.append(prompt)
+        return schema(values=[answer])
+
+    return complete, prompts
+
+
+def test_the_prompt_names_the_rows_classification_as_people_read_it():
+    """Not told the row is filed under physics, the model describes whatever the title
+    suggests -- "Wasserkraft" gets geography. Told, the added text fits the label the
+    row trains."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    df = pd.DataFrame([["Wasserkraft", "", "uri/phy,uri/geo", "Physik,Geografie"]],
+                      columns=[TITLE, DESC, LABEL, f"{LABEL}_DISPLAYNAME"])
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=[TextField(column=TITLE), TextField(column=DESC)],
+                               target_field=DESC, complete=complete, label_column=LABEL))
+
+    assert "„Physik, Geografie“" in prompts[0]
+    assert "uri/phy" not in prompts[0]
+    assert "zu dieser Einordnung passen" in prompts[0]
+
+
+def test_without_a_label_column_the_prompt_claims_no_classification():
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    df = pd.DataFrame([["Wasserkraft", ""]], columns=[TITLE, DESC])
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=[TextField(column=TITLE), TextField(column=DESC)],
+                               target_field=DESC, complete=complete, label_column=LABEL))
+
+    assert "eingeordnet" not in prompts[0]
+
+
+def test_the_prompt_states_the_fields_typical_length_measured_on_real_rows():
+    """Measured on what people wrote: a generated row, or a cell an earlier enrichment
+    filled, would teach the model its own lengths back."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    rows = [[f"Titel {i}", "d" * length, "", ""]
+            for i, length in enumerate((200, 200, 300, 300, 400, 400))]
+    rows += [["Erzeugt", "g" * 3000, "Physik", ""], ["Ergänzt", "e" * 3000, "", DESC],
+             ["Lücke", "", "", ""]]
+    df = pd.DataFrame(rows, columns=[TITLE, DESC, "generated_for", "enriched_fields"])
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=[TextField(column=TITLE), TextField(column=DESC)],
+                               target_field=DESC, complete=complete))
+
+    assert len(prompts) == 1
+    assert "Im Datensatz meist 230–380 Zeichen." in prompts[0]
+
+
+def test_a_guidance_that_names_a_number_is_not_contradicted_by_the_dataset():
+    """The old request shape asks for "100-400 Zeichen"; a second, different range beside
+    it would leave the model to pick one. The number someone wrote down wins."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    rows = [[f"Titel {i}", "d" * 250] for i in range(6)] + [["Lücke", ""]]
+    df = pd.DataFrame(rows, columns=[TITLE, DESC])
+    fields = [TextField(column=TITLE), TextField(column=DESC, guidance="Schreibe 100-400 Zeichen.")]
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=fields, target_field=DESC, complete=complete))
+
+    assert "100-400 Zeichen" in prompts[0]
+    assert "Im Datensatz meist" not in prompts[0]
+
+
+def _capturing_session(payload: dict, monkeypatch, seen: list[str]):
+    from app.llm import LlmSession
+
+    monkeypatch.setenv("TEST_LLM_KEY", "k")
+    body = {
+        "id": "c", "object": "chat.completion", "created": 1, "model": "m",
+        "choices": [{"index": 0, "finish_reason": "stop",
+                     "message": {"role": "assistant", "content": json.dumps(payload)}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 9, "total_tokens": 14},
+    }
+
+    def handler(request):
+        seen.append(request.content.decode("utf-8"))
+        return httpx.Response(200, json=body)
+
+    return LlmSession(endpoint=LlmEndpoint(model="gpt-5.4-nano", api_key_env="TEST_LLM_KEY"),
+                      budgets=Budgets(), transport=httpx.MockTransport(handler))
+
+
+def test_the_enrich_route_hands_the_label_column_to_the_prompt(make_client, monkeypatch):
+    import app.routes.refine_prep as refine_route
+
+    client = make_client()
+    _import(client, pd.DataFrame([["Wasserkraft", "", "Physik"]], columns=[TITLE, DESC, LABEL]))
+    seen: list[str] = []
+    session = _capturing_session({"values": ["Eine Beschreibung."]}, monkeypatch, seen)
+    monkeypatch.setattr(refine_route, "session_for", lambda purpose, settings, override=None: session)
+
+    r = client.post("/refine/curated/enrich", headers=HEADERS, json={
+        "fields": [{"column": TITLE}, {"column": DESC}], "target_field": DESC,
+        "target": "out", "label_column": LABEL})
+
+    assert r.status_code == 200, r.text
+    assert "Physik" in seen[0]

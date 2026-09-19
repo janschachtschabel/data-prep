@@ -74,9 +74,10 @@ class LabelAuditRequest(AnalyzeRequest):
 
 
 # What the two shipped prompts asked for, kept verbatim as the guidance of the WLO
-# fields: a request in the old shape keeps the instructions it always carried; the
-# prompt around them now names fields by column. The UI pre-fills the same sentences
-# (static/ui/refine-fields.js), so a change here belongs there too.
+# fields: a request in the old shape keeps the instructions it always carried -- their
+# numbers included, which is why its prompt adds no length from the dataset beside them
+# (prompt_context.guidance_names_a_number). The UI's defaults for the same fields name
+# no number (static/ui/refine-fields.js): there the dataset says how long.
 _WLO_KEYWORD_GUIDANCE = (
     "Nenne 3-6 treffende deutsche Schlagwörter (kommagetrennt), die den Inhalt "
     "erschließen."
@@ -95,8 +96,10 @@ class EnrichRequest(BaseModel):
     overwrite: bool = False
     limit: int = Field(default=500, ge=1, le=5000)  # cap the LLM cost per call
     llm_purpose: Literal["seeds", "bulk"] = "bulk"
-    # Only to refuse it as a field: model text in a label cell is an invented label.
+    # Refused as a field -- model text in a label cell is an invented label -- and named
+    # in each prompt, so the added text fits the row's classification.
     label_column: str = Field(default=DEFAULT_LABEL_COLUMN, max_length=200)
+    label_separator: str = Field(default=",", min_length=1, max_length=3)
 
     fields: list[FieldSpec] | None = Field(default=None, max_length=50)
     target_field: str | None = Field(default=None, max_length=200)
@@ -218,6 +221,7 @@ async def enrich(
         new_df, stats = await enrich_dataset(
             df, fields=fields, target_field=target_field,
             complete=session.complete, limit=req.limit,
+            label_column=req.label_column, label_separator=req.label_separator,
             # A cap no request can predict (tokens, the process-wide ceiling) ends
             # the run early instead of discarding what it already paid for.
             stop_on=(BudgetExceeded,),

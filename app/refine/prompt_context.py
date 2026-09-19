@@ -34,6 +34,13 @@ class FieldShape:
     values: tuple[int, int] | None = None
 
 
+def guidance_names_a_number(field: TextField) -> bool:
+    """Whether the field's guidance states a number -- "100-400 Zeichen", "3-6
+    Schlagwörter". Then it is someone's instruction, and the dataset's range beside it
+    would contradict it; the prompt keeps theirs and adds none."""
+    return any(char.isdigit() for char in field.guidance)
+
+
 def typical_phrase(field: TextField, shape: FieldShape | None) -> str:
     """``shape`` as a prompt says it -- values for a list, characters otherwise -- or
     nothing when the dataset had too little to say."""

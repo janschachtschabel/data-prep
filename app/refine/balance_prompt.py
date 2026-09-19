@@ -14,7 +14,7 @@ from typing import Annotated
 from pydantic import BaseModel, Field, StringConstraints
 
 from .fields import TextField, read_values, write_values
-from .prompt_context import FieldShape, typical_phrase
+from .prompt_context import FieldShape, guidance_names_a_number, typical_phrase
 
 # Bounded per value: a model that runs away must not write a megabyte into one cell.
 Value = Annotated[str, StringConstraints(max_length=2000)]
@@ -145,7 +145,7 @@ def _field_line(index: int, field: TextField, shape: FieldShape | None) -> str:
             details.append(f"mindestens {field.min_values} Werte")
     else:
         details = ["Freitext, EIN Wert"]
-    typical = typical_phrase(field, shape)
+    typical = "" if guidance_names_a_number(field) else typical_phrase(field, shape)
     if typical:
         details.append(typical)
     guidance = f" — {field.guidance}" if field.guidance else ""
