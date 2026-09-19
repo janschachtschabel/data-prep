@@ -471,6 +471,19 @@ def test_a_row_an_llm_completed_is_shown_only_when_no_untouched_row_is_left():
     assert sorted(pick_examples([0, 1, 2], cells, 3, touched={1})) == [0, 1, 2]
 
 
+def test_an_untouched_row_goes_before_a_complete_one_an_llm_completed():
+    """Completeness came first, so a complete row the LLM filled beat an untouched row
+    missing a field -- the LLM's words shown as a "real entry" after all -- and the LLM's
+    lengths moved the median the examples are chosen by (review 2026-09-19 #8)."""
+    from app.refine.balance_gates import pick_examples
+
+    beaten = _sized(200) + [["t", "d" * 180, ""]]  # 0: complete, touched; 1: untouched
+    moved = _sized(100, 110, 120, 1000)            # 3 touched: the median was 115
+
+    assert pick_examples([0, 1], beaten, 1, touched={0}) == [1]
+    assert pick_examples([0, 1, 2, 3], moved, 1, touched={3}) == [1]
+
+
 def _physik(llm_description: str) -> pd.DataFrame:
     real = [[f"Optik Versuch {i}", "d" * length, "Optik, Licht, Linse", "uri/phy", ""]
             for i, length in enumerate((90, 100, 100, 110, 120))]
