@@ -343,10 +343,13 @@ def test_a_value_longer_than_an_answer_may_hold_is_dropped_alone():
         df, fields=_wlo_fields(), target_field=KEYW, complete=runaway))
     descriptions, stats = asyncio.run(enrich_dataset(
         df, fields=_wlo_fields(), target_field=DESC, complete=runaway_only))
+    second, _ = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=DESC, complete=runaway))
 
     assert keywords.iloc[0][KEYW] == "Mathe, Rechnen"
     assert descriptions.iloc[1][DESC] == "", "a single value too long leaves the cell as it was"
     assert stats["enriched"] == 0
+    assert second.iloc[1][DESC] == "", "a single-valued field takes the first value, not a spare"
 
 
 def test_the_prompt_names_the_field_and_its_shape_even_without_guidance():
@@ -567,6 +570,44 @@ def test_exact_twins_are_enriched_alike_even_past_the_limit():
     assert list(new[KEYW]) == ["Antwort 1, Licht, Physik", "", "Antwort 1, Licht, Physik"]
     assert list(new["enriched_fields"]) == [KEYW, "", KEYW]
     assert stats["enriched"] == 2
+
+
+def test_rows_alike_only_in_their_fields_but_filed_apart_are_no_twins():
+    """Twins share an answer because their prompts are the same -- and the prompt names
+    the row's labels. Three empty descriptions under Physik, Kunst and Geografie got one
+    call, and the Physik text went into all three (review of the fixes)."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    df = pd.DataFrame([["", "uri/phy", "Physik"], ["", "uri/kun", "Kunst"], ["", "uri/geo", "Geografie"]],
+                      columns=[DESC, LABEL, f"{LABEL}_DISPLAYNAME"])
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=[TextField(column=DESC)], target_field=DESC,
+                               complete=complete, label_column=LABEL))
+
+    assert len(prompts) == 3
+
+
+def test_twins_are_the_rows_the_split_takes_for_one_text():
+    """Markup and spacing that cleaning removes put two rows into one text group of the
+    split; enriched apart, one went to training and its twin could land in the holdout.
+    Each keeps its own existing values (review of the fixes)."""
+    from app.refine.enrich import enrich_dataset
+
+    df = pd.DataFrame([["<p>Optik</p>", "Licht und Linsen", "<b>Licht</b>"],
+                       ["Optik", "Licht  und Linsen", "Licht"]], columns=[TITLE, DESC, KEYW])
+    calls: list[str] = []
+
+    async def complete(prompt, schema):
+        calls.append(prompt)
+        return schema(values=["Linse", "Brechung"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=complete, limit=1))
+
+    assert len(calls) == 1 and stats["enriched"] == 2
+    assert list(new[KEYW]) == ["<b>Licht</b>, Linse, Brechung", "Licht, Linse, Brechung"]
 
 
 def test_a_stop_still_gives_a_twin_the_answer_its_first_row_got():

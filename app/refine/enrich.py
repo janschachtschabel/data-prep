@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from ..pii import scrub
 from ..textnorm import split_labels
+from .analyze import _combined_texts
 from .fields import TextField, is_gap, merge_values, read_values, write_values
 from .prompt_context import (
     MAX_VALUE_CHARS,
@@ -119,14 +120,21 @@ def _read_context(
     return names, _typical_sentence(df, target)
 
 
+Twin = tuple[str, tuple[str, ...]]
+
+
 def _twins_and_gaps(df: pd.DataFrame, fields: list[TextField], target: TextField,
-                    ) -> tuple[list[tuple[str, ...]], list[bool]]:
-    """Per row: its fields' values, normalised -- rows alike in all of them are twins --
-    and whether its target cell is a gap. Read column by column, off the event loop:
-    per-row access on a large frame takes seconds."""
-    columns = [[write_values(read_values(cell, field), field) for cell in df[field.column]]
-               for field in fields]
-    return (list(zip(*columns, strict=True)),
+                    label_column: str | None, separator: str) -> tuple[list[Twin], list[bool]]:
+    """Per row: what makes two rows twins, and whether its target cell is a gap.
+
+    Twins read as one text where the split and api_v3 read it -- the fields cleaned and
+    joined (``_combined_texts``) -- and carry the same labels, which their prompt names:
+    rows alike only in empty fields but filed apart are no twins. Read column by column,
+    off the event loop: per-row access on a large frame takes seconds."""
+    texts = _combined_texts(df, [field.column for field in fields])
+    labels = ([tuple(sorted(set(split_labels(cell, separator)))) for cell in df[label_column]]
+              if label_column is not None else [()] * len(df))
+    return (list(zip(texts, labels, strict=True)),
             [is_gap(cell, target) for cell in df[target.column]])
 
 
@@ -209,13 +217,14 @@ async def enrich_dataset(
     enriched = 0
     calls = 0  # what `limit` caps: model calls, whether or not they changed a row
     stopped: str | None = None
-    # Exact twins -- rows whose fields all hold the same values -- share one answer.
+    # Twins -- one text to the split and api_v3, the same labels -- share one answer.
     # Enriched apart, the untouched twin keeps the text its enriched twin trains on and
     # may validate on it: the holdout split and api_v3's dedupe know a row by its text.
     # So a twin takes the answer its first row got, past `limit` or a stop too, and
-    # without a call of its own; with other labels, the answer fits the first row's.
-    twins, gaps = await asyncio.to_thread(_twins_and_gaps, df, fields, target)
-    answers: dict[tuple[str, ...], list[str]] = {}
+    # without a call of its own; each row merges it with the values it holds itself.
+    twins, gaps = await asyncio.to_thread(_twins_and_gaps, df, fields, target,
+                                          label_column, label_separator)
+    answers: dict[Twin, list[str]] = {}
     for idx, twin, gap in zip(new.index, twins, gaps, strict=True):
         if not gap:
             continue
@@ -234,12 +243,14 @@ async def enrich_dataset(
                 continue
             calls += 1
             # Scrubbed per value, as the model returned it; a list value that still holds
-            # the separator ("Optik, Licht") is split so the merge can see both parts.
-            answered = [part for value in result.values  # type: ignore[attr-defined]
-                        for part in read_values(scrub(value)[0], target)
-                        if len(part) <= MAX_VALUE_CHARS]
-            answers[twin] = merge_values(existing, answered) if target.separator else answered[:1]
-        merged = answers[twin]
+            # the separator ("Optik, Licht") is split so the merge can see both parts. A
+            # single-valued field takes the first value -- a spare is no answer -- and a
+            # value too long is dropped.
+            parts = [part for value in result.values  # type: ignore[attr-defined]
+                     for part in read_values(scrub(value)[0], target)]
+            answers[twin] = [part for part in (parts if target.separator else parts[:1])
+                             if len(part) <= MAX_VALUE_CHARS]
+        merged = merge_values(existing, answers[twin]) if target.separator else answers[twin]
         if not merged or merged == existing:
             continue  # nothing new: the cell stays as it was, and is not counted
         new.at[idx, target.column] = write_values(merged, target)
