@@ -8,6 +8,7 @@ budget. Everything here is pure — no I/O, no LLM call.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
@@ -36,6 +37,31 @@ class BalanceBatch(BaseModel):
     items: list[BalanceItem] = Field(default_factory=list, max_length=50)
 
 
+@dataclass(frozen=True)
+class FieldShape:
+    """How a field's filled cells typically look in the dataset: the middle half of
+    their length in characters and, for a list, of their number of values."""
+
+    chars: tuple[int, int] | None = None
+    values: tuple[int, int] | None = None
+
+
+@dataclass(frozen=True)
+class PromptContext:
+    """What the prompt knows about the dataset beyond the examples
+    (``balance_context`` reads it from the frame).
+
+    ``label_name`` is the label as people read it; ``others`` the labels a new row must
+    not read like, already one line each, and ``more_others`` how many were left out of
+    that list; ``shapes`` one entry per field, in field order.
+    """
+
+    label_name: str | None = None
+    others: tuple[str, ...] = ()
+    more_others: int = 0
+    shapes: tuple[FieldShape | None, ...] = ()
+
+
 # Bounds one example cell in the prompt. A dataset cell can hold a whole article,
 # and a handful of those would cost more per batch than the generation itself.
 _EXAMPLE_CHARS = 400
@@ -46,19 +72,19 @@ _AVOID_CHARS = 120
 
 _BALANCE_PROMPT = """Kontext: Ein Katalog für BILDUNGSINHALTE (Lernmaterialien für \
 Unterricht und Selbstlernen). Jeder Eintrag beschreibt EIN konkretes Lernmaterial, \
-das zu "{label}" gehört.
-
+das zu „{label}“ gehört.
+{contrast}
 Felder eines Eintrags, genau in dieser Reihenfolge:
 {field_lines}
 
 Echte Einträge aus dem Datensatz als Stil- und Längenvorbild (NICHT kopieren):
 {examples}
 
-Erzeuge {n} NEUE, DEUTLICH VERSCHIEDENE Einträge zu "{label}".
+Erzeuge {n} NEUE, DEUTLICH VERSCHIEDENE Einträge zu „{label}“.
 
 Regeln:
-- Decke unterschiedliche Teilgebiete von "{label}" ab, nicht nur das Naheliegendste.
-- Orientiere dich an Länge und Ton der Beispiele.
+- Decke unterschiedliche Teilgebiete von „{label}“ ab, nicht nur das Naheliegendste.
+- Richte Länge und Umfang nach den Angaben zu den Feldern, Ton und Stil nach den Beispielen.
 - Vermeide diese bereits vorhandenen Titel: {avoid}
 - KEINE Personennamen, E-Mail-Adressen, Telefonnummern, URLs, Anbieter- oder \
 Institutionsnamen.
@@ -100,24 +126,63 @@ def _avoid_block(titles: list[str]) -> str:
     return "; ".join(cleaned[-_AVOID_COUNT:]) or "—"
 
 
-def output_budget(examples: list[dict], fields: list[TextField], n: int) -> int:
+def output_budget(
+    examples: list[dict], fields: list[TextField], n: int, context: PromptContext | None = None,
+) -> int:
     """Output tokens for a batch of ``n`` entries shaped like ``examples``.
 
     The run worker's formula (``runs.py``), sized from the longest example instead of
-    a configured corridor. The client default of 2,000 tokens — reasoning included —
-    truncates a batch of ten entries with descriptions.
+    a configured corridor -- or from the typical upper length the prompt asks for, when
+    that is longer: the examples are typical rows now, not the longest, and an answer
+    that follows the stated lengths must fit. The client default of 2,000 tokens --
+    reasoning included -- truncates a batch of ten entries with descriptions.
     """
     chars = max((sum(map(len, shown_cells(row, fields))) for row in examples), default=0)
+    if context is not None:
+        chars = max(chars, sum(s.chars[1] for s in context.shapes if s and s.chars))
     return min(16000, 500 + n * max(300, chars // 2))
 
 
-def _field_line(index: int, field: TextField) -> str:
-    parts = [f"{index}. {field.column}"]
-    if field.guidance:
-        parts.append(f" — {field.guidance}")
+def _typical(field: TextField, shape: FieldShape | None) -> str:
+    if shape is None:
+        return ""
+    if field.separator and shape.values:
+        (low, high), unit = shape.values, "Werte"
+    elif shape.chars:
+        (low, high), unit = shape.chars, "Zeichen"
+    else:
+        return ""
+    return f"im Datensatz meist {f'etwa {low}' if low == high else f'{low}–{high}'} {unit}"
+
+
+def _field_line(index: int, field: TextField, shape: FieldShape | None) -> str:
+    """The field, what it is for, what KIND of value it holds and how long it usually
+    is -- a description and a keyword list differ in all three, and a model that is not
+    told writes both the same way."""
     if field.separator:
-        parts.append(f' (mehrere Werte in EINEM String, getrennt durch "{field.separator}")')
-    return "".join(parts)
+        details = [f'Liste in EINEM String, getrennt durch "{field.separator}"']
+        if field.min_values > 1:
+            details.append(f"mindestens {field.min_values} Werte")
+    else:
+        details = ["Freitext, EIN Wert"]
+    typical = _typical(field, shape)
+    if typical:
+        details.append(typical)
+    guidance = f" — {field.guidance}" if field.guidance else ""
+    return f"{index}. {field.column}{guidance} ({'; '.join(details)})"
+
+
+def _contrast(label: str, context: PromptContext) -> str:
+    """The other labels, so the new rows are unmistakably this one -- a row that would
+    fit a neighbour as well teaches the classifier to confuse the two."""
+    if not context.others:
+        return ""
+    listed = "; ".join(context.others)
+    if context.more_others:
+        listed += f" (und {context.more_others} weitere)"
+    return (f"\nAndere Kategorien in diesem Datensatz: {listed}\n"
+            f"Jeder neue Eintrag muss eindeutig zu „{label}“ passen und darf nicht ebenso gut "
+            f"zu einer dieser anderen Kategorien passen.\n")
 
 
 def build_balance_prompt(
@@ -127,6 +192,7 @@ def build_balance_prompt(
     *,
     n: int,
     avoid_titles: list[str],
+    context: PromptContext | None = None,
 ) -> str:
     """The generation prompt for one batch of ``label``.
 
@@ -134,7 +200,10 @@ def build_balance_prompt(
     shape as the requested answer, because a prompt that shows one format and asks
     for another gets both blended (found in the api_v3 generation experiment).
     ``avoid_titles`` are values of the FIRST field already present or produced — the
-    block that keeps a batch from collapsing into variants of one item.
+    block that keeps a batch from collapsing into variants of one item. ``context``
+    names the label as people read it, the labels to keep apart from, and the typical
+    shape of each field (``balance_context``); without it the prompt still states each
+    field's kind.
     """
     rendered: list[str] = []
     for row in examples:
@@ -144,9 +213,15 @@ def build_balance_prompt(
     if not rendered:
         raise ValueError(f"Label {label!r} has no examples to generate from.")
 
+    context = context or PromptContext()
+    # From the data: a line break must not start an instruction.
+    name = _one_line(context.label_name or label)
+    shapes = list(context.shapes) or [None] * len(fields)
     return _BALANCE_PROMPT.format(
-        label=_one_line(label),  # from the data: a line break must not start an instruction
-        field_lines="\n".join(_field_line(i, f) for i, f in enumerate(fields, start=1)),
+        label=name,
+        contrast=_contrast(name, context),
+        field_lines="\n".join(_field_line(i, f, shapes[i - 1])
+                               for i, f in enumerate(fields, start=1)),
         examples="\n".join(rendered),
         n=n,
         avoid=_avoid_block(avoid_titles),

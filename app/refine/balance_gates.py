@@ -9,6 +9,7 @@ reasons — a new gate here, a new statistic there.
 from __future__ import annotations
 
 import math
+import statistics
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from dataclasses import field as dc_field
@@ -19,6 +20,7 @@ from ..pii import scrub
 from .balance_prompt import (
     BalanceBatch,
     BalanceItem,
+    PromptContext,
     build_balance_prompt,
     output_budget,
     shown_cells,
@@ -73,13 +75,21 @@ def fingerprint(cells: list[str]) -> str:
 
 
 def pick_examples(positions: list[int], cells: list[list[str]], k: int) -> list[int]:
-    """Up to ``k`` of ``positions``, richest first and without repeated rows.
+    """Up to ``k`` of ``positions``: complete rows first, and among them the ones
+    closest to the label's median length, without repeated rows.
 
-    Longest combined text first: a one-word title teaches the model nothing about
-    what a full entry of this label looks like.
+    A row missing a field teaches the model nothing about that field. Longest-first --
+    the rule before -- showed a label's four richest rows, and the generated rows came
+    out longer and richer than its real ones: a difference a classifier learns as a
+    feature of the label. Ties go to the longer row.
     """
+    if not positions:
+        return []
+    size = {p: sum(map(len, cells[p])) for p in positions}
+    median = statistics.median(size.values())
     chosen: dict[str, int] = {}
-    for position in sorted(positions, key=lambda p: sum(map(len, cells[p])), reverse=True):
+    for position in sorted(positions, key=lambda p: (not all(cells[p]), abs(size[p] - median),
+                                                     -size[p])):
         chosen.setdefault(fingerprint(cells[position]), position)
         if len(chosen) == k:
             break
@@ -155,6 +165,7 @@ async def generate_for_label(
     batch_size: int,
     complete: Complete,
     stop_on: tuple[type[BaseException], ...] = (),
+    context: PromptContext | None = None,
 ) -> LabelResult:
     """Ask for ``wanted`` accepted items, retrying the shortfall within the budget.
 
@@ -171,10 +182,11 @@ async def generate_for_label(
     while len(result.accepted) < wanted and attempts:
         attempts -= 1
         n = min(wanted - len(result.accepted), batch_size)
-        prompt = build_balance_prompt(label, examples, fields, n=n, avoid_titles=avoid)
+        prompt = build_balance_prompt(label, examples, fields, n=n, avoid_titles=avoid,
+                                      context=context)
         try:
             batch = await complete(prompt, BalanceBatch,
-                                   max_output_tokens=output_budget(examples, fields, n))
+                                   max_output_tokens=output_budget(examples, fields, n, context))
         except stop_on as signal:
             result.stopped = str(signal) or signal.__class__.__name__
             break
