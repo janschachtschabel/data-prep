@@ -201,13 +201,16 @@ label can lose its holdout entirely — the split names such labels
 
 Three properties make the result safe to train on:
 
-- Every generated row carries `generated_for`, and every real row shown to the
-  generator as an example carries `example_for`. `POST /refine/{name}/split`
-  keeps both on the **training** side: a holdout containing generated text — or
-  the real text it paraphrases — measures how well a model learned the generator.
-  `combine` carries both marks along. A `generated_for` value that is not a label
-  of the column being balanced is named in the preview (`foreign_marks`) and
-  treated as generated; it does not stop the run.
+- Every generated row carries `generated_for`, every real row shown to the
+  generator as an example carries `example_for`, and every real row enrichment
+  completed carries `enriched_fields` (the columns it filled; exact twins are
+  enriched alike). `POST /refine/{name}/split` keeps all three on the **training**
+  side, with every row sharing their text: a holdout containing generated text —
+  or the real text it paraphrases, or a cell the LLM wrote — measures how well a
+  model learned the generator. `combine` carries the marks along. A
+  `generated_for` value that is not a label of the column being balanced is
+  named in the preview (`foreign_marks`) and treated as generated; it does not
+  stop the run.
 - A label whose real rows carry no text is skipped rather than invented from its
   name or from earlier generated rows, and reported under
   `skipped_without_examples`.
@@ -215,8 +218,12 @@ Three properties make the result safe to train on:
 
 Read the synthetic share before trusting a number: a label lifted from 3 rows to
 100 is a label the model has still barely seen, and its per-label F1 says more
-about the generator than about the data. api_v3's own cross-validation during
-training does not know these marks — judge a model on the holdout.
+about the generator than about the data. api_v3 reads the same three marks:
+marked rows train but never validate, a label no real row can validate gets no
+F1, and the model's `synthetic_data` says what its numbers were computed on.
+With too few real rows — a pure Runs export has none — it validates on every row
+and says so (`validated_on: all_rows`). Judge a model on the holdout as well: it
+is the one number from rows no step of the pipeline touched.
 
 ## Layout
 

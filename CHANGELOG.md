@@ -31,18 +31,55 @@ Plan: `docs/plan-2026-09-19-ai-provenance-prompts.md`; api_v3 reads the same mar
   Schlagwörter"): neither prompt adds the dataset's range beside it, so a request in the
   old `mode` shape keeps its instructions. A number that is no length ("Klasse 5") does
   not count. The UI's default guidance for the WLO fields names no number any more.
-- **A stated typical length never exceeds what an answer may hold** (2,000 characters,
-  the answer schemas' cap): on long descriptions the prompt would otherwise ask for more,
-  a complying model would be refused, and the paid run would fail. A field whose typical
-  entry starts beyond the cap gets no length at all.
+- **A stated typical length stays well below what an answer may hold:** at most 1,500 of
+  the 2,000 characters a value may hold, since a model aims at the upper end and
+  overshoots it. A field whose typical entry starts beyond that gets no length at all,
+  and a list whose typical cell is longer gets its capped characters instead of a count.
 - **What enrichment wrote is not the dataset:** balancing measures lengths without the
   cells an earlier enrichment filled and shows rows carrying them as examples only when
-  no untouched row is left. Examples sit at the median of the label's complete rows.
+  no untouched row is left, whether complete or not. Examples sit at the median of the
+  label's complete untouched rows.
 - **Enrichment of a list field** states the typical count of the whole cell
   ("insgesamt"), not of the values to add.
 - **Every name from the dataset is bounded** (one line, 60 characters) and the contrast
   list never names the label itself or a name twice.
 - **The JSONL export carries `generated_for`** too.
+
+### Fixed (review of 2026-09-19)
+
+- **One answer value too long no longer costs the run.** The 2,000-character cap moved
+  from the answer schemas, where one such value failed the whole answer, the route
+  answered 502 and every row the run had paid for was lost, to where the answer is read:
+  balancing discards that item (`discarded_long`, named in the result line), enrichment
+  drops that value.
+- **A batch asks for no more entries than its answer has room for.** Up to 50 long
+  entries were cut off at the 16,000-token output cap. The preview now counts the calls
+  of the batches that fit, and the call budget is checked against those.
+- **Exact twins are enriched alike** — past `limit` and after a stop too, without a call
+  of their own. Enriched apart, the untouched twin kept the text its enriched twin
+  trains on and could land in the holdout, or in api_v3's validation, beside it.
+- **Display names by majority:** one mis-paired row, or a name cell `label_filter` left
+  behind, no longer names a label wrongly in every prompt. `label_filter` keeps
+  `<label>_DISPLAYNAME` in step with the labels it keeps (clearing names it cannot pair)
+  and reports the rows it rewrote as `changed`.
+- **A label without a display name keeps the end of its value** (`…/sekundarstufe_1`):
+  cut after 60 characters, two URIs of one vocabulary read the same, and the sibling
+  fell out of the contrast list. A double quote in a name no longer ends the prompt's
+  quotation of it.
+- **A stated length is recognised in inflected forms and number words** ("in 2-3
+  Sätzen", "zwei bis drei Sätze"), and a grade before a unit ("für Klasse 5 geeignete
+  Begriffe") is no length.
+- **The enrichment prompt asks for text that fits the classification without naming
+  it:** one of six enriched rows had got "Sekundarstufe" as a keyword.
+- **The balancing prompt offers its examples for tone and style**, not length, and says
+  long fields are cut.
+- **The holdout share is a share of the rows that may go there:** counted over every
+  real row, a label mostly completed or shown as examples could lose all its free rows
+  to the holdout.
+- **A target column `enriched_fields` cannot name** — a comma, surrounding spaces — is
+  refused with 400, and a mark already in the cell is not added twice.
+- **The audit note of a Runs export** says when api_v3 validates on every row after all.
+- **The README** names all three marks and says api_v3 reads them.
 
 ### Security
 
