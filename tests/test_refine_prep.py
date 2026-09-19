@@ -119,6 +119,24 @@ def test_a_row_the_generator_imitated_never_lands_in_the_holdout():
     assert len(train) + len(holdout) == len(df)
 
 
+def test_a_row_an_llm_completed_never_lands_in_the_holdout():
+    """Enrichment writes into REAL rows — keywords, a description. Evaluated on, such a
+    row measures the model on text the LLM wrote, which is the flattering number the
+    marks exist to keep out."""
+    from app.refine.prep import holdout_split
+
+    df = _dataset()
+    df["enriched_fields"] = ""
+    df.loc[df[LABEL] == "disc/B", "enriched_fields"] = KEYW   # all 8 B rows were completed
+
+    train, holdout, stats = holdout_split(df, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert set(holdout["enriched_fields"]) == {""}
+    assert (train["enriched_fields"] != "").sum() == 8
+    assert stats["real_kept_in_train"] == 8
+    assert stats["labels_without_holdout"] == ["disc/B"]
+
+
 def test_a_real_row_sharing_text_with_a_generated_one_is_kept_and_reported():
     """The whole text group stays in training to keep the split text-disjoint. That
     costs the holdout a real row, and the stats have to say so (review #17)."""

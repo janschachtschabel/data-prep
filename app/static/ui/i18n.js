@@ -401,13 +401,13 @@ const I18n = (() => {
       "js.refine.errCombine": "Combine failed.",
       "js.refine.enterSplitName": "Enter an output name for the split.",
       "js.refine.split": "Split \"{target}\": {train} train + {holdout} holdout ({pct}% held out). Recommended min_samples: {rec}.",
-      "js.refine.splitMarks": "Kept in training — generated rows: {generated}; real rows (shown as examples, or sharing their text): {kept}.",
+      "js.refine.splitMarks": "Kept in training — generated rows: {generated}; real rows (shown as examples, completed by the LLM, or sharing their text): {kept}.",
       "js.refine.splitNoHoldout.one": `One label has no holdout row left and cannot be evaluated
-         on this split: {labels}. Split first, then balance the _train part, to keep it
-         evaluable.`,
+         on this split: {labels}. Split first, then balance or enrich the _train part, to
+         keep it evaluable.`,
       "js.refine.splitNoHoldout.other": `{count} labels have no holdout row left and cannot be
-         evaluated on this split: {labels}. Split first, then balance the _train part, to keep
-         them evaluable.`,
+         evaluated on this split: {labels}. Split first, then balance or enrich the _train part,
+         to keep them evaluable.`,
       "js.refine.enterApplyName": "Enter a new dataset name to apply.",
       "js.refine.choosePush": "Choose a dataset to push.",
       "js.refine.confirmPush": "Push dataset \"{name}\" to the configured api_v3?",
@@ -1003,13 +1003,13 @@ const I18n = (() => {
       "js.refine.errCombine": "Kombinieren fehlgeschlagen.",
       "js.refine.enterSplitName": "Gib einen Ausgabenamen für den Split ein.",
       "js.refine.split": "Split „{target}“: {train} train + {holdout} holdout ({pct}% zurückgehalten). Empfohlene min_samples: {rec}.",
-      "js.refine.splitMarks": "Im Training gehalten — erzeugte Zeilen: {generated}; echte Zeilen (als Beispiel gezeigt oder mit gleichem Text): {kept}.",
+      "js.refine.splitMarks": "Im Training gehalten — erzeugte Zeilen: {generated}; echte Zeilen (als Beispiel gezeigt, von der KI ergänzt oder mit gleichem Text): {kept}.",
       "js.refine.splitNoHoldout.one": `Ein Label hat keine Holdout-Zeile mehr und lässt sich mit
          diesem Split nicht auswerten: {labels}. Erst aufteilen, dann den _train-Teil
-         auffüllen, damit es auswertbar bleibt.`,
+         auffüllen oder anreichern, damit es auswertbar bleibt.`,
       "js.refine.splitNoHoldout.other": `{count} Label haben keine Holdout-Zeile mehr und lassen
          sich mit diesem Split nicht auswerten: {labels}. Erst aufteilen, dann den _train-Teil
-         auffüllen, damit sie auswertbar bleiben.`,
+         auffüllen oder anreichern, damit sie auswertbar bleiben.`,
       "js.refine.enterApplyName": "Gib einen Namen für den neuen Datensatz ein.",
       "js.refine.choosePush": "Wähle einen Datensatz zum Senden.",
       "js.refine.confirmPush": "Datensatz „{name}“ an das konfigurierte api_v3 senden?",

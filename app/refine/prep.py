@@ -18,7 +18,7 @@ import pandas as pd
 
 from ..textnorm import split_labels
 from .analyze import _combined_texts, auto_min_samples
-from .provenance import EXAMPLE_FOR, GENERATED_FOR, marked
+from .provenance import ENRICHED_FIELDS, EXAMPLE_FOR, GENERATED_FOR, marked
 
 
 def holdout_split(
@@ -36,12 +36,14 @@ def holdout_split(
     containing text an LLM wrote from the same examples the model trained on measures
     how well the model learned that LLM, and the resulting F1 flatters itself by a
     margin nobody can see afterwards. Rows marked ``example_for`` stay there too —
-    they are real, but their paraphrases are in the training data.
+    they are real, but their paraphrases are in the training data — and so do rows
+    marked ``enriched_fields``: real rows, but with fields the LLM wrote.
     """
     texts = _combined_texts(df, text_columns)
     labels = [split_labels(cell, label_separator) for cell in df[label_column]]
     generated = marked(df, GENERATED_FOR)
-    train_only = [g or e for g, e in zip(generated, marked(df, EXAMPLE_FOR), strict=True)]
+    train_only = [any(row) for row in zip(
+        generated, marked(df, EXAMPLE_FOR), marked(df, ENRICHED_FIELDS), strict=True)]
 
     groups: dict[str, list[int]] = defaultdict(list)
     for i, text in enumerate(texts):
@@ -92,8 +94,8 @@ def holdout_split(
         "holdout_rows": int(len(holdout)),
         "holdout_fraction_actual": round(len(holdout) / len(df), 3) if len(df) else 0.0,
         "generated_excluded": int(sum(generated)),
-        # Real rows the holdout could not have: examples of the generator, and rows
-        # sharing their text with a marked one. Said, not implied.
+        # Real rows the holdout could not have: examples of the generator, rows an
+        # LLM completed, and rows sharing their text with a marked one. Said, not implied.
         "real_kept_in_train": real_kept,
         # ...and the labels this left without any holdout row: they cannot be
         # evaluated on this split. Splitting first and balancing the training part

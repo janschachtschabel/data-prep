@@ -410,7 +410,7 @@ const Refine = (() => {
         rec: res.balance.recommended_min_samples,
       });
       out.replaceChildren(p);
-      // What the marks of a balance run kept out of the holdout — said, not implied.
+      // What the provenance marks kept out of the holdout — said, not implied.
       if (res.generated_excluded || res.real_kept_in_train) {
         const marks = document.createElement("p");
         marks.className = "muted";
