@@ -508,6 +508,52 @@ def test_a_stop_keeps_the_rows_enriched_so_far():
     assert list(new["enriched_fields"]) == [KEYW, "", ""]
 
 
+def _twins() -> pd.DataFrame:
+    return pd.DataFrame([["Optik", "Licht und Linsen", ""],
+                         ["Mechanik", "Kraft und Hebel", ""],
+                         ["Optik", "Licht und Linsen", ""]], columns=[TITLE, DESC, KEYW])
+
+
+def test_exact_twins_are_enriched_alike_even_past_the_limit():
+    """Enriched apart, the untouched twin kept the text its enriched twin trains on, and
+    could validate on it: the holdout split and api_v3's dedupe group rows by their text,
+    and the enriched twin's no longer matched (review 2026-09-19 #4). A twin takes the
+    answer its first row got -- past `limit` too, and without a call of its own."""
+    from app.refine.enrich import enrich_dataset
+
+    calls: list[str] = []
+
+    async def complete(prompt, schema):
+        calls.append(prompt)
+        return schema(values=[f"Antwort {len(calls)}", "Licht", "Physik"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        _twins(), fields=_wlo_fields(), target_field=KEYW, complete=complete, limit=1))
+
+    assert len(calls) == 1
+    assert list(new[KEYW]) == ["Antwort 1, Licht, Physik", "", "Antwort 1, Licht, Physik"]
+    assert list(new["enriched_fields"]) == [KEYW, "", KEYW]
+    assert stats["enriched"] == 2
+
+
+def test_a_stop_still_gives_a_twin_the_answer_its_first_row_got():
+    from app.refine.enrich import enrich_dataset
+
+    answered: list[str] = []
+
+    async def complete(prompt, schema):
+        if answered:
+            raise _Stop("token budget exhausted")
+        answered.append(prompt)
+        return schema(values=["Optik", "Licht", "Physik"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        _twins(), fields=_wlo_fields(), target_field=KEYW, complete=complete, stop_on=(_Stop,)))
+
+    assert stats["stopped"] == "token budget exhausted"
+    assert list(new["enriched_fields"]) == [KEYW, "", KEYW]
+
+
 def test_without_a_stop_signal_an_enrichment_error_still_propagates():
     import pytest
 

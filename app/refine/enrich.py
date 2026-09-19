@@ -119,6 +119,17 @@ def _read_context(
     return names, _typical_sentence(df, target)
 
 
+def _twins_and_gaps(df: pd.DataFrame, fields: list[TextField], target: TextField,
+                    ) -> tuple[list[tuple[str, ...]], list[bool]]:
+    """Per row: its fields' values, normalised -- rows alike in all of them are twins --
+    and whether its target cell is a gap. Read column by column, off the event loop:
+    per-row access on a large frame takes seconds."""
+    columns = [[write_values(read_values(cell, field), field) for cell in df[field.column]]
+               for field in fields]
+    return (list(zip(*columns, strict=True)),
+            [is_gap(cell, target) for cell in df[target.column]])
+
+
 def _classification(row: pd.Series, label_column: str | None, separator: str,
                     names: dict[str, str]) -> str:
     """The row's labels as people read them, one line, for the prompt's first sentence."""
@@ -198,28 +209,37 @@ async def enrich_dataset(
     enriched = 0
     calls = 0  # what `limit` caps: model calls, whether or not they changed a row
     stopped: str | None = None
-    for idx in new.index:
-        if calls >= limit:
-            break
-        cell = new.at[idx, target.column]
-        if not is_gap(cell, target):
+    # Exact twins -- rows whose fields all hold the same values -- share one answer.
+    # Enriched apart, the untouched twin keeps the text its enriched twin trains on and
+    # may validate on it: the holdout split and api_v3's dedupe know a row by its text.
+    # So a twin takes the answer its first row got, past `limit` or a stop too, and
+    # without a call of its own; with other labels, the answer fits the first row's.
+    twins, gaps = await asyncio.to_thread(_twins_and_gaps, df, fields, target)
+    answers: dict[tuple[str, ...], list[str]] = {}
+    for idx, twin, gap in zip(new.index, twins, gaps, strict=True):
+        if not gap:
             continue
-        existing = read_values(cell, target)
-        try:
-            row = new.loc[idx]
-            prompt = _prompt_for(row, fields, target, existing, typical=typical,
-                                 classified=_classification(row, label_column, label_separator, names))
-            result = await complete(prompt, FieldValues)
-        except stop_on as signal:
-            stopped = str(signal) or signal.__class__.__name__
-            break
-        calls += 1
-        # Scrubbed per value, as the model returned it; a list value that still holds
-        # the separator ("Optik, Licht") is split so the merge can see both parts.
-        answered = [part for value in result.values  # type: ignore[attr-defined]
-                    for part in read_values(scrub(value)[0], target)
-                    if len(part) <= MAX_VALUE_CHARS]
-        merged = merge_values(existing, answered) if target.separator else answered[:1]
+        existing = read_values(new.at[idx, target.column], target)
+        if twin not in answers:
+            if calls >= limit or stopped is not None:
+                continue
+            try:
+                row = new.loc[idx]
+                prompt = _prompt_for(row, fields, target, existing, typical=typical,
+                                     classified=_classification(row, label_column,
+                                                                label_separator, names))
+                result = await complete(prompt, FieldValues)
+            except stop_on as signal:
+                stopped = str(signal) or signal.__class__.__name__
+                continue
+            calls += 1
+            # Scrubbed per value, as the model returned it; a list value that still holds
+            # the separator ("Optik, Licht") is split so the merge can see both parts.
+            answered = [part for value in result.values  # type: ignore[attr-defined]
+                        for part in read_values(scrub(value)[0], target)
+                        if len(part) <= MAX_VALUE_CHARS]
+            answers[twin] = merge_values(existing, answered) if target.separator else answered[:1]
+        merged = answers[twin]
         if not merged or merged == existing:
             continue  # nothing new: the cell stays as it was, and is not counted
         new.at[idx, target.column] = write_values(merged, target)
