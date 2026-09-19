@@ -21,8 +21,16 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def llm_override(
-    x_llm_key: str | None = Header(default=None, alias="X-LLM-Key"),
-    x_llm_model: str | None = Header(default=None, alias="X-LLM-Model"),
+    x_llm_key: str | None = Header(
+        default=None, alias="X-LLM-Key",
+        description="Optional LLM API key for this request; wins over the server's env key. Kept in "
+        "memory only, never stored or logged: a run holds it until it stops, so a resume must send it again.",
+    ),
+    x_llm_model: str | None = Header(
+        default=None, alias="X-LLM-Model",
+        description="Optional model for this request, replacing the one config.yaml sets for the "
+        "purpose. The endpoint (base_url) always stays the configured one.",
+    ),
 ) -> LlmOverride:
     """Extract per-request LLM credentials from headers (open-instance mode).
 

@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from ..atomic import write_text_atomic
@@ -25,26 +25,40 @@ from ..vocab_turtle import turtle_to_jsonld
 router = APIRouter(prefix="/vocabs", tags=["Vocabularies"], dependencies=[Depends(require_key)])
 
 
+_LABEL_FIELD = ("Optional dataset column these concepts label (e.g. `properties.ccm:taxonid`). "
+                "Recorded and returned with the vocabulary; no operation reads it.")
+_OVERWRITE = "Replace an existing vocabulary of that name; without it the name is refused with 409."
+
+
 class FetchRequest(BaseModel):
-    url: str = Field(max_length=2000)
-    name: str | None = Field(default=None, max_length=MAX_NAME_BYTES)
+    url: str = Field(max_length=2000, description=(
+        "HTTPS URL of a SKOS JSON-LD vocabulary (SkoHub: `.../index.json`). The host must be on the "
+        "fetch allowlist (DATAPREP_FETCH_ALLOWED_HOSTS); redirects are not followed."))
+    name: str | None = Field(default=None, max_length=MAX_NAME_BYTES, description=(
+        "Name to store the vocabulary under; default: from the URL (the folder holding `index.json`, "
+        "else the file name without extension)."))
     # Optional WLO metadata field these labels belong to (e.g. the taxonid /
     # educationalcontext column). Recorded now, useful downstream for mapping
     # the vocabulary's concepts to a dataset column.
-    label_field: str | None = Field(default=None, max_length=200)
-    overwrite: bool = False  # a re-fetch to update a vocabulary sends this
+    label_field: str | None = Field(default=None, max_length=200, description=_LABEL_FIELD)
+    overwrite: bool = Field(default=False, description=(
+        _OVERWRITE + " Set it to update a vocabulary by fetching it again."))
 
 
 class ManualRequest(BaseModel):
     """A vocabulary typed/pasted by hand — one concept per line."""
 
-    name: str = Field(max_length=MAX_NAME_BYTES)
-    text: str = Field(max_length=200_000)
-    lang: str = Field(default="de", max_length=10)
-    title: str | None = Field(default=None, max_length=200)
-    base_uri: str | None = Field(default=None, max_length=400)
-    label_field: str | None = Field(default=None, max_length=200)
-    overwrite: bool = False
+    name: str = Field(max_length=MAX_NAME_BYTES, description="Name to store the vocabulary under.")
+    text: str = Field(max_length=200_000, description=(
+        "The concepts, one per line: `Label`, or `Label | URI` in either order. A line holding only a "
+        "URI takes its last path segment as label; blank lines and lines starting with `#` are skipped."))
+    lang: str = Field(default="de", max_length=10, description="Language tag of the labels and the title.")
+    title: str | None = Field(default=None, max_length=200, description="Vocabulary title; default: `name`.")
+    base_uri: str | None = Field(default=None, max_length=400, description=(
+        "Scheme URI, and base of the URIs minted for lines without one (`<base_uri>/<label slug>`); "
+        "default: `urn:dataprep:<name>`."))
+    label_field: str | None = Field(default=None, max_length=200, description=_LABEL_FIELD)
+    overwrite: bool = Field(default=False, description=_OVERWRITE)
 
 
 def _vocab_dir(settings: Settings) -> Path:
@@ -115,6 +129,7 @@ def _name_from_url(url: str) -> str:
 
 @router.get("", summary="List loaded vocabularies")
 async def list_vocabs(settings: Settings = Depends(get_settings)) -> dict:
+    """Every stored vocabulary with its name, title, concept count and recorded `label_field`."""
     vocabularies = []
     for path in sorted(_vocab_dir(settings).glob("*.json")):
         vocab = parse_vocabulary(json.loads(path.read_text(encoding="utf-8")))
@@ -127,12 +142,22 @@ async def list_vocabs(settings: Settings = Depends(get_settings)) -> dict:
 
 @router.post("/import", summary="Upload a vocabulary file (SKOS JSON-LD or SkoHub Turtle)")
 async def import_vocab(
-    file: UploadFile,
-    name: str | None = Form(default=None, max_length=MAX_NAME_BYTES),
-    label_field: str | None = Form(default=None, max_length=200),
-    overwrite: bool = Form(default=False),
+    file: UploadFile = File(description=(
+        "The vocabulary, UTF-8: SKOS JSON-LD (`.json`, `.jsonld` or no extension) or SkoHub-style "
+        "Turtle (`.ttl`, `.turtle`).")),
+    name: str | None = Form(default=None, max_length=MAX_NAME_BYTES, description=(
+        "Name to store the vocabulary under; default: the file name without its extension.")),
+    label_field: str | None = Form(default=None, max_length=200, description=_LABEL_FIELD),
+    overwrite: bool = Form(default=False, description=_OVERWRITE),
     settings: Settings = Depends(get_settings),
 ) -> dict:
+    """Parse an uploaded SKOS concept scheme and store it under `name`. Turtle is converted to the same
+    JSON-LD shape first; nothing is written unless the file is a SKOS ConceptScheme (a non-empty
+    `hasTopConcept` list).
+
+    Errors: 400 for unreadable JSON or Turtle, an unsupported extension, a file that is not a
+    ConceptScheme, or an invalid name; 409 when the name is taken and `overwrite` is not set; 413 when
+    the file exceeds the upload cap (DATAPREP_MAX_UPLOAD_MB)."""
     payload = await read_upload_capped(file, settings.max_upload_mb * 1024 * 1024)
     resolved = name or Path(file.filename or "vocabulary").stem
     _refuse_taken(settings, resolved, overwrite)
@@ -159,6 +184,12 @@ async def import_vocab(
 
 @router.post("/manual", summary="Create a vocabulary from a pasted concept list")
 async def manual_vocab(req: ManualRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Build a flat SKOS concept scheme (no hierarchy) from the lines of `text` and store it under `name`,
+    like an upload. Lines without a URI get one minted from `base_uri` and a slug of the label; a URI
+    used twice gets a numeric suffix.
+
+    Errors: 400 when no line yields a concept or the name is invalid; 409 when the name is taken and
+    `overwrite` is not set."""
     name = safe_name(req.name, "vocabulary name")  # may 400 — before any write
     _refuse_taken(settings, name, req.overwrite)
     base_uri = (req.base_uri or f"urn:dataprep:{name}").strip()
@@ -171,6 +202,12 @@ async def manual_vocab(req: ManualRequest, settings: Settings = Depends(get_sett
 
 @router.post("/fetch", summary="Fetch a vocabulary from an allowed HTTPS URL")
 async def fetch_vocab(req: FetchRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Download a SKOS JSON-LD vocabulary and store it under `name`. The fetch is guarded: https only, a
+    host on the allowlist, no redirects, a size cap (DATAPREP_FETCH_MAX_MB) and a timeout. A taken name
+    is refused before anything is downloaded.
+
+    Errors: 400 for a refused or failed fetch, a response that is not a JSON object or not a SKOS
+    ConceptScheme, or an invalid name; 409 when the name is taken and `overwrite` is not set."""
     name = req.name or _name_from_url(req.url)
     _refuse_taken(settings, name, req.overwrite)  # before the network call
     try:
@@ -184,6 +221,10 @@ async def fetch_vocab(req: FetchRequest, settings: Settings = Depends(get_settin
 
 @router.get("/{name}", summary="Vocabulary details with concept tree")
 async def vocab_detail(name: str, settings: Settings = Depends(get_settings)) -> dict:
+    """The stored vocabulary: scheme URI, title, concept count, `label_field`, the languages of its labels
+    and its concept tree as a flat list in depth-first order (`uri`, `label`, `depth`).
+
+    Errors: 404 when no vocabulary has that name."""
     vocab = _load(settings, name)
     return {
         "name": name,
@@ -200,6 +241,10 @@ async def vocab_detail(name: str, settings: Settings = Depends(get_settings)) ->
 
 @router.delete("/{name}", summary="Delete a vocabulary")
 async def delete_vocab(name: str, settings: Settings = Depends(get_settings)) -> dict:
+    """Delete the vocabulary. Seed sets and runs refer to it by name: they cannot be bootstrapped, run,
+    resumed or exported until a vocabulary of that name is loaded again.
+
+    Errors: 404 when no vocabulary has that name."""
     path = _vocab_path(settings, name)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Vocabulary {name!r} not found.")

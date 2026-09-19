@@ -32,6 +32,9 @@ from .field_spec import FieldSpec, check_fields
 from .refine import (
     DEFAULT_LABEL_COLUMN,
     DEFAULT_TEXT_COLUMNS,
+    DESC_LABEL_SEPARATOR,
+    DESC_LLM_PURPOSE,
+    DESC_OVERWRITE,
     AnalyzeRequest,
     load_or_404,
     load_with_history_or_404,
@@ -40,37 +43,53 @@ from .refine import (
 router = APIRouter(prefix="/refine", tags=["Refine"], dependencies=[Depends(require_key)])
 
 
+_WLO_SCHEMA_DEFAULT = "default: the three WLO text columns and the label column."
+
+
 class SuggestRequest(BaseModel):
-    sources: list[str] = Field(min_length=1, max_length=20)
-    target_columns: list[str] = Field(default_factory=lambda: [*DEFAULT_TEXT_COLUMNS, DEFAULT_LABEL_COLUMN])
+    sources: list[str] = Field(min_length=1, max_length=20, description="Datasets to suggest a mapping for.")
+    target_columns: list[str] = Field(default_factory=lambda: [*DEFAULT_TEXT_COLUMNS, DEFAULT_LABEL_COLUMN],
+                                      description=f"Target columns to map; {_WLO_SCHEMA_DEFAULT}")
 
 
 class CombineSource(BaseModel):
-    name: str = Field(max_length=MAX_NAME_BYTES)
-    label: str = Field(max_length=60)
-    mapping: dict[str, str | None]
+    name: str = Field(max_length=MAX_NAME_BYTES, description="A stored dataset.")
+    label: str = Field(max_length=60, description="Written into the `source` column of this dataset's rows.")
+    mapping: dict[str, str | None] = Field(description=(
+        "Target column -> this dataset's column; null or a missing column leaves the target empty."))
 
 
 class CombineRequest(BaseModel):
-    sources: list[CombineSource] = Field(min_length=1, max_length=20)
-    target: str = Field(max_length=MAX_NAME_BYTES)
-    overwrite: bool = False
-    target_columns: list[str] = Field(default_factory=lambda: [*DEFAULT_TEXT_COLUMNS, DEFAULT_LABEL_COLUMN])
-    text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS))
+    sources: list[CombineSource] = Field(min_length=1, max_length=20, description=(
+        "Datasets in priority order: of rows with the same text, the first source's row is kept."))
+    target: str = Field(max_length=MAX_NAME_BYTES, description="Name of the new dataset.")
+    overwrite: bool = Field(default=False, description=(
+        "Replace an existing dataset of that name, a source included; without it the name is refused with 409."))
+    target_columns: list[str] = Field(default_factory=lambda: [*DEFAULT_TEXT_COLUMNS, DEFAULT_LABEL_COLUMN],
+                                      description=f"Columns of the result, in order; {_WLO_SCHEMA_DEFAULT}")
+    text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS), description=(
+        "Target columns whose cleaned, joined values identify a duplicate; must be within `target_columns`."))
 
 
 class SplitRequest(AnalyzeRequest):
-    holdout_fraction: float = Field(default=0.15, gt=0.0, lt=0.9)
-    seed: int = Field(default=42, ge=0)
-    target: str = Field(max_length=MAX_NAME_BYTES)
-    overwrite: bool = False
+    holdout_fraction: float = Field(default=0.15, gt=0.0, lt=0.9, description=(
+        "Share of each label's real (not generated) rows to hold out, at least one row; whole text groups move."))
+    seed: int = Field(default=42, ge=0, description="Random seed: same seed and data, same split.")
+    target: str = Field(max_length=MAX_NAME_BYTES, description=(
+        "Base name of the two outputs `<target>_train` and `<target>_holdout`."))
+    overwrite: bool = Field(default=False, description=(
+        "Replace existing datasets of those names other than the source; without it such a name is refused "
+        "with 409."))
 
 
 class LabelAuditRequest(AnalyzeRequest):
-    model_name: str = Field(max_length=100)
-    confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
-    top_k: int = Field(default=3, ge=1, le=20)
-    limit: int = Field(default=2000, ge=1, le=20000)  # cap the api_v3 predict load
+    model_name: str = Field(max_length=100, description="Trained api_v3 model to ask.")
+    confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0, description=(
+        "Flag a row only when the top prediction's confidence is at least this."))
+    top_k: int = Field(default=3, ge=1, le=20, description=(
+        "Predictions per row; a row is flagged only if none of its labels is among them."))
+    # cap the api_v3 predict load
+    limit: int = Field(default=2000, ge=1, le=20000, description="Audit only the first `limit` rows.")
 
 
 # What the two shipped prompts asked for, kept verbatim as the guidance of the WLO
@@ -89,27 +108,36 @@ _WLO_DESCRIPTION_GUIDANCE = (
 
 class EnrichRequest(BaseModel):
     """Either shape: ``fields`` + ``target_field``, or the original ``mode`` with the
-    three WLO columns. The old one keeps working — it was the only shape until now —
-    with the instructions it always carried, numbers included; its prompt now also names
-    the row's labels, like every enrichment prompt."""
+    three WLO columns. The original keeps working with the instructions it always
+    carried, numbers included; either way the prompt names the row's labels."""
 
-    target: str = Field(max_length=MAX_NAME_BYTES)
-    overwrite: bool = False
-    limit: int = Field(default=500, ge=1, le=5000)  # cap the LLM cost per call
-    llm_purpose: Literal["seeds", "bulk"] = "bulk"
+    target: str = Field(max_length=MAX_NAME_BYTES, description=(
+        "Name to save the result under; the source's own name enriches in place."))
+    overwrite: bool = Field(default=False, description=DESC_OVERWRITE)
+    # cap the LLM cost per call
+    limit: int = Field(default=500, ge=1, le=5000, description=(
+        "Maximum LLM calls: one per row with a gap, in row order; later gaps stay open."))
+    llm_purpose: Literal["seeds", "bulk"] = Field(default="bulk", description=DESC_LLM_PURPOSE)
     # Refused as a field -- model text in a label cell is an invented label -- and named
     # in each prompt, so the added text fits the row's classification.
-    label_column: str = Field(default=DEFAULT_LABEL_COLUMN, max_length=200)
-    label_separator: str = Field(default=",", min_length=1, max_length=3)
+    label_column: str = Field(default=DEFAULT_LABEL_COLUMN, max_length=200, description=(
+        "Column holding each row's labels, which each prompt names (as `<label_column>_DISPLAYNAME` "
+        "where present); cannot be a field, ignored when the dataset lacks it."))
+    label_separator: str = Field(default=",", min_length=1, max_length=3, description=DESC_LABEL_SEPARATOR)
 
-    fields: list[FieldSpec] | None = Field(default=None, max_length=50)
-    target_field: str | None = Field(default=None, max_length=200)
+    fields: list[FieldSpec] | None = Field(default=None, max_length=50, description=(
+        "The row's text fields; the others' values are the prompt's context. Each column once, none a "
+        "mark column (`generated_for`, `example_for`, `enriched_fields`) or the label column."))
+    target_field: str | None = Field(default=None, max_length=200, description="Column of `fields` to fill.")
 
-    mode: Literal["keywords", "description"] | None = None
-    title_column: str = "properties.cclom:title"
-    description_column: str = "properties.cclom:general_description"
-    keyword_column: str = "properties.cclom:general_keyword"
-    min_keywords: int = Field(default=3, ge=1, le=20)
+    mode: Literal["keywords", "description"] | None = Field(default=None, description=(
+        "Original shape, used without `fields` + `target_field`: fill the keywords or the description."))
+    title_column: str = Field(default="properties.cclom:title", description="Original shape: title column.")
+    description_column: str = Field(default="properties.cclom:general_description",
+                                    description="Original shape: description column.")
+    keyword_column: str = Field(default="properties.cclom:general_keyword",
+                                description="Original shape: comma-separated keyword column.")
+    min_keywords: int = Field(default=3, ge=1, le=20, description="Original shape: fewer keywords is a gap.")
 
     @model_validator(mode="after")
     def _fields_are_usable(self) -> EnrichRequest:
@@ -141,6 +169,15 @@ class EnrichRequest(BaseModel):
 
 @router.post("/{name}/split", summary="Stratified text-disjoint holdout split (train + holdout)")
 async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Write `<target>_train` and `<target>_holdout`: text-disjoint (rows with the same cleaned text stay on
+    one side) and stratified (text groups join the holdout in seeded order until each label has
+    `holdout_fraction` of its real rows). Rows with an AI mark (`generated_for`, `example_for`,
+    `enriched_fields`), and every row sharing its text with one, stay in training. Returns the counts,
+    `labels_without_holdout` (labels this left without a holdout row; split before balancing to avoid
+    them) and a label report of the training part.
+
+    Errors: 400 for missing columns; 404 for an unknown dataset; 409 when an output name is taken and
+    `overwrite` is not set."""
     # The history is read with the table, before anything is written: unreadable,
     # it must fail the request while both outputs are still untouched.
     df, history = await load_with_history_or_404(settings, name)
@@ -181,6 +218,12 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
 
 @router.post("/{name}/label-audit", summary="Second opinion from api_v3 — divergence checklist")
 async def label_audit(name: str, req: LabelAuditRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Ask a trained api_v3 model (`/predict/batch`) about the first `limit` rows and flag each row whose
+    top prediction reaches `confidence_threshold` while none of its labels is in the top `top_k`: a
+    checklist for editors. Nothing is relabelled or written.
+
+    Errors: 400 for missing columns, or when api_v3 is not configured, not allowed or has no key; 404 for
+    an unknown dataset; 502 when api_v3 refuses or cannot be reached."""
     df = (await load_or_404(settings, name)).head(req.limit)
     missing = [c for c in (*req.text_columns, req.label_column) if c not in df.columns]
     if missing:
@@ -206,6 +249,18 @@ async def enrich(
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
+    """Fill the gaps of one field with the LLM, additively: a cell with fewer than `min_values` values is a
+    gap, and a short list is extended, never replaced. Each prompt shows the row's other fields and names
+    its labels (from `label_column`, by display name where known) and the field's typical length in the
+    rows people wrote, never above the 2,000-character answer cap; a length stated in the field's
+    `guidance` replaces it. Answers are PII-scrubbed; changed rows are marked in `enriched_fields`, which
+    keeps them out of a holdout. Saves the result as `target`. Paid LLM calls; honours
+    `X-LLM-Key`/`X-LLM-Model`. A budget cap mid-way keeps what was paid for (`stopped` says why).
+
+    Errors: 400 for an unknown column or an incomplete request shape; 404 for an unknown dataset; 409
+    when `target` names another existing dataset and `overwrite` is not set; 429 when a budget cap stops
+    it before the first change; 502 when an LLM call fails (nothing is saved); 503 when no LLM key or
+    endpoint is configured."""
     df, history = await load_with_history_or_404(settings, name)  # before the LLM is paid for
     target = safe_name(req.target, "target name")
     # Before any LLM call: a refused write must not have been paid for.
@@ -250,6 +305,11 @@ async def enrich(
 
 @router.post("/{name}/push", summary="Push a refine dataset to the configured api_v3")
 async def push_dataset(name: str, settings: Settings = Depends(get_settings)) -> dict:
+    """Upload the whole dataset as `<name>.csv` (semicolon CSV) to `/datasets/import` of the api_v3
+    configured in config.yaml (`api_v3.url`), with the key from the env variable it names.
+
+    Errors: 400 when api_v3 is not configured, not allowed or has no key; 404 for an unknown dataset; 409
+    when api_v3 already has a dataset of that name; 502 when api_v3 refuses or cannot be reached."""
     df = await load_or_404(settings, name)
     # As costly as saving it, so off the loop like a save.
     csv_text = await asyncio.to_thread(lambda: df.to_csv(sep=";", index=False))
@@ -262,6 +322,11 @@ async def push_dataset(name: str, settings: Settings = Depends(get_settings)) ->
 
 @router.post("/combine/suggest", summary="Suggest column mappings for source datasets")
 async def combine_suggest(req: SuggestRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Per source: a best-effort mapping of each target column to one of its columns (same name, then same
+    last word as in `general_description` ~ `description`, then substring), the unmatched targets, the
+    unused columns and all its columns. Read-only.
+
+    Errors: 404 for an unknown dataset."""
     out: dict[str, dict] = {}
     for name in req.sources:
         df = await load_or_404(settings, name)
@@ -272,6 +337,13 @@ async def combine_suggest(req: SuggestRequest, settings: Settings = Depends(get_
 
 @router.post("/combine", summary="Combine datasets into the target schema with conflict resolution")
 async def combine(req: CombineRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Map every source onto `target_columns` and concatenate them into the new dataset `target`, with a
+    `source` column naming each row's source. Of rows with the same cleaned text (`text_columns`) only
+    the first, highest-priority one is kept. AI marks (`generated_for`, `example_for`, `enriched_fields`)
+    are carried along unmapped, so marked rows stay out of later holdouts. The history starts anew.
+
+    Errors: 400 when `text_columns` is empty or not within `target_columns`; 404 for an unknown source;
+    409 when `target` exists and `overwrite` is not set."""
     target = safe_name(req.target, "target name")
     refuse_existing(dataset_path(settings, target).exists(), "Dataset", target, req.overwrite)
     sources = []

@@ -25,7 +25,8 @@ async def auth_check(
     _: None = Depends(require_key),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """Login probe for the UI: 200 when the key is valid (or auth is disabled)."""
+    """Login probe for the UI: 200 when the key is valid, or when no key is configured and the client is
+    on loopback. 401 for a missing or wrong key; 403 for a non-loopback client when no key is configured."""
     return {"auth": "ok", "auth_enabled": settings.auth_enabled}
 
 

@@ -79,15 +79,20 @@ _TAGS_METADATA = [
     {"name": "Vocabularies", "description": "SKOS vocabularies: upload, guarded URL fetch, tree view."},
     {"name": "References", "description": "Optional curated reference sets — PII-scrubbed on import."},
     {"name": "Seeds", "description": "Seed pools per concept: distilled, LLM-bootstrapped, or edited."},
-    {"name": "Runs", "description": "Generation runs: dry-run plan, start, progress, cancel, resume."},
+    {"name": "Runs", "description": "Generation runs: dry-run plan, start, progress, cancel, resume, "
+                                    "exports and the push to api_v3."},
     {"name": "Review", "description": "Browse generated samples; approve, discard, regenerate."},
-    {"name": "Refine", "description": "Analyze, filter, combine and prepare existing datasets."},
+    {"name": "Refine", "description": "Import, inspect, filter, join, combine, split, enrich and balance "
+                                      "datasets; push them to api_v3."},
 ]
 
 _DESCRIPTION = (
     "Dataset workshop for WLO training data: generate publishable, fully "
     "synthetic datasets from SkoHub vocabularies + LLM, and analyze / filter / "
-    "combine / enrich existing datasets for training in the classification API.\n\n"
+    "combine / enrich / balance existing datasets for training in the classification API. "
+    "Every row an LLM wrote or touched is marked (`generated_for`, `example_for`, "
+    "`enriched_fields`), so the split keeps it out of the holdout and the classification "
+    "API can keep it out of validation.\n\n"
     "**Authentication:** single key via the `X-API-Key` header. `/health` is "
     "public. When no key is configured, auth is disabled for loopback clients "
     "only — requests from a non-loopback address are refused."

@@ -31,36 +31,54 @@ router = APIRouter(prefix="/seeds", tags=["Seeds"], dependencies=[Depends(requir
 
 
 class BuildRequest(BaseModel):
-    name: str = Field(max_length=MAX_NAME_BYTES)
-    vocab: str = Field(max_length=MAX_NAME_BYTES)
-    reference: str | None = Field(default=None, max_length=MAX_NAME_BYTES)
+    name: str = Field(max_length=MAX_NAME_BYTES, description="Name to store the seed set under.")
+    vocab: str = Field(max_length=MAX_NAME_BYTES, description=(
+        "Name of a loaded vocabulary; the set gets a seed pool and a term bank per concept."))
+    reference: str | None = Field(default=None, max_length=MAX_NAME_BYTES, description=(
+        "Optional reference set to distill seeds and term banks from (hybrid mode); omitted = empty "
+        "pools, to be filled by bootstrap or the editor (vocab-only mode)."))
     # Few-shot example seeds per concept (5-10 is plenty); this is NOT the term
     # bank scope, which is controlled separately below.
-    per_concept: int = Field(default=6, ge=1, le=50)
+    per_concept: int = Field(default=6, ge=1, le=50, description=(
+        "Maximum seeds distilled per concept (exact duplicates dropped, reproducible random sample)."))
     # Term bank: which reference columns feed it (None → the reference's configured
     # text columns), how many rows per label to mine, and the max distinct terms.
-    keyword_columns: list[str] | None = None
-    term_columns: list[str] | None = None
-    terms_max_rows: int = Field(default=500, ge=0, le=20000)
-    terms_top_n: int = Field(default=60, ge=10, le=500)
+    keyword_columns: list[str] | None = Field(default=None, description=(
+        "Reference columns split at `;` `,` `|` `/` into whole terms for the term bank; default: the "
+        "reference's third text column."))
+    term_columns: list[str] | None = Field(default=None, description=(
+        "Reference columns mined for frequent content words (stop words dropped); default: the "
+        "reference's first two text columns."))
+    terms_max_rows: int = Field(default=500, ge=0, le=20000, description=(
+        "Reference rows mined per concept for its term bank; 0 = no term bank."))
+    terms_top_n: int = Field(default=60, ge=10, le=500, description=(
+        "Maximum terms kept per concept, most frequent first; terms common to many concepts are dropped."))
     # Rebuilding discards every hand-edited and LLM-bootstrapped seed of the set.
-    overwrite: bool = False
+    overwrite: bool = Field(default=False, description=(
+        "Replace an existing seed set of that name, discarding its edited and bootstrapped seeds; "
+        "without it the name is refused with 409."))
 
 
 class BootstrapRequest(BaseModel):
-    concept_uri: str = Field(max_length=500)
-    n: int = Field(default=4, ge=1, le=20)
+    concept_uri: str = Field(max_length=500, description="URI of the concept to generate seeds for.")
+    n: int = Field(default=4, ge=1, le=20, description=(
+        "Number of seeds to ask the LLM for; those returned are appended to the concept's pool."))
 
 
 class RefineTermsRequest(BaseModel):
-    concept_uri: str = Field(max_length=500)
-    n: int = Field(default=30, ge=1, le=100)
-    context: str = Field(default="", max_length=2000)
+    concept_uri: str = Field(max_length=500, description="URI of the concept whose term bank is refined.")
+    n: int = Field(default=30, ge=1, le=100, description=(
+        "Number of terms to ask for; the result (deduplicated, at most `n`) replaces the term bank."))
+    context: str = Field(default="", max_length=2000, description=(
+        "Optional steering added to the prompt, e.g. the level or focus the terms should fit."))
 
 
 class ConceptSeedsPut(BaseModel):
-    concept_uri: str = Field(max_length=500)
-    seeds: list[SeedItem]
+    concept_uri: str = Field(max_length=500, description="URI of the concept whose seeds are replaced.")
+    seeds: list[SeedItem] = Field(description=(
+        "The concept's complete new seed list (may be empty), stored with `source=manual`. Each seed: "
+        "`title` (1-300 characters), optional `description` (up to 2,000) and `keywords` (comma-separated, "
+        "up to 500)."))
 
 
 def _load_vocab(settings: Settings, name: str) -> Vocabulary:
@@ -95,11 +113,19 @@ def _current_concept(settings: Settings, name: str, uri: str) -> tuple[dict, dic
 
 @router.get("", summary="List seed sets")
 async def list_sets(settings: Settings = Depends(get_settings)) -> dict:
+    """Summaries of all seed sets: vocabulary, reference, concept count, concepts with seeds, seed count,
+    concepts with a term bank and term count."""
     return {"seed_sets": list_seed_sets(settings)}
 
 
 @router.post("/build", summary="Build a seed set (distilled from a reference, or empty pools)")
 async def build(req: BuildRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Create a seed set for every concept of `vocab`. With `reference`, each concept's pool is distilled
+    from the reference rows labelled with it, and a term bank is mined from the same rows; without one,
+    the pools start empty. No LLM call. Returns the set's summary.
+
+    Errors: 400 when the vocabulary or reference is not found or a name is invalid; 409 when the name is
+    taken and `overwrite` is not set."""
     refuse_existing(seed_set_exists(settings, req.name), "Seed set", req.name, req.overwrite)
     vocab = _load_vocab(settings, req.vocab)
     pools: dict[str, list[dict]] = {}
@@ -134,6 +160,10 @@ async def build(req: BuildRequest, settings: Settings = Depends(get_settings)) -
 
 @router.get("/{name}", summary="Seed set details (all concepts and seeds)")
 async def detail(name: str, settings: Settings = Depends(get_settings)) -> dict:
+    """The whole seed set: its parameters and, per concept URI, the seeds (each with its `source`:
+    `distilled`, `bootstrap` or `manual`) and the term bank.
+
+    Errors: 404 when no seed set has that name."""
     return _load_or_404(settings, name)
 
 
@@ -143,6 +173,14 @@ async def bootstrap(
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
+    """Ask the LLM (`seeds` endpoint) for `n` example entries of one concept, anchored in the vocabulary
+    alone: its label, alternative labels and place in the hierarchy. The answers are PII-scrubbed and
+    appended to the pool with `source=bootstrap`. Paid LLM call; honours `X-LLM-Key`/`X-LLM-Model`.
+    Returns the number added and the LLM usage.
+
+    Errors: 400 for a concept not in the set or a missing vocabulary; 404 for an unknown seed set; 409
+    when the set was rebuilt without the concept during the call; 429 at a budget cap; 502 when the LLM
+    call fails; 503 when no LLM key or endpoint is configured."""
     payload = _load_or_404(settings, name)
     if req.concept_uri not in payload["concepts"]:
         raise HTTPException(status_code=400, detail="Unknown concept in this seed set.")
@@ -170,6 +208,14 @@ async def refine_terms(
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
+    """Let the LLM (`seeds` endpoint) clean the concept's term bank and add missing domain terms,
+    optionally steered by `context`. The result -- PII-scrubbed, deduplicated ignoring case, at most `n`
+    terms -- replaces the term bank; generation runs rotate a subset of it into every batch prompt. Paid
+    LLM call; honours `X-LLM-Key`/`X-LLM-Model`.
+
+    Errors: 400 for a concept not in the set or a missing vocabulary; 404 for an unknown seed set; 409
+    when the set was rebuilt without the concept during the call; 429 at a budget cap; 502 when the LLM
+    call fails; 503 when no LLM key or endpoint is configured."""
     payload = _load_or_404(settings, name)
     concept = payload["concepts"].get(req.concept_uri)
     if concept is None:
@@ -196,6 +242,9 @@ async def refine_terms(
 
 @router.put("/{name}/concepts", summary="Replace the seeds of one concept (editor)")
 async def update_concept(name: str, req: ConceptSeedsPut, settings: Settings = Depends(get_settings)) -> dict:
+    """Replace one concept's seeds with the list sent, each marked `source=manual`; the term bank is kept.
+
+    Errors: 400 for a concept not in the set; 404 for an unknown seed set."""
     payload = _load_or_404(settings, name)
     if req.concept_uri not in payload["concepts"]:
         raise HTTPException(status_code=400, detail="Unknown concept in this seed set.")
@@ -208,6 +257,9 @@ async def update_concept(name: str, req: ConceptSeedsPut, settings: Settings = D
 
 @router.delete("/{name}", summary="Delete a seed set")
 async def delete(name: str, settings: Settings = Depends(get_settings)) -> dict:
+    """Delete the seed set. Runs made from it keep their samples and exports but can no longer be resumed.
+
+    Errors: 404 when no seed set has that name."""
     if not delete_seed_set(settings, name):
         raise HTTPException(status_code=404, detail=f"Seed set {name!r} not found.")
     return {"deleted": name}

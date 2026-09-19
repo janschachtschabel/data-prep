@@ -16,10 +16,17 @@ from ..refine.provenance import MARK_COLUMNS
 class FieldSpec(BaseModel):
     """One text field of the dataset — the request mirror of ``refine.fields.TextField``."""
 
-    column: str = Field(max_length=200)
-    separator: str | None = Field(default=None, max_length=3)
-    min_values: int = Field(default=1, ge=1, le=50)
-    guidance: str = Field(default="", max_length=1000)
+    column: str = Field(max_length=200, description="Dataset column holding this field.")
+    separator: str | None = Field(default=None, max_length=3, description=(
+        "Separator between several values in one cell, for a list field such as keywords (`,`); "
+        "null = one value per cell. Must not be empty."))
+    min_values: int = Field(default=1, ge=1, le=50, description=(
+        "Values a cell needs to be complete: fewer is a gap to fill (enrichment) or a rejected answer "
+        "(balancing). Above 1 needs a `separator`."))
+    guidance: str = Field(default="", max_length=1000, description=(
+        "One-line instruction the prompt gives for this field. A length it states (e.g. `100-400 "
+        "characters`, `3-6 keywords`, or the German equivalents) replaces the typical length measured "
+        "on the dataset."))
 
     @model_validator(mode="after")
     def _is_a_field(self) -> FieldSpec:

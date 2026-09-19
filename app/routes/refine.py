@@ -43,28 +43,51 @@ DEFAULT_TEXT_COLUMNS = [
 ]
 DEFAULT_LABEL_COLUMN = "properties.ccm:taxonid"
 
+# Field texts the refine request models share, so one concept reads the same in every model.
+DESC_LABEL_COLUMN = "Column holding each row's labels; a cell may hold several (see `label_separator`)."
+DESC_LABEL_SEPARATOR = "Separator between several labels in one `label_column` cell."
+DESC_OVERWRITE = ("Replace an existing dataset of that name other than the source; without it the name is "
+                  "refused with 409.")
+DESC_PREVIEW_TARGET = ("Name to save the result under; omitted = preview only, nothing is written. The "
+                       "source's own name applies the step in place.")
+DESC_LLM_PURPOSE = "LLM endpoint from config.yaml (`llm.<purpose>`) to use; `X-LLM-Model` replaces its model."
+
 
 class AnalyzeRequest(BaseModel):
-    text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS))
-    label_column: str = DEFAULT_LABEL_COLUMN
-    label_separator: str = Field(default=",", max_length=3)
-    label_filter: str | None = Field(default=None, max_length=200)
+    text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS), description=(
+        "Columns whose values, cleaned as api_v3 cleans them and joined with a space, form each row's text."))
+    label_column: str = Field(default=DEFAULT_LABEL_COLUMN, description=DESC_LABEL_COLUMN)
+    label_separator: str = Field(default=",", max_length=3, description=DESC_LABEL_SEPARATOR)
+    label_filter: str | None = Field(default=None, max_length=200, description=(
+        "Optional substring: only labels containing it count, e.g. one vocabulary's URI prefix. The "
+        "split ignores it."))
 
 
 class PreflightRequest(AnalyzeRequest):
-    min_text_length: int = Field(default=5, ge=0, le=1000)
-    drop_duplicates: bool = True
-    min_samples: int | None = Field(default=None, ge=1, le=10000)
+    min_text_length: int = Field(default=5, ge=0, le=1000, description=(
+        "Rows whose cleaned text has fewer characters are dropped; set as in api_v3's training config."))
+    drop_duplicates: bool = Field(default=True, description=(
+        "Drop rows whose cleaned text repeats an earlier row; set as in api_v3's training config."))
+    min_samples: int | None = Field(default=None, ge=1, le=10000, description=(
+        "Rows a label needs to be learnable; omitted = api_v3's automatic value (2, 5, 20 or 35 for "
+        "under 1k, 10k, 50k or more kept rows)."))
 
 
 class FilterRequest(BaseModel):
-    filter: str = Field(max_length=40)
-    params: dict = Field(default_factory=dict)
-    target: str | None = Field(default=None, max_length=MAX_NAME_BYTES)  # None = preview only
-    overwrite: bool = False
-    text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS))
-    label_column: str = DEFAULT_LABEL_COLUMN
-    label_separator: str = Field(default=",", max_length=3)
+    filter: str = Field(max_length=40, description=(
+        "Filter to run: `dedupe_exact`, `dedupe_semantic`, `length`, `drop_no_label`, `label_filter`, "
+        "`cap_per_label`, `markup` or `pii` (see the operation description)."))
+    params: dict = Field(default_factory=dict, description=(
+        "Filter parameters: `dedupe_semantic` {`threshold`: cosine, default 0.95}; `length` {`min`, "
+        "`max`: characters of the cleaned text}; `label_filter` {`substring`}; `cap_per_label` {`cap` >= "
+        "1}; `pii` {`mode`: `mask` (default) or `drop`}. The other filters take none."))
+    target: str | None = Field(default=None, max_length=MAX_NAME_BYTES, description=DESC_PREVIEW_TARGET)
+    overwrite: bool = Field(default=False, description=DESC_OVERWRITE)
+    text_columns: list[str] = Field(default_factory=lambda: list(DEFAULT_TEXT_COLUMNS), description=(
+        "Columns forming each row's text (cleaned, joined with a space) for the dedupe and length "
+        "filters; `markup` and `pii` rewrite these columns."))
+    label_column: str = Field(default=DEFAULT_LABEL_COLUMN, description=DESC_LABEL_COLUMN)
+    label_separator: str = Field(default=",", max_length=3, description=DESC_LABEL_SEPARATOR)
 
 
 def _found[T](value: T | None, name: str) -> T:
@@ -87,11 +110,17 @@ async def load_with_history_or_404(settings: Settings, name: str) -> tuple[pd.Da
 
 @router.get("/datasets", summary="List refine datasets")
 async def datasets(settings: Settings = Depends(get_settings)) -> dict:
+    """Every dataset in the refine store with its row count and column names. Datasets are kept as
+    imported or produced: nothing is PII-scrubbed unless the `pii` filter was applied."""
     return {"datasets": await in_store(list_datasets, settings)}
 
 
 @router.post("/{name}/analyze", summary="Distribution, duplicates and PII overview")
 async def analyze_dataset(name: str, req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Read-only overview: rows per label (and the labels under 10 rows), rows without text or label,
+    exact duplicates of the cleaned text, text length (min, max, mean) and a PII scan per category.
+
+    Errors: 400 for missing columns; 404 for an unknown dataset."""
     df = await load_or_404(settings, name)
     try:
         # Offload the whole-frame pandas work so a large dataset does not block
@@ -106,6 +135,13 @@ async def analyze_dataset(name: str, req: AnalyzeRequest, settings: Settings = D
 
 @router.post("/{name}/preflight", summary="Simulate api_v3 preparation (effective training set)")
 async def preflight(name: str, req: PreflightRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Replay api_v3's data preparation to the row: clean and join the text columns; drop rows without a
+    label, too short or duplicated; then drop the labels below `min_samples` and the rows left without a
+    learnable label. Returns the drops per reason, the resolved `min_samples`, `effective_rows` (what
+    api_v3 would train on), the learnable labels with their counts and the labels below the minimum.
+    Read-only.
+
+    Errors: 400 for missing columns; 404 for an unknown dataset."""
     df = await load_or_404(settings, name)
     try:
         return await asyncio.to_thread(
@@ -121,6 +157,18 @@ async def preflight(name: str, req: PreflightRequest, settings: Settings = Depen
 
 @router.post("/{name}/filter", summary="Preview (no target) or apply (target) a filter")
 async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Depends(get_settings)) -> dict:
+    """Run one label-layer filter. Row filters: `dedupe_exact` (cleaned text seen before),
+    `dedupe_semantic` (cosine similarity to a kept row at or above `threshold`, via the configured
+    embedding model), `length` (cleaned text outside `min`-`max` characters), `drop_no_label`,
+    `label_filter` (keep only labels containing `substring`; rows left without one go), `cap_per_label`
+    (keep a row while one of its labels has fewer than `cap` kept rows; unlabelled rows go). Rewrites:
+    `markup` (api_v3's text cleaning applied to the text columns), `pii` (mask e-mail, URL, phone and
+    handle, or `drop` such rows). Without `target` it returns counts and examples only; with one it saves
+    the result and appends the step to the source's history.
+
+    Errors: 400 for an unknown filter, bad parameters or missing columns (the text and label columns
+    must exist for every filter); 404 for an unknown dataset; 409 when `target` names another existing
+    dataset and `overwrite` is not set."""
     df, history = await load_with_history_or_404(settings, name)
     target = safe_name(req.target, "target name") if req.target else None
     if target:
@@ -149,6 +197,10 @@ async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Dep
 
 @router.get("/{name}/ops", summary="Operation history (the applied refine chain)")
 async def dataset_ops(name: str, settings: Settings = Depends(get_settings)) -> dict:
+    """The steps that produced the dataset, oldest first, each with its operation, parameters, source and
+    counts. An import starts an empty history; combine starts a new one.
+
+    Errors: 404 for an unknown dataset."""
     # Checked and read in one store step: apart, a delete in between was answered
     # with 200 and an empty history instead of 404.
     return {"ops": _found(await in_store(stored_ops, settings, safe_name(name, "dataset name")), name)}
@@ -156,6 +208,9 @@ async def dataset_ops(name: str, settings: Settings = Depends(get_settings)) -> 
 
 @router.delete("/{name}", summary="Delete a refine dataset")
 async def remove_dataset(name: str, settings: Settings = Depends(get_settings)) -> dict:
+    """Delete the dataset and its history; this cannot be undone.
+
+    Errors: 404 for an unknown dataset."""
     if not await in_store(delete_dataset, settings, safe_name(name, "dataset name")):
         raise HTTPException(status_code=404, detail=f"Dataset {name!r} not found.")
     return {"deleted": name}
