@@ -61,7 +61,9 @@ du dich normalerweise von links nach rechts.
    Tastatur **a** (annehmen) oder **d** (verwerfen), oder per Knopf. Verworfene
    Einträge werden mit **„Regenerate discarded"** ersetzt.
 5. **Runs** → beim fertigen Lauf **CSV** oder **JSONL** herunterladen, **Audit**
-   ansehen (enthält Pflicht-Hinweise zur Nutzung) oder **Push to api_v3**.
+   ansehen (enthält Pflicht-Hinweise zur Nutzung) oder **Push to api_v3**. Jede
+   exportierte Zeile trägt `generated_for` — so erkennen der Split hier und das
+   Training in api_v3 sie auch nach dem Zusammenführen als KI-erzeugt.
 
 **Mit eigenen Daten (Hybrid):** Lade unter **References** eine kuratierte CSV
 hoch (wird beim Import automatisch von persönlichen Daten bereinigt) und wähle
@@ -104,12 +106,18 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   kommagetrennt, ein Titel mit Komma bleibt ein Titel), und gib das Trennzeichen
   und die Mindestanzahl an. Der Hinweis daneben ist die eine Zeile, die die KI
   über dieses Feld zu sehen bekommt — je konkreter, desto brauchbarer das
-  Ergebnis. Diese Angaben gelten für beide KI-Werkzeuge darunter.
+  Ergebnis. Wie lang ein Eintrag sein soll, ergänzt die App selbst aus den echten
+  Zeilen des Datensatzes; schreibst du eine Zahl in den Hinweis (etwa „100–400
+  Zeichen“), gilt deine. Diese Angaben gelten für beide KI-Werkzeuge darunter.
 - **Enrich** — füllt Lücken in **einem frei gewählten Feld** per KI: Schlagwörter,
   Beschreibung, oder jede andere Textspalte deines Datensatzes. Vorhandene Inhalte
   werden **nie** überschrieben: eine zu kurze Liste wird ergänzt, nicht ersetzt,
   und eine leere Antwort ändert nichts. Jede Ergänzung wird in einer Spalte
-  `enriched_fields` vermerkt. Für die WLO-Spalten sind Schlagwörter schon als
+  `enriched_fields` vermerkt; solche Zeilen bleiben beim Aufteilen im Training.
+  Die KI erfährt dabei, unter welchem Label die Zeile steht (mit Anzeigenamen,
+  wenn der Datensatz eine Spalte `…_DISPLAYNAME` hat), damit die Ergänzung zu
+  dieser Einordnung passt, und wie lang das Feld in den echten Zeilen meist ist.
+  Für die WLO-Spalten sind Schlagwörter schon als
   Liste (mindestens 3) und mit einem passenden Hinweis vorbelegt. Stoppt ein Lauf
   unterwegs an einer Grenze (etwa dem Token-Budget), bleiben die bis dahin
   angereicherten Zeilen erhalten, und das Ergebnis sagt, warum er endete. Sobald
@@ -135,22 +143,42 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   Vorschau etwas am Formular — Datensatz, Felder, Zahlen —, muss sie neu berechnet
   werden, bevor erzeugt wird. Das Ergebnis ist immer ein neuer Datensatz.
 
-  Vier Dinge, die du dazu wissen solltest:
+  Was die KI dafür erfährt:
+  - das Label **mit seinem lesbaren Namen** (aus der Spalte `…_DISPLAYNAME`, falls
+    vorhanden) statt der URI;
+  - die **anderen Label** des Datensatzes zur Abgrenzung — zuerst die, die mit
+    diesem Label gemeinsam in Zeilen vorkommen, dann die häufigsten, höchstens 30.
+    Jeder neue Eintrag soll eindeutig zu seinem Label passen und nicht ebenso gut
+    zu einem anderen;
+  - je Feld, ob es **einen Wert oder eine Liste** enthält (mit Trennzeichen und
+    Mindestanzahl), und **wie lang es typischerweise ist** — gemessen an den
+    echten Zeilen des Labels, bei zu wenigen an denen des ganzen Datensatzes;
+  - als Vorbild **typische, vollständige Zeilen** des Labels, nicht die längsten:
+    sonst gerieten die erzeugten Zeilen länger und reicher als die echten, und das
+    Modell lernte genau diesen Unterschied.
+
+  Ob erzeugte Zeilen trotzdem nach einem anderen Label klingen, prüft **Label
+  audit** mit einem trainierten Modell.
+
+  Was du außerdem wissen solltest:
   - Erzeugt wird **aus den echten Zeilen des Labels**. Ein Label, dessen Zeilen
     gar keinen Text enthalten, wird übersprungen statt erfunden — auch dann, wenn
     es nur schon erzeugte Zeilen hat.
   - Jede erzeugte Zeile bekommt die Spalte `generated_for`, jede echte Zeile, die
     als Beispiel diente, die Spalte `example_for`. Beim Aufteilen in train/holdout
-    bleiben beide **im Training** — sonst würde man das Modell an Texten prüfen,
-    die aus denselben Beispielen geschrieben wurden, an denen es gelernt hat.
+    bleiben beide — und von der KI ergänzte Zeilen (`enriched_fields`) — **im
+    Training**: sonst würde man das Modell an Texten prüfen, die eine KI
+    geschrieben hat, teils aus denselben Beispielen, an denen es gelernt hat.
     Wer erst auffüllt und dann aufteilt, riskiert deshalb, dass ein Label mit
     wenigen echten Zeilen im Holdout ganz fehlt; das Split-Ergebnis nennt solche
     Label beim Namen.
   - Ein von 3 auf 100 gehobenes Label hat das Modell trotzdem kaum gesehen. Die
     Prozentzahl in der Vorschau sagt dir, wie sehr ein späterer F1-Wert für dieses
     Label über die Generierung spricht statt über deine Daten.
-  - Die Kreuzvalidierung von api_v3 beim Training kennt diese Markierungen nicht
-    und bezieht erzeugte Zeilen mit ein. Beurteile ein Modell am Holdout.
+  - api_v3 kennt diese Markierungen: markierte Zeilen werden trainiert, aber nie
+    validiert — bei der Kreuzvalidierung wie beim Test-Split —, und das Modell
+    nennt in seinen Details, wie viele es waren. Beim Training lassen sich die
+    erzeugten Zeilen auch ganz weglassen, um „mit“ gegen „ohne“ zu vergleichen.
   - Das Ergebnis nennt, was die Prüfungen verworfen haben (Wiederholungen, zu
     kurz, unvollständig) — auch diese Aufrufe sind bezahlt.
 

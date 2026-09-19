@@ -3,6 +3,38 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — AI provenance end to end, prompts that know the dataset (2026-09-19)
+
+Plan: `docs/plan-2026-09-19-ai-provenance-prompts.md`; api_v3 reads the same marks
+(its plan `docs/plans/2026-09-19-ai-marked-rows.md`).
+
+### Changed
+
+- **The split keeps every AI-marked row out of the holdout**, `enriched_fields` rows
+  (and their text group) included: a real row whose keywords or description an LLM
+  wrote measured the model on LLM text. The result line and the no-holdout advice
+  name enrichment too.
+- **Runs exports mark every row `generated_for=<concept>`.** `source=synthetic` alone
+  did not survive a combine, which overwrites `source`. Exports are rebuilt from the
+  run on every download or push, so re-exporting marks older runs; a CSV downloaded
+  before this version carries no mark.
+- **The balancing prompt knows the dataset:** the label by its display name
+  (`<label>_DISPLAYNAME`) instead of a URI; the other labels to keep apart from
+  (co-occurring first, then by support, at most 30); per field its kind and the
+  middle half of its length in the label's real rows (the dataset's, when the label
+  has too few). Examples are complete rows closest to the label's median length —
+  longest-first made generated rows longer than the real ones. The output budget
+  covers the typical length asked for.
+- **The enrichment prompt names the row's labels** and asks for text that fits them,
+  and states the field's typical length measured on rows people wrote.
+- **A guidance that names a number keeps it:** neither prompt adds the dataset's range
+  beside it, so a request in the old `mode` shape keeps its "100-400 Zeichen". The
+  UI's default guidance for the WLO fields names no number any more.
+
+### Internal
+
+- `app/refine/prompt_context.py` holds what both prompts read from the frame.
+
 ## [Unreleased] — follow-ups of the second review (2026-09-18)
 
 ### Fixed

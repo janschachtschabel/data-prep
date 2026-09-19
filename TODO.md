@@ -26,6 +26,8 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**KI-Herkunft durchgängig, Prompts mit Datensatz-Kontext (2026-09-19).** Split hält jede KI-Markierung (auch `enriched_fields`) aus dem Holdout; Lauf-Exporte tragen `generated_for`; Balancing-Prompt nennt Label lesbar, Abgrenzungs-Label, Feldart und typische Länge, Beispiele typisch statt längste; Anreicherung nennt das Label der Zeile und die typische Länge; eine Zahl im Hinweis gewinnt. Gegenstück in api_v3: markierte Zeilen trainieren, validieren nie. Plan: `docs/plan-2026-09-19-ai-provenance-prompts.md`.
+
 **Folgepunkte des zweiten Reviews erledigt, gepusht, Container neu gebaut (2026-09-18).**
 Die Anreicherung behaelt bei einem Budget-Stopp ihren Zwischenstand, wie das
 Balancing: Ergebnis und Historie nennen den Grund, 429 nur, wenn vor der ersten

@@ -1,6 +1,8 @@
 # Design: AI provenance end to end, and prompts that know the dataset
 
-**Status: requested 2026-09-19 ("plane die Anpassung und beginne mit der Umsetzung").**
+**Status: requested 2026-09-19 ("plane die Anpassung und beginne mit der Umsetzung");
+Phases 1–3 implemented the same day, each task test-first. The interfaces below are the
+ones built (the context travels as one `PromptContext`, not as separate parameters).**
 Companion to api_v3's `docs/plans/2026-09-19-ai-marked-rows.md`, which reads the marks
 this app writes.
 
@@ -87,15 +89,25 @@ class FieldShape:
     values: tuple[int, int] | None   # same for the number of values (list fields only)
 
 def display_names(df, label_column: str, separator: str) -> dict[str, str]
-def contrast_labels(label: str, rows_by_label: dict[str, list[int]], names: dict[str, str],
+def contrast_labels(label: str, rows_by_label: dict[str, list[int]],
+                    labels_of_row: list[list[str]], names: dict[str, str],
                     *, cap: int = 30) -> tuple[list[str], int]   # names, how many more
-def field_shapes(cells: list[list[str]], fields: list[TextField]) -> list[FieldShape]
+def field_shapes(rows: list[list[str]], fields: list[TextField],
+                 fallback: list[FieldShape | None] | None = None) -> list[FieldShape | None]
+def typical_phrase(field: TextField, shape: FieldShape | None) -> str
+def guidance_names_a_number(field: TextField) -> bool
 
 # app/refine/balance_prompt.py
+@dataclass(frozen=True)
+class PromptContext:
+    label_name: str | None = None
+    others: tuple[str, ...] = ()
+    more_others: int = 0
+    shapes: tuple[FieldShape | None, ...] = ()
+
 def build_balance_prompt(label, examples, fields, *, n, avoid_titles,
-                         label_name: str | None = None, others: tuple[list[str], int] = ([], 0),
-                         shapes: list[FieldShape] | None = None) -> str
-def output_budget(examples, fields, n, shapes: list[FieldShape] | None = None) -> int
+                         context: PromptContext | None = None) -> str
+def output_budget(examples, fields, n, context: PromptContext | None = None) -> int
 
 # app/refine/enrich.py
 async def enrich_dataset(..., label_column: str | None = None, label_separator: str = ",")
