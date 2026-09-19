@@ -81,6 +81,22 @@ def one_line(text: str, limit: int | None = None) -> str:
     return " ".join(text.split())[:limit]
 
 
+# A double quote in a name would close the prompt's quotation of it -- „{label}“ -- and
+# what followed would read as the prompt's own words.
+_QUOTES = str.maketrans(dict.fromkeys("\"„“”«»‟", "'"))
+
+
+def label_name(label: str, name: str | None = None) -> str:
+    """How a prompt names ``label``: by its display ``name`` when it has one, else by
+    the value -- one line, bounded, with no double quote. A value too long for the line
+    keeps its end: the URIs of one vocabulary differ there (``…/sekundarstufe_1``,
+    ``…/sekundarstufe_2``), and cut after the host two labels read the same."""
+    if name and (line := one_line(name, NAME_CHARS)):
+        return line.translate(_QUOTES)
+    value = one_line(str(label)).translate(_QUOTES)
+    return value if len(value) <= NAME_CHARS else "…" + value[-(NAME_CHARS - 1):]
+
+
 def display_names(df: pd.DataFrame, label_column: str, separator: str) -> dict[str, str]:
     """Label value -> the name people read, from ``<label_column>_DISPLAYNAME``.
 
@@ -129,13 +145,13 @@ def contrast_labels(
     once, and never the label's own -- two values can share a display name, and a label
     told to stay apart from itself is told nothing.
     """
-    own = one_line(names.get(label, label), NAME_CHARS)
+    own = label_name(label, names.get(label))
     shared = Counter(other for row in rows_by_label.get(label, [])
                      for other in labels_of_row[row] if other != label)
     others = sorted((other for other in rows_by_label if other != label),
                     key=lambda other: (-shared[other], -len(rows_by_label[other]), other))
     named = list(dict.fromkeys(
-        name for name in (one_line(names.get(other, other), NAME_CHARS) for other in others)
+        name for name in (label_name(other, names.get(other)) for other in others)
         if name and name != own))
     return named[:cap], max(0, len(named) - cap)
 

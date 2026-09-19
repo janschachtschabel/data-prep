@@ -31,10 +31,10 @@ from ..textnorm import split_labels
 from .fields import TextField, is_gap, merge_values, read_values, write_values
 from .prompt_context import (
     MAX_VALUE_CHARS,
-    NAME_CHARS,
     display_names,
     field_shapes,
     guidance_states_a_length,
+    label_name,
     one_line,
     typical_phrase,
 )
@@ -125,7 +125,7 @@ def _classification(row: pd.Series, label_column: str | None, separator: str,
     if label_column is None:
         return ""
     labels = split_labels(row.get(label_column), separator)[:_MAX_LABELS]
-    return ", ".join(one_line(names.get(label, label), NAME_CHARS) for label in labels)
+    return ", ".join(label_name(label, names.get(label)) for label in labels)
 
 
 def _prompt_for(

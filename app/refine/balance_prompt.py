@@ -14,10 +14,9 @@ from pydantic import BaseModel, Field
 
 from .fields import TextField, read_values, write_values
 from .prompt_context import (
-    NAME_CHARS,
     FieldShape,
     guidance_states_a_length,
-    one_line,
+    label_name,
     typical_phrase,
 )
 
@@ -197,8 +196,8 @@ def build_balance_prompt(
         raise ValueError(f"Label {label!r} has no examples to generate from.")
 
     context = context or PromptContext()
-    # From the data: a line break must not start an instruction.
-    name = one_line(str(context.label_name or label), NAME_CHARS)
+    # From the data: a line break must not start an instruction, nor a quote end ours.
+    name = label_name(label, context.label_name)
     shapes = list(context.shapes) or [None] * len(fields)
     return _BALANCE_PROMPT.format(
         label=name,
