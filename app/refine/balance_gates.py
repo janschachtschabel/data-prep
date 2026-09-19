@@ -22,6 +22,7 @@ from .balance_prompt import (
     BalanceItem,
     PromptContext,
     build_balance_prompt,
+    entries_per_call,
     output_budget,
     shown_cells,
 )
@@ -190,11 +191,12 @@ async def generate_for_label(
     result = LabelResult()
     floors = _min_chars(examples, fields)
     _seed(seen, examples, fields)
-    attempts = math.ceil(wanted / batch_size) + EXTRA_BATCHES
+    per_call = entries_per_call(examples, fields, batch_size, context)
+    attempts = math.ceil(wanted / per_call) + EXTRA_BATCHES
 
     while len(result.accepted) < wanted and attempts:
         attempts -= 1
-        n = min(wanted - len(result.accepted), batch_size)
+        n = min(wanted - len(result.accepted), per_call)
         prompt = build_balance_prompt(label, examples, fields, n=n, avoid_titles=avoid,
                                       context=context)
         try:

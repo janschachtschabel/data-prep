@@ -120,6 +120,19 @@ def _avoid_block(titles: list[str]) -> str:
     return "; ".join(cleaned[-_AVOID_COUNT:]) or "—"
 
 
+# The most output tokens one call is given, and what an answer spends beside its entries.
+_MAX_OUTPUT_TOKENS = 16000
+_BASE_TOKENS = 500
+
+
+def _entry_tokens(examples: list[dict], fields: list[TextField],
+                  context: PromptContext | None) -> int:
+    chars = max((sum(map(len, shown_cells(row, fields))) for row in examples), default=0)
+    if context is not None:
+        chars = max(chars, sum(s.chars[1] for s in context.shapes if s and s.chars))
+    return max(300, chars // 2)
+
+
 def output_budget(
     examples: list[dict], fields: list[TextField], n: int, context: PromptContext | None = None,
 ) -> int:
@@ -131,10 +144,18 @@ def output_budget(
     that follows the stated lengths must fit. The client default of 2,000 tokens --
     reasoning included -- truncates a batch of ten entries with descriptions.
     """
-    chars = max((sum(map(len, shown_cells(row, fields))) for row in examples), default=0)
-    if context is not None:
-        chars = max(chars, sum(s.chars[1] for s in context.shapes if s and s.chars))
-    return min(16000, 500 + n * max(300, chars // 2))
+    return min(_MAX_OUTPUT_TOKENS, _BASE_TOKENS + n * _entry_tokens(examples, fields, context))
+
+
+def entries_per_call(
+    examples: list[dict], fields: list[TextField], batch_size: int,
+    context: PromptContext | None = None,
+) -> int:
+    """``batch_size``, or fewer: as many entries as ``output_budget`` can give room.
+    A batch past the cap is cut off at it, and a cut answer fails the call -- and the
+    run with every row it had paid for."""
+    fits = (_MAX_OUTPUT_TOKENS - _BASE_TOKENS) // _entry_tokens(examples, fields, context)
+    return max(1, min(batch_size, fits))
 
 
 def _field_line(index: int, field: TextField, shape: FieldShape | None) -> str:

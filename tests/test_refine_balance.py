@@ -488,6 +488,35 @@ def test_a_value_far_shorter_than_any_example_is_discarded():
     assert stats["per_label"]["Physik"]["discarded_short"] == 1
 
 
+def test_a_batch_the_output_cap_cannot_hold_is_asked_for_in_smaller_calls():
+    """output_budget caps a call at 16,000 tokens, and fifty long entries need more: the
+    answer was cut off, and the run failed with every row it had paid for. The preview
+    counted the calls of the uncut batch, and the call budget was checked against that
+    (review 2026-09-19 #11)."""
+    import asyncio
+    import math
+    import re
+
+    from app.refine.balance import balance_dataset, plan_balance
+
+    long_text = "Beschreibung " * 110  # about 1,430 characters
+    df = pd.DataFrame([[f"Optik {i}", long_text, "a, b, c", "Physik"] for i in range(6)]
+                      + [[f"Algebra {i}", long_text, "a, b, c", "Mathe"] for i in range(60)],
+                      columns=[TITLE, DESC, KEYW, LABEL])
+    budgets: list[int] = []
+    complete, calls = _scripted([], budgets)
+
+    plan = plan_balance(df, fields=_fields(), label_column=LABEL, target_per_label=60,
+                        batch_size=50)
+    asyncio.run(balance_dataset(df, fields=_fields(), label_column=LABEL, target_per_label=60,
+                                batch_size=50, complete=complete))
+
+    asked = [int(re.search(r"Erzeuge (\d+) NEUE", prompt).group(1)) for prompt in calls]
+    assert max(asked) < 50 and max(budgets) <= 16000
+    assert budgets[0] < 16000, "the batch fits under the cap, it is not cut by it"
+    assert plan["per_label"]["Physik"]["batches"] == math.ceil(54 / max(asked))
+
+
 def test_a_value_longer_than_an_answer_may_hold_is_discarded_alone():
     """One value past MAX_VALUE_CHARS failed the whole answer's schema: the batch, and
     with it the paid run, was lost. Now that item is discarded with its reason, and the

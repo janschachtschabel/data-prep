@@ -103,7 +103,8 @@ async def balance(
 
     plan_args = {"fields": fields, "label_column": req.label_column,
                  "target_per_label": req.target_per_label,
-                 "label_separator": req.label_separator, "batch_size": req.batch_size}
+                 "label_separator": req.label_separator, "batch_size": req.batch_size,
+                 "examples_per_label": req.examples_per_label}
 
     if not req.dry_run:
         target = safe_name(req.target, "target name")
@@ -133,7 +134,7 @@ async def balance(
         session = session_for(req.llm_purpose, settings, override)
         new_df, stats = await balance_dataset(
             df, **plan_args, complete=session.complete,  # type: ignore[arg-type]
-            examples_per_label=req.examples_per_label, limit=req.limit,
+            limit=req.limit,
             # A cap no preview can predict (tokens, the process-wide ceiling) ends
             # the run early instead of discarding what it already paid for.
             stop_on=(BudgetExceeded,),
