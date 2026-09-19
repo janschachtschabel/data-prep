@@ -47,20 +47,25 @@ class FieldShape:
 # "50 Wörtern".
 _UNIT = (r"(?:Zeichen|W(?:ö|oe)rtern?|Worte?n?|Werte?n?|S(?:ä|ae)tzen?|Satz|Schlagw\w*"
          r"|Stichw\w*|Begriffe?n?|Keywords?|Tags?|characters?|chars|words?|values?|sentences?)")
-_NUMBER_WORD = r"(?:ein(?:e[mnrs]?)?|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf)"
-# A number or a range, then -- within three words -- what it counts: "100-400 Zeichen",
-# "3-6 treffende deutsche Schlagwörter". Or a number word with at most one word
-# between: "zwei bis drei Sätze", "in einem Satz" -- "eine Liste von Begriffen" counts
-# nothing. "m²" is not a number.
+_NUMBER_WORD = r"(?:zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf)"
+# "ein" counts only what a length is measured in: "in einem Satz" is one, "an einem Tag"
+# and "einen Begriff aus dem Lehrplan" are none.
+_ONE = r"ein(?:e[mnrs]?)?\s+(?:\w+\s+)?(?:Satz|S(?:ä|ae)tzen?|Worte?n?|W(?:ö|oe)rtern?|Zeichen)"
+# A number, a range or a number word, then -- within three words -- what it counts:
+# "100-400 Zeichen", "drei treffende deutsche Schlagwörter", "zwei bis drei Sätze".
+# "eine Liste von Begriffen" counts nothing, and "m²" is not a number.
 _STATED_LENGTH = re.compile(
-    rf"\b[0-9]+(?:\s*[-–]\s*[0-9]+)?\s+(?:\w+\s+){{0,3}}?{_UNIT}\b"
-    rf"|\b{_NUMBER_WORD}(?:\s+bis\s+{_NUMBER_WORD})?\s+(?:\w+\s+)?{_UNIT}\b",
+    rf"\b(?:[0-9]+(?:\s*[-–]\s*[0-9]+)?|{_NUMBER_WORD})\s+(?:\w+\s+){{0,3}}?{_UNIT}\b"
+    rf"|\b{_ONE}\b",
     re.IGNORECASE)
-# A number that names a grade or a level counts nothing: "für Klasse 5 geeignete
-# Begriffe" states no length, so such a number is taken out before the search.
+# A number that names a grade, a level or an age counts nothing -- "für Klasse 5/6
+# geeignete Begriffe", "Klassen fünf und sechs", "ab 6 Jahren" -- so it is taken out
+# before the search.
+_NUM = rf"(?:[0-9]+|eins|{_NUMBER_WORD})"
 _GRADE = re.compile(
-    r"\b(?:Klassen?|Jahrg(?:ang|änge)|\w*stufen?|Level|Niveau|Kapitel|Lektion)\s+"
-    r"[0-9]+(?:\s*(?:[-–]|bis)\s*[0-9]+)?",
+    rf"\b(?:Klassen?|Jahrg(?:ang|änge)|\w*stufen?|Level|Niveau|Kapitel|Lektion)\s+{_NUM}"
+    rf"(?:\s*(?:[-–/]|bis|und)\s*{_NUM})*"
+    rf"|\b{_NUM}(?:\s*(?:[-–/]|bis)\s*{_NUM})?\s+Jahren?\b",
     re.IGNORECASE)
 
 

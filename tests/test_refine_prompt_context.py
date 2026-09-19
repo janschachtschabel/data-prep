@@ -561,6 +561,15 @@ def test_each_field_line_carries_its_own_typical_length():
     ("Für die Jahrgangsstufe 7 passende Stichwörter.", False),
     ("Material der Jahrgangsstufe 9, drei Schlagwörter.", True),
     ("Eine Liste von Begriffen aus dem Material.", False),
+    # review of the fixes: "ein" counts only sentences, words and characters; grades and
+    # ages in more forms; a number word with more words before its unit
+    ("Eine Übung, die an einem Tag passt.", False),
+    ("Nenne einen Begriff aus dem Lehrplan.", False),
+    ("Für Klasse fünf geeignete Begriffe.", False),
+    ("Für Klasse 5/6 geeignete Begriffe.", False),
+    ("Für die Klassen 5 und 6 geeignete Begriffe.", False),
+    ("Ab 6 Jahren geeignete Begriffe.", False),
+    ("Nenne drei treffende deutsche Schlagwörter.", True),
 ])
 def test_only_a_stated_length_overrides_the_datasets(guidance, states):
     """Any digit used to count: "Klasse 5" silently lost the dataset's length (review #4)."""
