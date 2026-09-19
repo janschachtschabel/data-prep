@@ -22,16 +22,17 @@ const RefineFields = (() => {
 
   // What the WLO export's own columns hold, so its keyword column starts as the list
   // it is. The hints are PROMPT text: they reach a German prompt whatever language
-  // the UI shows, so they are not translated. They repeat the guidance the enrich
-  // route gives requests in the old shape (routes/refine_prep.py).
+  // the UI shows, so they are not translated. They name no number: the prompt takes
+  // the typical length from the dataset, and a number typed here overrides it
+  // (prompt_context.guidance_names_a_number).
   const DEFAULTS = {
     "properties.cclom:general_keyword": {
       list: true, separator: ",", min: 3,
-      guidance: "Nenne 3-6 treffende deutsche Schlagwörter (kommagetrennt), die den Inhalt erschließen.",
+      guidance: "Nenne treffende deutsche Schlagwörter, die den Inhalt erschließen.",
     },
     "properties.cclom:general_description": {
       list: false, separator: ",", min: 1,
-      guidance: "Schreibe eine sachliche Beschreibung (100-400 Zeichen), was dieses Material bietet.",
+      guidance: "Schreibe eine sachliche Beschreibung, was dieses Material bietet.",
     },
   };
   const BLANK = { list: false, separator: ",", min: 1, guidance: "" };
