@@ -611,6 +611,23 @@ def test_the_prompt_names_the_rows_classification_as_people_read_it():
     assert "zu dieser Einordnung passen" in prompts[0]
 
 
+def test_the_added_text_fits_the_classification_without_naming_it():
+    """Told only that the addition should fit, the model wrote the classification in:
+    one of six enriched rows got "Sekundarstufe" as a keyword -- the label, in the
+    features of a row that trains it (review 2026-09-19 #6)."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    df = pd.DataFrame([["Wasserkraft", "", "uri/phy", "Physik"]],
+                      columns=[TITLE, DESC, LABEL, f"{LABEL}_DISPLAYNAME"])
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=[TextField(column=TITLE), TextField(column=DESC)],
+                               target_field=DESC, complete=complete, label_column=LABEL))
+
+    assert "sie aber nicht selbst nennen" in prompts[0]
+
+
 def test_without_a_label_column_the_prompt_claims_no_classification():
     from app.refine.enrich import enrich_dataset
     from app.refine.fields import TextField

@@ -149,7 +149,10 @@ def _prompt_for(
         context="\n".join(context), column=target.column, shape=_shape(target),
         typical=typical, existing=held,
         guidance=f"{target.guidance}\n" if target.guidance else "",
-        fits="Die Ergänzung soll zu dieser Einordnung passen.\n" if classified else "",
+        # Fitting it, not naming it: the label written into a row that trains it is a
+        # feature the real rows do not have.
+        fits=("Die Ergänzung soll zu dieser Einordnung passen, sie aber nicht selbst nennen.\n"
+              if classified else ""),
     )
 
 
