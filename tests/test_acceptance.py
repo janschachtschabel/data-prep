@@ -113,7 +113,7 @@ def test_acceptance_vocab_only_end_to_end(make_client, tmp_path, monkeypatch):
 
     csv = client.get(f"/runs/{run_id}/export.csv", headers=HEADERS).text
     header = csv.splitlines()[0]
-    assert header == f"{TITLE};{DESC};{KEYW};{LABEL}_DISPLAYNAME;{LABEL};source"
+    assert header == f"{TITLE};{DESC};{KEYW};{LABEL}_DISPLAYNAME;{LABEL};source;generated_for"
     assert csv.strip().count("\n") == 20  # 20 data rows
     assert ";synthetic" in csv
 

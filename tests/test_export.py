@@ -4,10 +4,12 @@ download routes and the guarded api_v3 push (transport mocked)."""
 from __future__ import annotations
 
 import ast
+import io
 import json
 from pathlib import Path
 
 import httpx
+import pandas as pd
 import yaml
 
 from app.vocab import parse_vocabulary
@@ -107,13 +109,27 @@ def test_csv_uses_api_v3_schema_with_displayname(tmp_path):
     csv_text = to_csv(load_samples(run_dir), vocab)
 
     lines = csv_text.strip().splitlines()
-    assert lines[0] == f"{TITLE};{DESC};{KEYW};{LABEL}_DISPLAYNAME;{LABEL};source"
+    assert lines[0] == f"{TITLE};{DESC};{KEYW};{LABEL}_DISPLAYNAME;{LABEL};source;generated_for"
     assert lines[1].startswith("Optik Video;Brechung erklärt für Einsteiger;Optik, Licht".replace(";", ";")[:20])
     assert "Optik;" in lines[1]  # DISPLAYNAME resolved from the vocabulary
-    assert lines[1].endswith("synthetic")
+    assert ";synthetic;" in lines[1]
     assert "Verworfen" not in csv_text
     # Arts has no German label — falls back to English per vocab.label.
     assert "Arts;" in lines[2]
+
+
+def test_every_exported_row_is_marked_as_generated_for_its_concept(tmp_path):
+    """`source=synthetic` does not survive a combine: combine overwrites `source` with
+    the name the user gives each source. `generated_for` is the mark combine carries,
+    the split keeps out of a holdout, and api_v3 keeps out of its validation."""
+    from app.exporter import load_samples, to_csv
+
+    run_dir = _write_run(tmp_path / "runs")
+    csv_text = to_csv(load_samples(run_dir), parse_vocabulary(NESTED))
+
+    frame = pd.read_csv(io.StringIO(csv_text), sep=";", dtype=str)
+    assert list(frame[LABEL]) == [URI_OPTICS, URI_ARTS]
+    assert list(frame["generated_for"]) == list(frame[LABEL])
 
 
 def test_audit_markdown_contains_warning_and_stats(tmp_path):
