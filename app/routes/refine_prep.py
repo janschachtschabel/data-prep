@@ -73,7 +73,8 @@ class CombineRequest(BaseModel):
 
 class SplitRequest(AnalyzeRequest):
     holdout_fraction: float = Field(default=0.15, gt=0.0, lt=0.9, description=(
-        "Share of each label's real (not generated) rows to hold out, at least one row; whole text groups move."))
+        "Share of each label's rows that may be held out (no AI mark, no text shared with a marked row), "
+        "at least one row; whole text groups move."))
     seed: int = Field(default=42, ge=0, description="Random seed: same seed and data, same split.")
     target: str = Field(max_length=MAX_NAME_BYTES, description=(
         "Base name of the two outputs `<target>_train` and `<target>_holdout`."))
@@ -184,7 +185,7 @@ def _markable(column: str) -> str:
 async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depends(get_settings)) -> dict:
     """Write `<target>_train` and `<target>_holdout`: text-disjoint (rows with the same cleaned text stay on
     one side) and stratified (text groups join the holdout in seeded order until each label has
-    `holdout_fraction` of its real rows). Rows with an AI mark (`generated_for`, `example_for`,
+    `holdout_fraction` of the rows it may hold out). Rows with an AI mark (`generated_for`, `example_for`,
     `enriched_fields`), and every row sharing its text with one, stay in training. Returns the counts,
     `labels_without_holdout` (labels this left without a holdout row; split before balancing to avoid
     them) and a label report of the training part.
