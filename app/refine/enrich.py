@@ -190,10 +190,10 @@ async def enrich_dataset(
         _read_context, df, target, label_column, label_separator)
 
     new = df.copy()
-    if "enriched_fields" not in new.columns:
-        new["enriched_fields"] = ""
+    if ENRICHED_FIELDS not in new.columns:
+        new[ENRICHED_FIELDS] = ""
     else:
-        new["enriched_fields"] = new["enriched_fields"].fillna("")
+        new[ENRICHED_FIELDS] = new[ENRICHED_FIELDS].fillna("")
 
     enriched = 0
     calls = 0  # what `limit` caps: model calls, whether or not they changed a row
@@ -223,7 +223,7 @@ async def enrich_dataset(
         if not merged or merged == existing:
             continue  # nothing new: the cell stays as it was, and is not counted
         new.at[idx, target.column] = write_values(merged, target)
-        new.at[idx, "enriched_fields"] = _mark(new.at[idx, "enriched_fields"], target.column)
+        new.at[idx, ENRICHED_FIELDS] = _mark(new.at[idx, ENRICHED_FIELDS], target.column)
         enriched += 1
 
     return new, {"field": target.column, "rows": int(len(df)), "enriched": enriched,
