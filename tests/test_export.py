@@ -221,3 +221,14 @@ def test_push_rejects_unconfigured_or_foreign_targets(make_client, tmp_path, mon
     r = client2.post("/runs/run-1/push", headers=HEADERS)
     assert r.status_code == 400
     assert "not allowed" in r.json()["detail"]
+
+def test_every_jsonl_record_is_marked_as_generated_for_its_concept(tmp_path):
+    """The JSONL export can be imported into the workbench as well; without the mark its
+    rows would pass the split as real ones and reach a holdout (review #8)."""
+    from app.exporter import load_samples, to_jsonl
+
+    run_dir = _write_run(tmp_path / "runs")
+    records = [json.loads(line) for line in to_jsonl(load_samples(run_dir)).splitlines()]
+
+    assert records
+    assert [r["generated_for"] for r in records] == [r["concept"] for r in records]

@@ -48,7 +48,11 @@ def load_samples(run_dir: Path, statuses: tuple[str, ...] = EXPORTABLE_STATUSES)
 
 
 def to_jsonl(samples: list[dict]) -> str:
-    return "\n".join(json.dumps(s, ensure_ascii=False) for s in samples) + ("\n" if samples else "")
+    """The run's samples, one JSON record per line -- each marked ``generated_for`` its
+    concept, like the CSV: a JSONL export imported into the workbench would otherwise
+    pass the split as real rows."""
+    return "\n".join(json.dumps({**s, GENERATED_FOR: s["concept"]}, ensure_ascii=False)
+                     for s in samples) + ("\n" if samples else "")
 
 
 def to_csv(samples: list[dict], vocab: Vocabulary, *, label_column: str = DEFAULT_LABEL_COL) -> str:
