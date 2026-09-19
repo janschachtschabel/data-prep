@@ -402,6 +402,19 @@ def test_a_value_without_a_name_keeps_the_end_that_tells_it_apart():
     assert named[0].endswith("sekundarstufe_2") and len(named[0]) <= NAME_CHARS
 
 
+def test_the_examples_are_a_model_of_tone_not_of_length():
+    """The header called them the model for style AND length while the rules take the
+    length from the field lines, and they are cut to 400 characters without a word
+    about it (review 2026-09-19 #21)."""
+    from app.refine.balance_prompt import build_balance_prompt
+
+    prompt = build_balance_prompt("uri", _examples(), _fields(), n=5, avoid_titles=[],
+                                  context=_context())
+
+    header = next(line for line in prompt.splitlines() if line.startswith("Echte Einträge"))
+    assert "Länge" not in header and "gekürzt" in header
+
+
 def test_a_name_cannot_close_the_prompts_quotation():
     """The prompt quotes the label -- „{label}“ -- and a name holding a double quote
     ended that quotation and could append a rule of its own (review 2026-09-19 #10)."""

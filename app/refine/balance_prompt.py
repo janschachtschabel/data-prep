@@ -75,7 +75,7 @@ das zu „{label}“ gehört.
 Felder eines Eintrags, genau in dieser Reihenfolge:
 {field_lines}
 
-Echte Einträge aus dem Datensatz als Stil- und Längenvorbild (NICHT kopieren):
+Echte Einträge aus dem Datensatz als Vorbild für Ton und Stil, lange Felder gekürzt (NICHT kopieren):
 {examples}
 
 Erzeuge {n} NEUE, DEUTLICH VERSCHIEDENE Einträge zu „{label}“.
