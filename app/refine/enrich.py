@@ -30,14 +30,23 @@ from pydantic import BaseModel, Field, StringConstraints
 from ..pii import scrub
 from ..textnorm import split_labels
 from .fields import TextField, is_gap, merge_values, read_values, write_values
-from .prompt_context import display_names, field_shapes, guidance_names_a_number, typical_phrase
+from .prompt_context import (
+    MAX_VALUE_CHARS,
+    NAME_CHARS,
+    display_names,
+    field_shapes,
+    guidance_names_a_number,
+    one_line,
+    typical_phrase,
+)
 from .provenance import ENRICHED_FIELDS, GENERATED_FOR, is_marked
 
 Complete = Callable[[str, type[BaseModel]], Awaitable[BaseModel]]
 
 # Bounded per value and per list: a model that runs away must not write a megabyte
-# into one cell. 2000 characters is what the description prompt has always allowed.
-Value = Annotated[str, StringConstraints(max_length=2000)]
+# into one cell. The bound is the prompts' own (MAX_VALUE_CHARS), so no stated typical
+# length ever asks for more than an answer may hold.
+Value = Annotated[str, StringConstraints(max_length=MAX_VALUE_CHARS)]
 
 
 class FieldValues(BaseModel):
@@ -57,10 +66,9 @@ _PROMPT = """Kontext: Metadaten für ein Lernmaterial (Bildungsinhalt){classifie
 Aufgabe: Ergänze das Feld "{column}". {shape}{typical}
 {existing}{guidance}{fits}KEINE Personennamen, E-Mails, Telefonnummern, URLs oder Anbieternamen."""
 
-# How many of a row's labels the prompt names, and at most how long each: a free-text
-# label column can hold dozens, and every enriched row pays for them.
+# How many of a row's labels the prompt names: a free-text label column can hold
+# dozens, and every enriched row pays for them.
 _MAX_LABELS = 5
-_LABEL_CHARS = 60
 
 
 def _shape(target: TextField) -> str:
@@ -70,12 +78,6 @@ def _shape(target: TextField) -> str:
         return "Es enthält genau EINEN Wert."
     return (f'Es enthält eine Liste (in der Zelle getrennt durch "{target.separator}"); '
             f"gib mindestens {target.min_values} Werte zurück, jeden als eigenen Eintrag.")
-
-
-def _one_line(text: str) -> str:
-    """Dataset text as one line: a line break in a cell must not start a new line —
-    possibly an instruction — in the prompt."""
-    return " ".join(text.split())
 
 
 def _mark(existing: str, field: str) -> str:
@@ -112,7 +114,7 @@ def _classification(row: pd.Series, label_column: str | None, separator: str,
     if label_column is None:
         return ""
     labels = split_labels(row.get(label_column), separator)[:_MAX_LABELS]
-    return ", ".join(_one_line(names.get(label, label))[:_LABEL_CHARS] for label in labels)
+    return ", ".join(one_line(names.get(label, label), NAME_CHARS) for label in labels)
 
 
 def _prompt_for(
@@ -128,8 +130,8 @@ def _prompt_for(
             continue
         values = read_values(row.get(field.column), field)
         if values:
-            context.append(f'{field.column}: "{_one_line(write_values(values, field))}"')
-    held = (f"Bereits vorhanden, nicht wiederholen: {_one_line(write_values(existing, target))}\n"
+            context.append(f'{field.column}: "{one_line(write_values(values, field))}"')
+    held = (f"Bereits vorhanden, nicht wiederholen: {one_line(write_values(existing, target))}\n"
             if existing else "")
     return _PROMPT.format(
         classified=f", eingeordnet unter „{classified}“" if classified else "",

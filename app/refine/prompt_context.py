@@ -19,8 +19,13 @@ import pandas as pd
 from ..textnorm import split_labels
 from .fields import TextField, read_values
 
-# A name in the contrast list is one line of the prompt, at most this long.
-_NAME_CHARS = 60
+# The most one answer value may hold -- both answer schemas cap it here. A typical
+# length is never stated above it: a model that complied would be refused by the
+# schema, and the paid run would fail with it.
+MAX_VALUE_CHARS = 2000
+# A name from the dataset -- a label, a display name -- is one line of the prompt, at
+# most this long.
+NAME_CHARS = 60
 # Fewer filled cells than this and a percentile describes the few rows, not the field.
 _MIN_FILLED = 5
 
@@ -55,10 +60,11 @@ def typical_phrase(field: TextField, shape: FieldShape | None) -> str:
     return f"im Datensatz meist {f'etwa {low}' if low == high else f'{low}–{high}'} {unit}"
 
 
-def _one_line(text: str) -> str:
-    # Dataset text: a line break inside a name would start a new line -- possibly an
-    # instruction -- in the prompt.
-    return " ".join(text.split())
+def one_line(text: str, limit: int | None = None) -> str:
+    """Dataset text as one line of a prompt, cut to ``limit``: a line break inside a
+    name would start a new line -- possibly an instruction -- and an unbounded one is
+    paid for in every call."""
+    return " ".join(text.split())[:limit]
 
 
 def display_names(df: pd.DataFrame, label_column: str, separator: str) -> dict[str, str]:
@@ -76,13 +82,13 @@ def display_names(df: pd.DataFrame, label_column: str, separator: str) -> dict[s
     for label_cell, name_cell in zip(df[label_column], df[column], strict=True):
         labels = split_labels(label_cell, separator)
         if len(labels) == 1:
-            pairs = [(labels[0], " ".join(str(name_cell).split()))] if isinstance(name_cell, str) else []
+            pairs = [(labels[0], name_cell)] if isinstance(name_cell, str) else []
         else:
             found = split_labels(name_cell, separator)
             pairs = list(zip(labels, found, strict=True)) if len(found) == len(labels) else []
         for label, name in pairs:
-            if name:
-                names.setdefault(label, name)
+            if one_line(name, NAME_CHARS):
+                names.setdefault(label, one_line(name, NAME_CHARS))
     return names
 
 
@@ -99,14 +105,19 @@ def contrast_labels(
 
     Labels sharing rows with ``label`` come first: a row carrying both is where the two
     blur, so that is where generated text drifts. Then by support -- the labels the
-    model sees most. Capped, because every batch pays for every name.
+    model sees most. Capped, because every batch pays for every name. A name is listed
+    once, and never the label's own -- two values can share a display name, and a label
+    told to stay apart from itself is told nothing.
     """
+    own = one_line(names.get(label, label), NAME_CHARS)
     shared = Counter(other for row in rows_by_label.get(label, [])
                      for other in labels_of_row[row] if other != label)
     others = sorted((other for other in rows_by_label if other != label),
                     key=lambda other: (-shared[other], -len(rows_by_label[other]), other))
-    named = [_one_line(names.get(other, other))[:_NAME_CHARS] for other in others[:cap]]
-    return named, max(0, len(others) - cap)
+    named = list(dict.fromkeys(
+        name for name in (one_line(names.get(other, other), NAME_CHARS) for other in others)
+        if name and name != own))
+    return named[:cap], max(0, len(named) - cap)
 
 
 def _middle_half(numbers: list[int], step: int) -> tuple[int, int]:
@@ -130,7 +141,9 @@ def field_shapes(
     ``rows`` holds each row's normalised cells in field order. A field with fewer than a
     handful of filled cells takes ``fallback``'s shape -- the whole dataset's, for a label
     with three rows -- or none. A list field's number of values never goes below what
-    the field requires: the gate would discard such an answer after it was paid for.
+    the field requires: the gate would discard such an answer after it was paid for. A
+    length never goes above ``MAX_VALUE_CHARS``, and a field whose typical entry starts
+    beyond it gets no length at all.
     """
     shapes: list[FieldShape | None] = []
     for index, field in enumerate(fields):
@@ -143,6 +156,7 @@ def field_shapes(
             low, high = _middle_half([len(read_values(cell, field)) for cell in filled], 1)
             low = max(low, field.min_values)
             values = (low, max(high, low))
-        shapes.append(FieldShape(chars=_middle_half([len(cell) for cell in filled], 10),
-                                 values=values))
+        low, high = _middle_half([len(cell) for cell in filled], 10)
+        chars = (low, min(high, MAX_VALUE_CHARS)) if low < MAX_VALUE_CHARS else None
+        shapes.append(FieldShape(chars=chars, values=values))
     return shapes

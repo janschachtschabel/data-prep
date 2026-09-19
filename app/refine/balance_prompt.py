@@ -14,10 +14,17 @@ from typing import Annotated
 from pydantic import BaseModel, Field, StringConstraints
 
 from .fields import TextField, read_values, write_values
-from .prompt_context import FieldShape, guidance_names_a_number, typical_phrase
+from .prompt_context import (
+    MAX_VALUE_CHARS,
+    NAME_CHARS,
+    FieldShape,
+    guidance_names_a_number,
+    one_line,
+    typical_phrase,
+)
 
 # Bounded per value: a model that runs away must not write a megabyte into one cell.
-Value = Annotated[str, StringConstraints(max_length=2000)]
+Value = Annotated[str, StringConstraints(max_length=MAX_VALUE_CHARS)]
 
 
 class BalanceItem(BaseModel):
@@ -93,10 +100,6 @@ def shown_cells(row: dict, fields: list[TextField]) -> list[str]:
     thing.
     """
     return [write_values(read_values(row.get(f.column), f), f)[:_EXAMPLE_CHARS] for f in fields]
-
-
-def _one_line(text: str) -> str:
-    return " ".join(str(text).split())
 
 
 def _avoid_block(titles: list[str]) -> str:
@@ -195,7 +198,7 @@ def build_balance_prompt(
 
     context = context or PromptContext()
     # From the data: a line break must not start an instruction.
-    name = _one_line(context.label_name or label)
+    name = one_line(str(context.label_name or label), NAME_CHARS)
     shapes = list(context.shapes) or [None] * len(fields)
     return _BALANCE_PROMPT.format(
         label=name,
