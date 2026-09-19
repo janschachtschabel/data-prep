@@ -283,18 +283,37 @@ def test_a_guidance_that_names_a_number_gets_no_second_one():
 
 def test_a_typical_length_never_asks_for_more_than_an_answer_may_hold():
     """Every answer value is capped (MAX_VALUE_CHARS); a prompt asking for 2920-3970
-    characters gets answers the schema rejects, and the paid run fails (review #1)."""
-    from app.refine.prompt_context import MAX_VALUE_CHARS, field_shapes
+    characters gets answers the gate throws away after they were paid for (review #1).
+    Nor does the range end AT the cap: a model asked for "1750-2000" aims at 2000 and
+    overshoots it, so it ends at MAX_STATED_CHARS (review 2026-09-19 #2)."""
+    from app.refine.prompt_context import MAX_STATED_CHARS, MAX_VALUE_CHARS, field_shapes
 
     fields = [TextField(column=DESC)]
-    long_rows = [["d" * length] for length in (1500, 1700, 1900, 2200, 2500, 2600)]
-    longer_rows = [["d" * length] for length in (2400, 2900, 3300, 3900, 4200, 4500)]
+    long_rows = [["d" * length] for length in (1000, 1200, 1400, 1700, 2000, 2200)]
+    longer_rows = [["d" * length] for length in (1500, 1700, 1900, 2200, 2500, 2600)]
 
     (clamped,) = field_shapes(long_rows, fields)
     (beyond,) = field_shapes(longer_rows, fields)
 
-    assert clamped.chars == (1750, MAX_VALUE_CHARS)
+    assert MAX_STATED_CHARS <= MAX_VALUE_CHARS * 3 // 4
+    assert clamped.chars == (1250, MAX_STATED_CHARS)
     assert beyond is None or beyond.chars is None, "nothing typical fits an answer: say nothing"
+
+
+def test_a_list_too_long_to_state_its_count_gets_its_length_instead():
+    """Balancing returns a list as ONE string: the typical number of values here asks for
+    a cell beyond what a prompt may state, so the prompt states the characters -- capped
+    -- instead (review 2026-09-19 #2)."""
+    from app.refine.prompt_context import MAX_STATED_CHARS, field_shapes
+
+    field = TextField(column=KEYW, separator=",", min_values=3)
+    rows = [[", ".join(f"schlagwort{i:03d}" for i in range(count))]
+            for count in (60, 70, 80, 110, 130, 150)]
+
+    (shape,) = field_shapes(rows, [field])
+
+    assert shape.values is None
+    assert shape.chars is not None and shape.chars[1] == MAX_STATED_CHARS
 
 
 def test_both_answer_schemas_hold_the_length_the_prompts_may_ask_for():

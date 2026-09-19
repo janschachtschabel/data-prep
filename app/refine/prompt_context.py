@@ -24,6 +24,9 @@ from .fields import TextField, read_values
 # length is never stated above it: a model that complied would be refused by the
 # schema, and the paid run would fail with it.
 MAX_VALUE_CHARS = 2000
+# The most a prompt states as a typical length. Not the cap itself: a model asked for
+# "1750-2000" aims at the upper end and overshoots it.
+MAX_STATED_CHARS = MAX_VALUE_CHARS * 3 // 4
 # A name from the dataset -- a label, a display name -- is one line of the prompt, at
 # most this long.
 NAME_CHARS = 60
@@ -153,8 +156,10 @@ def field_shapes(
     handful of filled cells takes ``fallback``'s shape -- the whole dataset's, for a label
     with three rows -- or none. A list field's number of values never goes below what
     the field requires: the gate would discard such an answer after it was paid for. A
-    length never goes above ``MAX_VALUE_CHARS``, and a field whose typical entry starts
-    beyond it gets no length at all.
+    length never goes above ``MAX_STATED_CHARS``, and a field whose typical entry starts
+    beyond it gets no length at all. Nor does a list whose typical cell is longer get
+    its number of values: balancing returns the list as one string, and the count would
+    ask for that cell -- its characters, capped, say it instead.
     """
     shapes: list[FieldShape | None] = []
     for index, field in enumerate(fields):
@@ -162,12 +167,12 @@ def field_shapes(
         if len(filled) < _MIN_FILLED:
             shapes.append(fallback[index] if fallback is not None else None)
             continue
-        values = None
-        if field.separator:
-            low, high = _middle_half([len(read_values(cell, field)) for cell in filled], 1)
-            low = max(low, field.min_values)
-            values = (low, max(high, low))
         low, high = _middle_half([len(cell) for cell in filled], 10)
-        chars = (low, min(high, MAX_VALUE_CHARS)) if low < MAX_VALUE_CHARS else None
+        chars = (low, min(high, MAX_STATED_CHARS)) if low < MAX_STATED_CHARS else None
+        values = None
+        if field.separator and high <= MAX_STATED_CHARS:
+            fewest, most = _middle_half([len(read_values(cell, field)) for cell in filled], 1)
+            fewest = max(fewest, field.min_values)
+            values = (fewest, max(most, fewest))
         shapes.append(FieldShape(chars=chars, values=values))
     return shapes
