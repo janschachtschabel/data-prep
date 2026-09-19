@@ -22,7 +22,6 @@ from dataclasses import dataclass
 import pandas as pd
 
 from ..textnorm import split_labels
-from .balance_context import contrast_labels, display_names, field_shapes
 from .balance_gates import (
     EXTRA_BATCHES,
     Complete,
@@ -31,8 +30,9 @@ from .balance_gates import (
     generate_for_label,
     pick_examples,
 )
-from .balance_prompt import FieldShape, PromptContext
+from .balance_prompt import PromptContext
 from .fields import TextField, read_values, write_values
+from .prompt_context import FieldShape, contrast_labels, display_names, field_shapes
 from .provenance import EXAMPLE_FOR, GENERATED_FOR, MARK_COLUMNS, is_marked
 
 
@@ -188,7 +188,7 @@ def _read_frame(
 
 def _context(prepared: _Prepared, label: str, usable: list[int], fields: list[TextField],
              dataset_shapes: list[FieldShape | None]) -> PromptContext:
-    """What the prompt for ``label`` is told about the dataset (``balance_context``)."""
+    """What the prompt for ``label`` is told about the dataset (``prompt_context``)."""
     others, more = contrast_labels(label, prepared.rows_by_label, prepared.labels_of_row,
                                    prepared.names)
     shapes = field_shapes([prepared.cells[p] for p in usable], fields, fallback=dataset_shapes)

@@ -1,28 +1,51 @@
-"""What a balancing prompt learns from the dataset beyond its examples.
+"""What an LLM prompt learns from the dataset it works on.
 
-The model is shown four rows of one label. Everything else it should know comes from
-here: what the label is called (the WLO export stores a URI, and a model asked for
-entries about ``…/discipline/460`` learns the subject only from the examples), which
-other labels a new row must not read like, and how long an entry of each field
-typically is. Pure: no I/O, no model call.
+Balancing shows the model four rows of one label, enrichment one row. Everything else
+the model should know comes from here: what a label is called (the WLO export stores a
+URI, and a model asked for entries about ``…/discipline/460`` learns the subject only
+from the examples), which other labels a new row must not read like, and how long an
+entry of each field typically is. Pure: no I/O, no model call.
 """
 
 from __future__ import annotations
 
 import math
 from collections import Counter
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
 from ..textnorm import split_labels
-from .balance_prompt import FieldShape
 from .fields import TextField, read_values
 
 # A name in the contrast list is one line of the prompt, at most this long.
 _NAME_CHARS = 60
 # Fewer filled cells than this and a percentile describes the few rows, not the field.
 _MIN_FILLED = 5
+
+
+@dataclass(frozen=True)
+class FieldShape:
+    """How a field's filled cells typically look in the dataset: the middle half of
+    their length in characters and, for a list, of their number of values."""
+
+    chars: tuple[int, int] | None = None
+    values: tuple[int, int] | None = None
+
+
+def typical_phrase(field: TextField, shape: FieldShape | None) -> str:
+    """``shape`` as a prompt says it -- values for a list, characters otherwise -- or
+    nothing when the dataset had too little to say."""
+    if shape is None:
+        return ""
+    if field.separator and shape.values:
+        (low, high), unit = shape.values, "Werte"
+    elif shape.chars:
+        (low, high), unit = shape.chars, "Zeichen"
+    else:
+        return ""
+    return f"im Datensatz meist {f'etwa {low}' if low == high else f'{low}–{high}'} {unit}"
 
 
 def _one_line(text: str) -> str:

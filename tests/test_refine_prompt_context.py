@@ -1,4 +1,4 @@
-"""What a balancing prompt learns from the dataset beyond its four examples.
+"""What an LLM prompt learns from the dataset beyond its examples.
 
 The model is told what the label is CALLED (the WLO export stores a URI), which other
 labels a new row must not read like, and how long each field's entries typically are —
@@ -28,7 +28,7 @@ def _fields() -> list[TextField]:
 
 
 def test_a_label_is_named_as_the_export_names_it():
-    from app.refine.balance_context import display_names
+    from app.refine.prompt_context import display_names
 
     df = pd.DataFrame({LABEL: ["uri/phy", "uri/pol", "uri/phy,uri/che", "uri/bio,uri/che"],
                        NAMES: ["Physik", "Politik, Gesellschaft", "Physics,Chemie", "Biologie"]})
@@ -42,7 +42,7 @@ def test_a_label_is_named_as_the_export_names_it():
 
 
 def test_without_a_display_name_column_there_are_no_names():
-    from app.refine.balance_context import display_names
+    from app.refine.prompt_context import display_names
 
     assert display_names(pd.DataFrame({LABEL: ["uri/phy"]}), LABEL, ",") == {}
 
@@ -53,7 +53,7 @@ def test_without_a_display_name_column_there_are_no_names():
 def test_the_labels_to_keep_apart_from_come_co_occurring_first_then_by_support():
     """A row carrying two labels is where they blur, so generated text drifts there
     first; after those, the labels the model sees most."""
-    from app.refine.balance_context import contrast_labels
+    from app.refine.prompt_context import contrast_labels
 
     labels_of_row = [["A", "B"], ["A"], ["C"], ["C"], ["C"], ["D"], ["D"], ["B"]]
     rows_by_label: dict[str, list[int]] = {}
@@ -68,7 +68,7 @@ def test_the_labels_to_keep_apart_from_come_co_occurring_first_then_by_support()
 
 
 def test_the_list_is_capped_and_says_how_many_it_left_out():
-    from app.refine.balance_context import contrast_labels
+    from app.refine.prompt_context import contrast_labels
 
     labels_of_row = [[f"L{i}"] for i in range(40)] + [["X"]]
     rows_by_label = {labels[0]: [row] for row, labels in enumerate(labels_of_row)}
@@ -79,7 +79,7 @@ def test_the_list_is_capped_and_says_how_many_it_left_out():
 
 
 def test_a_name_from_the_data_cannot_write_prompt_lines():
-    from app.refine.balance_context import contrast_labels
+    from app.refine.prompt_context import contrast_labels
 
     rows_by_label = {"A": [0], "B": [1]}
     named, _ = contrast_labels("A", rows_by_label, [["A"], ["B"]],
@@ -96,7 +96,7 @@ def _cells(n: int, title: str, desc: str, keywords: str) -> list[list[str]]:
 
 
 def test_a_shape_is_the_middle_half_of_the_filled_cells():
-    from app.refine.balance_context import field_shapes
+    from app.refine.prompt_context import field_shapes
 
     rows = [["t" * length, "", "a, b, c, d"] for length in (20, 40, 40, 60, 80, 100, 300)]
 
@@ -108,7 +108,7 @@ def test_a_shape_is_the_middle_half_of_the_filled_cells():
 
 
 def test_a_list_shape_never_asks_for_fewer_values_than_the_field_needs():
-    from app.refine.balance_context import field_shapes
+    from app.refine.prompt_context import field_shapes
 
     _, _, keywords = field_shapes(_cells(6, "t", "d", "a, b"), _fields())
 
@@ -116,7 +116,7 @@ def test_a_list_shape_never_asks_for_fewer_values_than_the_field_needs():
 
 
 def test_too_few_cells_of_a_label_fall_back_to_the_whole_dataset():
-    from app.refine.balance_context import field_shapes
+    from app.refine.prompt_context import field_shapes
 
     dataset = field_shapes(_cells(10, "x" * 50, "y" * 200, "a, b, c"), _fields())
     label = field_shapes(_cells(2, "x" * 10, "y" * 10, "a, b, c"), _fields(), fallback=dataset)
@@ -132,7 +132,8 @@ def _examples():
 
 
 def _context(**kwargs):
-    from app.refine.balance_prompt import FieldShape, PromptContext
+    from app.refine.balance_prompt import PromptContext
+    from app.refine.prompt_context import FieldShape
 
     shapes = (FieldShape(chars=(40, 80)), FieldShape(chars=(150, 450)),
               FieldShape(chars=(30, 70), values=(4, 7)))
@@ -183,7 +184,8 @@ def test_without_context_the_prompt_still_states_each_fields_kind():
 
 
 def test_the_budget_covers_the_typical_length_not_only_the_examples():
-    from app.refine.balance_prompt import FieldShape, output_budget
+    from app.refine.balance_prompt import output_budget
+    from app.refine.prompt_context import FieldShape
 
     short = [{TITLE: "Kurz", DESC: "Kurz.", KEYW: "a, b, c"}]
     long_shapes = _context(shapes=(FieldShape(chars=(40, 80)), FieldShape(chars=(900, 1800)),

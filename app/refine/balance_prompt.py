@@ -14,6 +14,7 @@ from typing import Annotated
 from pydantic import BaseModel, Field, StringConstraints
 
 from .fields import TextField, read_values, write_values
+from .prompt_context import FieldShape, typical_phrase
 
 # Bounded per value: a model that runs away must not write a megabyte into one cell.
 Value = Annotated[str, StringConstraints(max_length=2000)]
@@ -38,18 +39,9 @@ class BalanceBatch(BaseModel):
 
 
 @dataclass(frozen=True)
-class FieldShape:
-    """How a field's filled cells typically look in the dataset: the middle half of
-    their length in characters and, for a list, of their number of values."""
-
-    chars: tuple[int, int] | None = None
-    values: tuple[int, int] | None = None
-
-
-@dataclass(frozen=True)
 class PromptContext:
     """What the prompt knows about the dataset beyond the examples
-    (``balance_context`` reads it from the frame).
+    (``prompt_context`` reads it from the frame).
 
     ``label_name`` is the label as people read it; ``others`` the labels a new row must
     not read like, already one line each, and ``more_others`` how many were left out of
@@ -143,18 +135,6 @@ def output_budget(
     return min(16000, 500 + n * max(300, chars // 2))
 
 
-def _typical(field: TextField, shape: FieldShape | None) -> str:
-    if shape is None:
-        return ""
-    if field.separator and shape.values:
-        (low, high), unit = shape.values, "Werte"
-    elif shape.chars:
-        (low, high), unit = shape.chars, "Zeichen"
-    else:
-        return ""
-    return f"im Datensatz meist {f'etwa {low}' if low == high else f'{low}–{high}'} {unit}"
-
-
 def _field_line(index: int, field: TextField, shape: FieldShape | None) -> str:
     """The field, what it is for, what KIND of value it holds and how long it usually
     is -- a description and a keyword list differ in all three, and a model that is not
@@ -165,7 +145,7 @@ def _field_line(index: int, field: TextField, shape: FieldShape | None) -> str:
             details.append(f"mindestens {field.min_values} Werte")
     else:
         details = ["Freitext, EIN Wert"]
-    typical = _typical(field, shape)
+    typical = typical_phrase(field, shape)
     if typical:
         details.append(typical)
     guidance = f" — {field.guidance}" if field.guidance else ""
@@ -202,7 +182,7 @@ def build_balance_prompt(
     ``avoid_titles`` are values of the FIRST field already present or produced — the
     block that keeps a batch from collapsing into variants of one item. ``context``
     names the label as people read it, the labels to keep apart from, and the typical
-    shape of each field (``balance_context``); without it the prompt still states each
+    shape of each field (``prompt_context``); without it the prompt still states each
     field's kind.
     """
     rendered: list[str] = []

@@ -70,7 +70,7 @@ beyond the guidance defaults and result texts.
 |---|---|
 | `app/refine/prep.py` | `enriched_fields` joins `train_only` |
 | `app/exporter.py` | `generated_for` column |
-| `app/refine/balance_context.py` (new) | what a prompt learns from the frame: display names, contrast labels, typical shapes |
+| `app/refine/prompt_context.py` (new) | what a prompt learns from the frame: display names, contrast labels, typical shapes (`FieldShape`, `typical_phrase`) -- shared by balancing and enrichment |
 | `app/refine/balance_prompt.py` | label name, contrast block, per-field kind and length |
 | `app/refine/balance_gates.py` | representative `pick_examples`; budget from the typical length |
 | `app/refine/balance.py` | computes the context once per run, passes it per label |
@@ -80,7 +80,7 @@ beyond the guidance defaults and result texts.
 | `docs/ui-guide.md`, `CHANGELOG.md`, `TODO.md` | docs |
 
 ```python
-# app/refine/balance_context.py
+# app/refine/prompt_context.py
 @dataclass(frozen=True)
 class FieldShape:
     chars: tuple[int, int] | None    # 25th-75th percentile of a filled cell's length
@@ -111,7 +111,7 @@ Phase 1 — provenance
 
 Phase 2 — balancing prompt
 - Step 0: invoke /better-coding-workflow
-- 2.1 `balance_context.py` + tests: display-name pairing (single label, equal counts,
+- 2.1 `prompt_context.py` + tests: display-name pairing (single label, equal counts,
   mismatch → no name); contrast order (co-occurrence, then support), cap and remainder;
   shapes from the label's rows, dataset fallback, silence below the minimum.
 - 2.2 prompt: tests assert the label name, the contrast rule, "EIN Wert" / list with
