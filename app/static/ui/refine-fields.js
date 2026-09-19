@@ -24,7 +24,7 @@ const RefineFields = (() => {
   // it is. The hints are PROMPT text: they reach a German prompt whatever language
   // the UI shows, so they are not translated. They name no number: the prompt takes
   // the typical length from the dataset, and a number typed here overrides it
-  // (prompt_context.guidance_names_a_number).
+  // (prompt_context.guidance_states_a_length).
   const DEFAULTS = {
     "properties.cclom:general_keyword": {
       list: true, separator: ",", min: 3,

@@ -18,7 +18,7 @@ from .prompt_context import (
     MAX_VALUE_CHARS,
     NAME_CHARS,
     FieldShape,
-    guidance_names_a_number,
+    guidance_states_a_length,
     one_line,
     typical_phrase,
 )
@@ -148,7 +148,7 @@ def _field_line(index: int, field: TextField, shape: FieldShape | None) -> str:
             details.append(f"mindestens {field.min_values} Werte")
     else:
         details = ["Freitext, EIN Wert"]
-    typical = "" if guidance_names_a_number(field) else typical_phrase(field, shape)
+    typical = "" if guidance_states_a_length(field) else typical_phrase(field, shape)
     if typical:
         details.append(typical)
     guidance = f" — {field.guidance}" if field.guidance else ""

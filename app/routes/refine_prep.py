@@ -76,7 +76,7 @@ class LabelAuditRequest(AnalyzeRequest):
 # What the two shipped prompts asked for, kept verbatim as the guidance of the WLO
 # fields: a request in the old shape keeps the instructions it always carried -- their
 # numbers included, which is why its prompt adds no length from the dataset beside them
-# (prompt_context.guidance_names_a_number). The UI's defaults for the same fields name
+# (prompt_context.guidance_states_a_length). The UI's defaults for the same fields name
 # no number (static/ui/refine-fields.js): there the dataset says how long.
 _WLO_KEYWORD_GUIDANCE = (
     "Nenne 3-6 treffende deutsche Schlagwörter (kommagetrennt), die den Inhalt "
@@ -89,8 +89,9 @@ _WLO_DESCRIPTION_GUIDANCE = (
 
 class EnrichRequest(BaseModel):
     """Either shape: ``fields`` + ``target_field``, or the original ``mode`` with the
-    three WLO columns. The old one keeps working — it was the only shape until now,
-    and a client that still sends it gets exactly the text it always got."""
+    three WLO columns. The old one keeps working — it was the only shape until now —
+    with the instructions it always carried, numbers included; its prompt now also names
+    the row's labels, like every enrichment prompt."""
 
     target: str = Field(max_length=MAX_NAME_BYTES)
     overwrite: bool = False

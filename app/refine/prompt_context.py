@@ -10,6 +10,7 @@ entry of each field typically is. Pure: no I/O, no model call.
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 from dataclasses import dataclass
 
@@ -39,11 +40,21 @@ class FieldShape:
     values: tuple[int, int] | None = None
 
 
-def guidance_names_a_number(field: TextField) -> bool:
-    """Whether the field's guidance states a number -- "100-400 Zeichen", "3-6
+# A number or a range, then -- within three words -- what it counts: "100-400 Zeichen",
+# "3-6 treffende deutsche Schlagwörter", "2-3 Sätze". A number that counts nothing of
+# the kind ("Klasse 5", "Sekundarstufe 1") is not a length, and "m²" is not a number.
+_STATED_LENGTH = re.compile(
+    r"\b[0-9]+(?:\s*[-–]\s*[0-9]+)?\s+(?:\w+\s+){0,3}?"
+    r"(?:Zeichen|W(?:ö|oe)rter|Worte?|Werte?|S(?:ä|ae)tze|Satz|Schlagw\w*|Stichw\w*|Begriffe?"
+    r"|Keywords?|Tags?|characters?|chars|words?|values?|sentences?)\b",
+    re.IGNORECASE)
+
+
+def guidance_states_a_length(field: TextField) -> bool:
+    """Whether the field's guidance states a length -- "100-400 Zeichen", "3-6
     Schlagwörter". Then it is someone's instruction, and the dataset's range beside it
     would contradict it; the prompt keeps theirs and adds none."""
-    return any(char.isdigit() for char in field.guidance)
+    return bool(_STATED_LENGTH.search(field.guidance))
 
 
 def typical_phrase(field: TextField, shape: FieldShape | None) -> str:

@@ -35,7 +35,7 @@ from .prompt_context import (
     NAME_CHARS,
     display_names,
     field_shapes,
-    guidance_names_a_number,
+    guidance_states_a_length,
     one_line,
     typical_phrase,
 )
@@ -92,9 +92,10 @@ def _typical_sentence(df: pd.DataFrame, target: TextField) -> str:
     nothing when its guidance names a number of its own or the rows say too little.
 
     A generated row, or a cell an earlier enrichment filled, would teach the model its
-    own lengths back, so both are left out of the measurement.
+    own lengths back, so both are left out of the measurement. For a list the count is
+    the whole cell's: the model's values are added to the ones the row already holds.
     """
-    if guidance_names_a_number(target):
+    if guidance_states_a_length(target):
         return ""
     generated = df[GENERATED_FOR] if GENERATED_FOR in df.columns else [None] * len(df)
     enriched = df[ENRICHED_FIELDS] if ENRICHED_FIELDS in df.columns else [None] * len(df)
@@ -104,7 +105,19 @@ def _typical_sentence(df: pd.DataFrame, target: TextField) -> str:
             continue
         cells.append([write_values(read_values(cell, target), target)])
     phrase = typical_phrase(target, field_shapes(cells, [target])[0])
-    return f" {phrase[0].upper()}{phrase[1:]}." if phrase else ""
+    if not phrase:
+        return ""
+    total = " insgesamt" if target.separator else ""
+    return f" {phrase[0].upper()}{phrase[1:]}{total}."
+
+
+def _read_context(
+    df: pd.DataFrame, target: TextField, label_column: str | None, separator: str,
+) -> tuple[dict[str, str], str]:
+    """The display names and the typical-length sentence -- both walk the whole frame,
+    so the caller runs this off the event loop, as balancing does its first read."""
+    names = {} if label_column is None else display_names(df, label_column, separator)
+    return names, _typical_sentence(df, target)
 
 
 def _classification(row: pd.Series, label_column: str | None, separator: str,
@@ -171,10 +184,8 @@ async def enrich_dataset(
 
     if label_column is not None and label_column not in df.columns:
         label_column = None
-    # Both walk the whole frame -- off the event loop, like balancing's first read.
     names, typical = await asyncio.to_thread(
-        lambda: ({} if label_column is None else display_names(df, label_column, label_separator),
-                 _typical_sentence(df, target)))
+        _read_context, df, target, label_column, label_separator)
 
     new = df.copy()
     if "enriched_fields" not in new.columns:

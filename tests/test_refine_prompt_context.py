@@ -443,3 +443,21 @@ def test_each_field_line_carries_its_own_typical_length():
 
     keywords = next(line for line in prompt.splitlines() if line.startswith("3. "))
     assert "mindestens 3 Werte; im Datensatz meist" in keywords and keywords.endswith("Werte)")
+
+
+@pytest.mark.parametrize(("guidance", "states"), [
+    ("Nenne 3-6 treffende deutsche Schlagwörter (kommagetrennt).", True),
+    ("Schreibe eine sachliche Beschreibung (100-400 Zeichen).", True),
+    ("Schreibe 2-3 Sätze.", True),
+    ("Höchstens 200 Zeichen.", True),
+    ("Nenne 5 Stichwörter.", True),
+    ("Schlagwörter für Klasse 5.", False),
+    ("Fläche in m² angeben.", False),
+    ("Material der Sekundarstufe 1.", False),
+    ("", False),
+])
+def test_only_a_stated_length_overrides_the_datasets(guidance, states):
+    """Any digit used to count: "Klasse 5" silently lost the dataset's length (review #4)."""
+    from app.refine.prompt_context import guidance_states_a_length
+
+    assert guidance_states_a_length(TextField(column=DESC, guidance=guidance)) is states

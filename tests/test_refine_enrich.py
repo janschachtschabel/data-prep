@@ -608,7 +608,7 @@ def test_the_prompt_states_the_fields_typical_length_measured_on_real_rows():
     rows = [[f"Titel {i}", "d" * length, "", ""]
             for i, length in enumerate((200, 200, 300, 300, 400, 400))]
     rows += [["Erzeugt", "g" * 3000, "Physik", ""], ["Ergänzt", "e" * 3000, "", DESC],
-             ["Lücke", "", "", ""]]
+             ["Nur Schlagwörter ergänzt", "k" * 400, "", KEYW], ["Lücke", "", "", ""]]
     df = pd.DataFrame(rows, columns=[TITLE, DESC, "generated_for", "enriched_fields"])
     complete, prompts = _capture()
 
@@ -616,7 +616,8 @@ def test_the_prompt_states_the_fields_typical_length_measured_on_real_rows():
                                target_field=DESC, complete=complete))
 
     assert len(prompts) == 1
-    assert "Im Datensatz meist 230–380 Zeichen." in prompts[0]
+    # The row whose KEYWORDS were enriched still has a description a person wrote.
+    assert "Im Datensatz meist 250–400 Zeichen." in prompts[0]
 
 
 def test_a_guidance_that_names_a_number_is_not_contradicted_by_the_dataset():
@@ -670,3 +671,82 @@ def test_the_enrich_route_hands_the_label_column_to_the_prompt(make_client, monk
 
     assert r.status_code == 200, r.text
     assert "Physik" in seen[0]
+
+
+def test_a_list_fields_typical_count_is_the_whole_cells():
+    """The model's values are added to what the row holds; "5-6 values" read as new
+    ones would leave the row richer than any real one (review #6)."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    rows = [[f"Titel {i}", ", ".join(f"w{j}" for j in range(count))]
+            for i, count in enumerate((4, 5, 5, 6, 6, 7))]
+    df = pd.DataFrame([*rows, ["Lücke", "a"]], columns=[TITLE, KEYW])
+    fields = [TextField(column=TITLE), TextField(column=KEYW, separator=",", min_values=3)]
+    complete, prompts = _capture("b")
+
+    asyncio.run(enrich_dataset(df, fields=fields, target_field=KEYW, complete=complete))
+
+    assert "Im Datensatz meist 5–6 Werte insgesamt." in prompts[0]
+
+
+def test_the_frame_is_read_off_the_event_loop(monkeypatch):
+    """Display names and the typical length walk the whole frame -- on one worker's
+    loop, /health would wait behind it, as it once did behind balancing."""
+    import app.refine.enrich as enrich
+    from app.refine.fields import TextField
+
+    where: dict[str, bool] = {}
+    real = enrich._read_context
+
+    def probe(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            where["read"] = True
+        except RuntimeError:
+            where["read"] = False
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(enrich, "_read_context", probe)
+    complete, _ = _capture()
+
+    asyncio.run(enrich.enrich_dataset(
+        pd.DataFrame([["Wasserkraft", ""]], columns=[TITLE, DESC]),
+        fields=[TextField(column=TITLE), TextField(column=DESC)], target_field=DESC,
+        complete=complete))
+
+    assert where == {"read": False}
+
+
+def test_a_rows_labels_reach_the_prompt_bounded():
+    """Five labels at most, each one line of at most 60 characters: a free-text label
+    column must not be paid for in every enriched row."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    labels = ",".join(["X" + "y" * 200, *(f"L{i}" for i in range(6))])
+    df = pd.DataFrame([["Wasserkraft", "", labels]], columns=[TITLE, DESC, LABEL])
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=[TextField(column=TITLE), TextField(column=DESC)],
+                               target_field=DESC, complete=complete, label_column=LABEL))
+
+    assert "y" * 59 in prompts[0] and "y" * 60 not in prompts[0]
+    assert "L3" in prompts[0] and "L4" not in prompts[0]
+
+
+def test_the_enrich_route_splits_labels_with_the_separator_it_is_given(make_client, monkeypatch):
+    import app.routes.refine_prep as refine_route
+
+    client = make_client()
+    _import(client, pd.DataFrame([["Wasserkraft", "", "Physik;Chemie"]], columns=[TITLE, DESC, LABEL]))
+    seen: list[str] = []
+    session = _capturing_session({"values": ["Eine Beschreibung."]}, monkeypatch, seen)
+    monkeypatch.setattr(refine_route, "session_for", lambda purpose, settings, override=None: session)
+
+    r = client.post("/refine/curated/enrich", headers=HEADERS, json={
+        "fields": [{"column": TITLE}, {"column": DESC}], "target_field": DESC,
+        "target": "out", "label_column": LABEL, "label_separator": ";"})
+
+    assert r.status_code == 200, r.text
+    assert "Physik, Chemie" in seen[0]
