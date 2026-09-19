@@ -26,6 +26,8 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**API-Doku vollständig, anyio-Sicherheitsupdate, gepusht, Container neu gebaut (2026-09-19).** Alle 52 Endpunkte und jedes Anfragefeld (auch Query-, Form-, File- und Header-Parameter) sind in `/docs` englisch beschrieben; nur `SeedItem` bleibt bewusst ohne Feldbeschreibungen, weil es auch das Antwortschema des LLM ist. Nachweis: Ohne Beschreibungstexte ist das OpenAPI-Schema identisch zum Stand davor. anyio 4.14.1 → 4.14.2 (CVE-2026-63374, -64847, -63349): pip-audit hätte CI- und Docker-Workflow rot gemacht. Offen (Low): `routes/refine_prep.py` (368 Zeilen) und `routes/tables.py` (303) liegen durch die Beschreibungen über 300 Zeilen — aufteilen oder zu den bekannten Ausnahmen nehmen.
+
 **KI-Herkunft durchgängig, Prompts mit Datensatz-Kontext (2026-09-19).** Split hält jede KI-Markierung (auch `enriched_fields`) aus dem Holdout; Lauf-Exporte tragen `generated_for`; Balancing-Prompt nennt Label lesbar, Abgrenzungs-Label, Feldart und typische Länge, Beispiele typisch statt längste; Anreicherung nennt das Label der Zeile und die typische Länge; eine Zahl im Hinweis gewinnt. Gegenstück in api_v3: markierte Zeilen trainieren, validieren nie. Plan: `docs/plan-2026-09-19-ai-provenance-prompts.md`.
 
 **Folgepunkte des zweiten Reviews erledigt, gepusht, Container neu gebaut (2026-09-18).**
