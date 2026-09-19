@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 import numpy as np
@@ -84,26 +84,32 @@ def one_line(text: str, limit: int | None = None) -> str:
 def display_names(df: pd.DataFrame, label_column: str, separator: str) -> dict[str, str]:
     """Label value -> the name people read, from ``<label_column>_DISPLAYNAME``.
 
-    A cell with one label takes the whole name cell, so a name containing the separator
-    ("Politik, Gesellschaft") stays whole. Several labels pair with several names only
-    when both split into the same number of parts; otherwise nothing is attributed --
-    a wrong name in the prompt is worse than the value. The first pairing wins.
+    Every row votes, and the name most rows give a label wins: one mis-paired row, or
+    the name cell a label filter left behind, must not name it in every prompt. A row
+    pairs its labels with its names when both split into the same number of parts. A
+    row with one label and a name cell of several parts holds one name containing the
+    separator ("Politik, Gesellschaft") -- or names left from labels filtered away --
+    so its cell counts whole, and only for a label no row pairs. Several labels beside
+    another number of names attribute nothing: a wrong name in the prompt is worse than
+    the value. Of names given equally often, the first wins.
     """
     column = f"{label_column}_DISPLAYNAME"
     if column not in df.columns:
         return {}
-    names: dict[str, str] = {}
+    paired: dict[str, Counter[str]] = defaultdict(Counter)
+    whole: dict[str, Counter[str]] = defaultdict(Counter)
     for label_cell, name_cell in zip(df[label_column], df[column], strict=True):
         labels = split_labels(label_cell, separator)
-        if len(labels) == 1:
-            pairs = [(labels[0], name_cell)] if isinstance(name_cell, str) else []
-        else:
-            found = split_labels(name_cell, separator)
-            pairs = list(zip(labels, found, strict=True)) if len(found) == len(labels) else []
-        for label, name in pairs:
-            if one_line(name, NAME_CHARS):
-                names.setdefault(label, one_line(name, NAME_CHARS))
-    return names
+        found = split_labels(name_cell, separator)
+        if len(found) == len(labels):
+            for label, name in zip(labels, found, strict=True):
+                if line := one_line(name, NAME_CHARS):
+                    paired[label][line] += 1
+        elif len(labels) == 1 and isinstance(name_cell, str) and (
+                line := one_line(name_cell, NAME_CHARS)):
+            whole[labels[0]][line] += 1
+    return {label: (paired.get(label) or whole[label]).most_common(1)[0][0]
+            for label in {**whole, **paired}}
 
 
 def contrast_labels(

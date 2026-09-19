@@ -35,10 +35,25 @@ def test_a_label_is_named_as_the_export_names_it():
 
     names = display_names(df, LABEL, ",")
 
-    assert names["uri/phy"] == "Physik", "the first pairing wins"
+    assert names["uri/phy"] == "Physik", "of two names seen equally often, the first wins"
     assert names["uri/pol"] == "Politik, Gesellschaft", "one label takes the whole cell"
     assert names["uri/che"] == "Chemie"
     assert "uri/bio" not in names, "two labels, one name: not attributable, not guessed"
+
+
+def test_the_name_most_rows_agree_on_wins_not_the_first():
+    """The first pairing won: a mis-paired row at the top, or the name cell a label
+    filter left behind -- "Chemie,Physik" beside the one label it kept -- named the label
+    wrongly in every prompt, and the model wrote rows of the other subject (review
+    2026-09-19 #3)."""
+    from app.refine.prompt_context import display_names
+
+    mispaired = pd.DataFrame({LABEL: ["uri/che", "uri/che", "uri/che", "uri/phy"],
+                              NAMES: ["Physik", "Chemie", "Chemie", "Physik"]})
+    left_behind = pd.DataFrame({LABEL: ["uri/che", "uri/che"], NAMES: ["Chemie,Physik", "Chemie"]})
+
+    assert display_names(mispaired, LABEL, ",") == {"uri/che": "Chemie", "uri/phy": "Physik"}
+    assert display_names(left_behind, LABEL, ",") == {"uri/che": "Chemie"}
 
 
 def test_without_a_display_name_column_there_are_no_names():
