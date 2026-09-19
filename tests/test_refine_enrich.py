@@ -408,6 +408,26 @@ def test_a_target_its_mark_cannot_name_is_a_bad_request(make_client):
             assert "enriched_fields" in r.json()["detail"]
 
 
+def test_a_long_list_answer_is_cut_where_it_is_read_not_refused():
+    """The schema capped an answer at 20 values while the prompt may state a typical
+    24-33: a model that followed it failed the call, and a paid run with it (review of
+    the fixes). The list is cut where the answer is read instead."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    tags = TextField(column=KEYW, separator=",", min_values=30)
+    df = pd.DataFrame([["Optik", ""]], columns=[TITLE, KEYW])
+
+    async def many(prompt, schema):
+        return schema(values=[f"wort{i}" for i in range(80)])
+
+    new, stats = asyncio.run(enrich_dataset(
+        df, fields=[TextField(column=TITLE), tags], target_field=KEYW, complete=many))
+
+    assert stats["enriched"] == 1
+    assert len(new.iloc[0][KEYW].split(", ")) == 50
+
+
 def test_a_mark_already_in_the_cell_is_not_added_twice():
     """Written by another tool as "title, keywords", the cell got the same column again."""
     from app.refine.enrich import enrich_dataset

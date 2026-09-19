@@ -43,10 +43,11 @@ from .provenance import ENRICHED_FIELDS, GENERATED_FOR, enriched_columns, is_mar
 
 Complete = Callable[[str, type[BaseModel]], Awaitable[BaseModel]]
 
-# Bounded per list here, per value where the answer is read: a value over
-# MAX_VALUE_CHARS is dropped alone -- in the schema it failed the call, and the run it
-# was paid in. The answer's size is bounded by its output tokens.
+# Bounded where the answer is read, not by its schema: a value over MAX_VALUE_CHARS is
+# dropped alone and a list is cut after _MAX_ANSWER_VALUES -- in the schema either failed
+# the call, and the run it was paid in. The answer's size is bounded by its output tokens.
 Value = str
+_MAX_ANSWER_VALUES = 50
 
 
 class FieldValues(BaseModel):
@@ -57,7 +58,7 @@ class FieldValues(BaseModel):
     all of them.
     """
 
-    values: list[Value] = Field(default_factory=list, max_length=20)
+    values: list[Value] = Field(default_factory=list)
 
 
 _PROMPT = """Kontext: Metadaten für ein Lernmaterial (Bildungsinhalt){classified}.
@@ -249,7 +250,7 @@ async def enrich_dataset(
             parts = [part for value in result.values  # type: ignore[attr-defined]
                      for part in read_values(scrub(value)[0], target)]
             answers[twin] = [part for part in (parts if target.separator else parts[:1])
-                             if len(part) <= MAX_VALUE_CHARS]
+                             if len(part) <= MAX_VALUE_CHARS][:_MAX_ANSWER_VALUES]
         merged = merge_values(existing, answers[twin]) if target.separator else answers[twin]
         if not merged or merged == existing:
             continue  # nothing new: the cell stays as it was, and is not counted
