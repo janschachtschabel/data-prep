@@ -97,7 +97,9 @@ def field_shapes(rows: list[list[str]], fields: list[TextField],
 def typical_phrase(field: TextField, shape: FieldShape | None) -> str
 def guidance_states_a_length(field: TextField) -> bool   # "100-400 Zeichen", "3-6 Schlagwörter"
 def one_line(text: str, limit: int | None = None) -> str
-MAX_VALUE_CHARS = 2000   # the answer schemas' cap; no typical length is stated above it
+def label_name(label: str, name: str | None = None) -> str   # how every prompt names a label
+MAX_VALUE_CHARS = 2000   # the most an answer value may hold; the gates turn longer ones away
+MAX_STATED_CHARS = 1500  # the most a prompt states as a typical length (review 2026-09-19)
 NAME_CHARS = 60          # every name from the dataset, as the prompts show it
 
 # app/refine/balance_gates.py
