@@ -374,7 +374,7 @@ def test_push_sends_every_cell_exactly_as_it_is_stored(make_client, tmp_path, mo
 
     monkeypatch.setattr(apiv3, "_test_transport", httpx.MockTransport(handler))
     assert client.post("/refine/formel/push", headers=HEADERS).status_code == 200
-    assert '"=HYPERLINK(""http://evil.example"",""click"")"'.encode() in captured["body"]
+    assert b'"=HYPERLINK(""http://evil.example"",""click"")"' in captured["body"]
     assert b"'=HYPERLINK" not in captured["body"]
 
 

@@ -1,8 +1,15 @@
 # Design: spreadsheet-safe CSV downloads (CSV/formula injection)
 
-**Status: proposed 2026-09-19. Waiting for the owner to choose the default (see
-"Decision").** This was found as a pre-existing issue in the review of 2026-09-19. It was
+**Status: proposed 2026-09-19, implemented as approach A on 2026-09-20, every task
+test-first.** This was found as a pre-existing issue in the review of 2026-09-19. It was
 left out of that fix round on purpose, because it is a design decision.
+
+The owner was asked to choose between A and B; the question was declined without an
+answer, so A was built: it is the only option that keeps the promise the review made,
+namely that no training data changes silently. **The default is still Jan's to settle**
+— switching to B means changing the two `spreadsheet_safe` defaults in
+`app/routes/exports.py` and `app/routes/tables.py` (plus a `raw` flag for the exact
+bytes, the UI labels and the tests that pin today's default).
 
 ## Goal
 
@@ -152,7 +159,8 @@ def spreadsheet_csv(frame: pd.DataFrame, *, sep: str) -> str:
 
 ## Decision (owner)
 
-1. Default: **A (opt-in, recommended)** or **B (opt-out)**.
+1. Default: **A (opt-in, recommended, built)** or **B (opt-out)** — see the status note
+   at the top. A is in place; B remains a decision Jan can still make.
 
 ## Tasks (for approach A)
 

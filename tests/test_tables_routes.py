@@ -24,8 +24,8 @@ CSV = (
 # A title as harvested metadata can hold it: a spreadsheet runs it as a formula.
 HYPERLINK = '=HYPERLINK("http://evil.example","click")'
 FORMULA_CSV = (
-    'id;titel\n1;"=HYPERLINK(""http://evil.example"",""click"")"\n'
-).encode("utf-8")
+    b'id;titel\n1;"=HYPERLINK(""http://evil.example"",""click"")"\n'
+)
 
 
 def _title_of(csv_text: str) -> str:

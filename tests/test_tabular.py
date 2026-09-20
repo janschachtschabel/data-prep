@@ -139,8 +139,8 @@ JSONL_BYTES = b"\n".join(json.dumps(r, ensure_ascii=False).encode("utf-8") for r
 # A title as harvested metadata can hold it: Excel and LibreOffice run it.
 HYPERLINK = '=HYPERLINK("http://evil.example","click")'
 FORMULA_CSV = (
-    'id;title;keywords\n1;"=HYPERLINK(""http://evil.example"",""click"")";Mathematik\n'
-).encode("utf-8")
+    b'id;title;keywords\n1;"=HYPERLINK(""http://evil.example"",""click"")";Mathematik\n'
+)
 
 
 def _title_of(csv_text: str) -> str:
