@@ -42,9 +42,16 @@ ruff sauber, mypy sauber (67 Dateien), `node --check` für die drei geänderten
 JS-Dateien, dazu ein Live-Lauf auf Port 8117: Import einer Zelle
 `=HYPERLINK("http://evil.example","click")`, Standard-Download unverändert,
 `spreadsheet_safe=true` liefert `formel.spreadsheet.csv` mit `'=HYPERLINK…`.
-Offen: Jans Entscheidung zur Vorgabe (Variante A umgesetzt = opt-in; B wäre
-entschärft als Vorgabe) — Umstellung wären zwei Zeilen in den Routen. Noch nicht
-gepusht, Container nicht neu gebaut.
+Unabhängiges Review danach: keine CRITICAL/MAJOR-Befunde; nachgezogen wurden die zu
+stark formulierte Quoting-Zusage (jetzt sagt sie, was bewiesen ist: das Apostroph deckt
+das erste Zeichen jeder Zelle, das Quoten nimmt nur die einfache Komma-Variante weg;
++3 Tests), Literal-Bytes im Push-Test, der Dateiname `<name>.spreadsheet.<format>` und
+die Grenzen in den Nutzer-Dokus (Zahlen als Text, keine BOM). Offen: Jans Entscheidung
+zur Vorgabe (Variante A umgesetzt = opt-in; B wäre entschärft als Vorgabe) — Umstellung
+wären zwei Zeilen in den Routen; BOM für die Excel-Variante (Import liest `utf-8`, nicht
+`utf-8-sig`). `app/routes/tables.py` ist durch diese Arbeit von 303 auf 312 Zeilen
+gewachsen — der offene Low-Punkt zum Aufteilen bleibt bestehen. Noch nicht gepusht,
+Container nicht neu gebaut.
 
 **API-Doku vollständig, anyio-Sicherheitsupdate, gepusht, Container neu gebaut (2026-09-19).** Alle 52 Endpunkte und jedes Anfragefeld (auch Query-, Form-, File- und Header-Parameter) sind in `/docs` englisch beschrieben; nur `SeedItem` bleibt bewusst ohne Feldbeschreibungen, weil es auch das Antwortschema des LLM ist. Nachweis: Ohne Beschreibungstexte ist das OpenAPI-Schema identisch zum Stand davor. anyio 4.14.1 → 4.14.2 (CVE-2026-63374, -64847, -63349): pip-audit hätte CI- und Docker-Workflow rot gemacht. Offen (Low): `routes/refine_prep.py` (368 Zeilen) und `routes/tables.py` (303) liegen durch die Beschreibungen über 300 Zeilen — aufteilen oder zu den bekannten Ausnahmen nehmen.
 

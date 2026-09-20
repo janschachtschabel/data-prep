@@ -15,16 +15,21 @@ Plan: `docs/plan-2026-09-19-csv-formula-injection.md`.
   when someone opens the file in Excel or LibreOffice (OWASP CSV injection), and a
   harvested title can be `=HYPERLINK("http://…","click")`. The variant puts an
   apostrophe before such a cell, header cells included, and quotes every field, so a
-  comma inside a value cannot open a new cell where a spreadsheet splits on commas.
+  comma inside a value does not lie bare in front of a spreadsheet that splits on
+  commas. The apostrophe is what holds in every reader: it covers the first character
+  of every cell the file contains.
 - **The plain downloads and both api_v3 pushes are unchanged, byte for byte.** The
   apostrophe is part of the text for everything that reads the file back — api_v3
   trains on it, and so does an import here — so nothing adds it silently. Tests pin
   the pushed body against the default export.
 - The defused file is offered as `<name>.spreadsheet.csv`: two files named `run-1.csv`
   in a downloads folder cannot be told apart, and this one must never reach api_v3.
-- Known limit: a cell with spaces before the trigger (` =1+1`) keeps them. Excel reads
+- Known limits: a cell with spaces before the trigger (` =1+1`) keeps them (Excel reads
   it as text; LibreOffice runs it only with both "Trim spaces" and "Evaluate formulas"
-  turned on in its import dialog.
+  turned on in its import dialog). Numbers get no exemption, so `-5` arrives as the text
+  `'-5`. And the file carries no BOM, so Excel guesses the encoding of umlauts as it
+  does for the plain CSV — a BOM for this variant alone is an open follow-up, because
+  the import here reads `utf-8`, not `utf-8-sig`.
 
 ### Internal
 

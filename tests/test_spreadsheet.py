@@ -53,13 +53,34 @@ def test_a_column_name_is_defused_like_a_cell():
     assert list(_cells(spreadsheet_csv(frame, sep=";")).columns) == [f"'{HYPERLINK}"]
 
 
-def test_a_separator_inside_a_cell_cannot_open_a_new_one():
-    """Excel in an English locale splits a semicolon CSV on COMMAS: `x,=1+1`
-    would open as two cells, the second one a formula. Quoting every field is
-    what keeps such a value one cell (OWASP recommends both measures)."""
+def test_a_comma_inside_a_value_is_never_left_bare():
+    """Excel in an English locale splits a semicolon CSV on COMMAS: an UNQUOTED
+    `x,=1+1` opens as two cells there, the second one a formula. Quoting every
+    field takes that simple form away (OWASP recommends both measures).
+
+    What a comma-splitting parser makes of a quoted field it cannot delimit is
+    its own affair -- the next test pins what the file holds, not what such a
+    reader does with it."""
     text = spreadsheet_csv(pd.DataFrame({"c": ["x,=1+1"]}), sep=";")
     assert text.splitlines()[1] == '"x,=1+1"'
     assert text.splitlines()[0] == '"c"'
+
+
+def test_every_field_of_a_row_is_quoted_and_every_cell_starts_defused():
+    """The guarantee that holds for any reader: each cell this app writes is
+    quoted, and the first character of each is defused. A `,=…` in the MIDDLE of
+    a value is not a cell here, so nothing prefixes it -- only a reader that
+    splits it out of its quotes could make one, which is why the apostrophe, not
+    the quoting, is what this rests on."""
+    text = spreadsheet_csv(pd.DataFrame({"a": ["x,=1+1"], "b": ["=SUM(1)"]}), sep=";")
+    assert text.splitlines()[1] == '"x,=1+1";"\'=SUM(1)"'
+
+
+def test_spaces_before_a_trigger_keep_the_cell_as_it_is():
+    """A documented limit (README/CHANGELOG): ` =1+1` is text to Excel, and
+    LibreOffice runs it only with "Trim spaces" AND "Evaluate formulas" on. Pinned
+    so a change to the trigger check cannot move the limit unnoticed."""
+    assert defuse(" =1+1") == " =1+1"
 
 
 def test_the_apostrophe_is_part_of_the_text_when_a_program_reads_it_back():

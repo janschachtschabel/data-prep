@@ -198,8 +198,8 @@ async def download_dataset(
     spreadsheet_safe: bool = Query(default=False, description=(
         "CSV formats only: write the variant for opening in Excel or LibreOffice: a cell that would "
         "run there as a formula gets an apostrophe in front and every field is quoted, and the file "
-        "is offered as `<name>.spreadsheet.csv`. Not for api_v3: the apostrophe becomes part of the "
-        "trained text.")),
+        "is offered as `<name>.spreadsheet.<format>`. Not for api_v3: the apostrophe becomes part of "
+        "the trained text.")),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     """Export as CSV, CSV.gz, JSON or JSONL.

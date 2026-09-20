@@ -171,10 +171,17 @@ it. Past five million rows the join is refused rather than attempted.
   title is one click from an attacker's page. Both downloads therefore take
   `?spreadsheet_safe=true` (UI: the **CSV (Excel)** button in Runs, the checkbox
   in the table export). It puts an apostrophe before such a cell, headers
-  included, quotes every field, and offers the file as `<name>.spreadsheet.csv`.
-  It is asked for, never the default: the apostrophe is part of the text
-  afterwards, and api_v3 would train on it. The plain downloads and both api_v3
-  pushes stay byte-identical (pinned by tests).
+  included, quotes every field, and offers the file as
+  `<name>.spreadsheet.<format>`. It is asked for, never the default: the
+  apostrophe is part of the text afterwards, and api_v3 would train on it. The
+  plain downloads and both api_v3 pushes stay byte-identical (pinned by tests).
+  What the apostrophe covers is the first character of every cell this app
+  writes; quoting every field additionally keeps a comma inside a value from
+  lying bare in front of a spreadsheet that splits on commas. Two properties of
+  that file are worth knowing before handing it on: a number written as text
+  (`-5` becomes `'-5`) and no BOM, so Excel still guesses the encoding of the
+  umlauts — the plain CSV has always behaved that way, and a BOM for this
+  variant alone is an open follow-up.
 - **Deliberate deviation from api_v3:** HTTPS URL fetch is allowed for
   vocabularies and the api_v3 push/predict — but only to an allowlist (default
   `vocabs.openeduhub.de` + the configured api_v3 host / localhost), with a size

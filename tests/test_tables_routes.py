@@ -186,6 +186,14 @@ class TestDownload:
         assert _title_of(r.text) == HYPERLINK
         assert "src.csv" in r.headers["content-disposition"]
 
+    def test_the_packed_spreadsheet_variant_is_named_for_what_it_holds(self, make_client):
+        """The server and the UI compute this name separately; a gzipped export
+        opened after unpacking is the same file, so it carries the same mark."""
+        client = _client_with_data(make_client, FORMULA_CSV)
+        r = client.get("/refine/src/download?format=csv.gz&spreadsheet_safe=true", headers=HEADERS)
+        assert _title_of(gzip.decompress(r.content).decode("utf-8")) == f"'{HYPERLINK}"
+        assert "src.spreadsheet.csv.gz" in r.headers["content-disposition"]
+
     def test_a_json_download_keeps_its_name_when_the_flag_is_set(self, make_client):
         """The flag has nothing to do in JSON, so neither the file nor its name
         pretends it was defused."""

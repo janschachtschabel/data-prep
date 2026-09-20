@@ -37,9 +37,13 @@ def spreadsheet_csv(frame: pd.DataFrame, *, sep: str) -> str:
     Header cells are defused like any other: column names come from the
     uploaded data, and the header is a row of cells too.
 
-    Every field is quoted because a spreadsheet may split on another separator
-    than the one written here -- Excel in an English locale splits a semicolon
-    CSV on commas, which would make a second cell out of ``x,=1+1`` and run it.
+    Every field is quoted, which takes the simple form of a second vector away:
+    a spreadsheet may split on another separator than the one written here
+    (Excel in an English locale splits a semicolon CSV on commas), and an
+    UNQUOTED ``x,=1+1`` becomes a second cell it runs. What such a parser makes
+    of a quoted field whose delimiter it does not recognise is its own affair,
+    so the apostrophe -- which covers the first character of every cell written
+    here -- is the part of this that holds in every reader.
     """
     # A copy: the frame belongs to the caller (the refine store hands out the
     # loaded dataset), and a download must not change what is stored.

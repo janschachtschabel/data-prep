@@ -281,8 +281,11 @@ def test_the_plain_download_and_the_push_carry_the_cell_as_it_is(
 
     monkeypatch.setattr(apiv3, "_test_transport", httpx.MockTransport(handler))
     assert client.post("/runs/run-1/push", headers=HEADERS).status_code == 200
-    assert to_csv(load_samples(run_dir), parse_vocabulary(NESTED)).encode("utf-8") in captured["body"]
+    # The literal bytes, not just "what to_csv returns": a regression inside the
+    # default branch would otherwise move both sides of the comparison together.
+    assert b'"=HYPERLINK(""http://evil.example"",""click"")"' in captured["body"]
     assert b"'=HYPERLINK" not in captured["body"]
+    assert to_csv(load_samples(run_dir), parse_vocabulary(NESTED)).encode("utf-8") in captured["body"]
 
 
 def test_push_rejects_unconfigured_or_foreign_targets(make_client, tmp_path, monkeypatch):

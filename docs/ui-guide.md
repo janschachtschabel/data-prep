@@ -282,6 +282,13 @@ stillschweigend passiert — die Datei heißt `<name>.spreadsheet.csv` und ist z
 Lesen gedacht. Ohne Haken (und bei jedem Push) bleibt die CSV Zeichen für
 Zeichen die gespeicherte.
 
+Zwei Dinge dazu, damit nichts überrascht: Zahlen werden nicht ausgenommen — aus
+`-5` wird `'-5`, in Excel also linksbündiger Text statt einer Zahl. Und die
+Datei trägt **keine BOM**: Excel rät den Zeichensatz wie bei der normalen CSV
+auch, Umlaute können also verstümmelt ankommen. Wer sie sauber sehen will,
+öffnet die Datei in Excel über *Daten → Aus Text/CSV* (dort UTF-8 wählen) oder
+gleich in LibreOffice, das im Import-Dialog danach fragt.
+
 ## Wichtig zur Auswertung
 
 Synthetische und angereicherte Zeilen sind **nur zum Training** gedacht. Bewerte
