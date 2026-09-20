@@ -86,6 +86,11 @@ const I18n = (() => {
       "run.explain.guidance": `Use <em>Context / guidance</em> below when the labels alone are not
         self-explanatory — it steers what the entries are about (e.g. “German school subjects,
         secondary level; realistic teaching materials”).`,
+      "run.explain.exports": `<strong>CSV</strong> is the training file for api_v3.
+        <strong>CSV (Excel)</strong> holds the same rows for opening in Excel or LibreOffice: a cell
+        that would run there as a formula (one starting with <code>=</code>, <code>+</code>,
+        <code>-</code> or <code>@</code>) gets an apostrophe in front. That apostrophe is part of the
+        text afterwards, so this file is for reading, not for api_v3.`,
       "run.newrun.h": "New run",
       "run.seedset": "Seed set",
       "run.concepts.legend": "Concepts",
@@ -313,7 +318,7 @@ const I18n = (() => {
       // --- dynamic (JS runtime strings, via I18n.t) ---
       "js.btn.view": "View", "js.btn.open": "Open", "js.btn.delete": "Delete",
       "js.btn.remove": "Remove", "js.btn.cancel": "Cancel", "js.btn.resume": "Resume",
-      "js.btn.details": "Details", "js.btn.audit": "Audit",
+      "js.btn.details": "Details", "js.btn.audit": "Audit", "js.btn.csvSpreadsheet": "CSV (Excel)",
       "js.err.request": "Request failed.", "js.err.requestFailed": "Request failed ({status})",
       "js.err.keyInvalid": "API key invalid — please sign in again.",
       "js.overwrite.confirm": "\u201c{name}\u201d already exists. Replace it?",
@@ -488,6 +493,8 @@ const I18n = (() => {
       "tables.export.csvgz": "CSV, semicolon, gzip",
       "tables.export.separator": "Separator <span class=\"muted\">(CSV)</span>",
       "tables.download.btn": "Download",
+      "tables.export.spreadsheet": `Defuse formulas for Excel/LibreOffice <span class="muted">(CSV
+        only — the apostrophe it adds stays in the text, so not for api_v3)</span>`,
       "tables.view.h": "Rows",
       "tables.search": "Search <span class=\"muted\">(any visible column)</span>",
       "tables.columns": "Show columns <span class=\"muted\">(comma-separated; blank = all)</span>",
@@ -677,6 +684,11 @@ const I18n = (() => {
       "run.explain.guidance": `Nutze <em>Kontext / Vorgabe</em> unten, wenn die Labels allein nicht
         selbsterklärend sind — sie steuert, worum die Einträge gehen (z. B. „Deutsche Schulfächer,
         Sekundarstufe; realistische Unterrichtsmaterialien“).`,
+      "run.explain.exports": `<strong>CSV</strong> ist die Trainingsdatei für api_v3.
+        <strong>CSV (Excel)</strong> enthält dieselben Zeilen zum Öffnen in Excel oder
+        LibreOffice: Eine Zelle, die dort als Formel liefe (beginnend mit <code>=</code>,
+        <code>+</code>, <code>-</code> oder <code>@</code>), bekommt ein Apostroph davor. Dieses
+        Apostroph gehört danach zum Text — die Datei ist zum Lesen, nicht für api_v3.`,
       "run.newrun.h": "Neuer Lauf",
       "run.seedset": "Seed-Set",
       "run.concepts.legend": "Konzepte",
@@ -911,7 +923,7 @@ const I18n = (() => {
       // --- dynamic (JS runtime strings, via I18n.t) ---
       "js.btn.view": "Ansehen", "js.btn.open": "Öffnen", "js.btn.delete": "Löschen",
       "js.btn.remove": "Entfernen", "js.btn.cancel": "Abbrechen", "js.btn.resume": "Fortsetzen",
-      "js.btn.details": "Details", "js.btn.audit": "Audit",
+      "js.btn.details": "Details", "js.btn.audit": "Audit", "js.btn.csvSpreadsheet": "CSV (Excel)",
       "js.err.request": "Anfrage fehlgeschlagen.", "js.err.requestFailed": "Anfrage fehlgeschlagen ({status})",
       "js.err.keyInvalid": "API-Schlüssel ungültig — bitte erneut anmelden.",
       "js.overwrite.confirm": "\u201e{name}\u201c existiert bereits. Überschreiben?",
@@ -1093,6 +1105,8 @@ const I18n = (() => {
       "tables.export.csvgz": "CSV, Semikolon, gzip",
       "tables.export.separator": "Trennzeichen <span class=\"muted\">(CSV)</span>",
       "tables.download.btn": "Herunterladen",
+      "tables.export.spreadsheet": `Formeln für Excel/LibreOffice entschärfen <span class="muted">(nur
+        CSV — das ergänzte Apostroph bleibt im Text, also nicht für api_v3)</span>`,
       "tables.view.h": "Zeilen",
       "tables.search": "Suche <span class=\"muted\">(alle sichtbaren Spalten)</span>",
       "tables.columns": "Spalten zeigen <span class=\"muted\">(kommagetrennt; leer = alle)</span>",

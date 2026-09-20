@@ -137,6 +137,12 @@
           <p data-i18n="run.explain.guidance">Use <em>Context / guidance</em> below when the
              labels alone are not self-explanatory — it steers what the entries are about
              (e.g. “German school subjects, secondary level; realistic teaching materials”).</p>
+          <p data-i18n="run.explain.exports"><strong>CSV</strong> is the training file for
+             api_v3. <strong>CSV (Excel)</strong> holds the same rows for opening in Excel or
+             LibreOffice: a cell that would run there as a formula (one starting with
+             <code>=</code>, <code>+</code>, <code>-</code> or <code>@</code>) gets an
+             apostrophe in front. That apostrophe is part of the text afterwards, so this file
+             is for reading, not for api_v3.</p>
         </details>
 
         <div class="card">
@@ -834,6 +840,10 @@
               <button type="button" id="tables-download-btn" data-i18n="tables.download.btn">Download</button>
             </div>
           </div>
+          <label class="check"><input type="checkbox" id="tables-export-spreadsheet">
+            <span data-i18n="tables.export.spreadsheet">Defuse formulas for Excel/LibreOffice
+              <span class="muted">(CSV only — the apostrophe it adds stays in the text, so not for
+              api_v3)</span></span></label>
         </div>
 
         <div class="card">

@@ -103,6 +103,11 @@
     if (run.status !== "running" && run.generated > 0) {
       li.appendChild(actionButton("CSV", () =>
         Api.download(`/runs/${run.id}/export.csv`, `${run.id}.csv`)));
+      // Its own name: two files called run-1.csv in a downloads folder cannot be
+      // told apart, and the defused one must never go to api_v3 (help text above).
+      li.appendChild(actionButton(I18n.t("js.btn.csvSpreadsheet"), () =>
+        Api.download(`/runs/${run.id}/export.csv?spreadsheet_safe=true`,
+                     `${run.id}.spreadsheet.csv`)));
       li.appendChild(actionButton("JSONL", () =>
         Api.download(`/runs/${run.id}/export.jsonl`, `${run.id}.jsonl`)));
       li.appendChild(actionButton(I18n.t("js.btn.audit"), async () => {
