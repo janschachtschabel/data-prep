@@ -24,6 +24,9 @@ DESC = "properties.cclom:general_description"
 KEYW = "properties.cclom:general_keyword"
 LABEL = "properties.ccm:taxonid"
 
+# A title as a harvested one can look: Excel and LibreOffice run it as a formula.
+HYPERLINK = '=HYPERLINK("http://evil.example","click")'
+
 
 def _write_run(runs_dir: Path, run_id: str = "run-1") -> Path:
     run_dir = runs_dir / run_id
@@ -130,6 +133,39 @@ def test_every_exported_row_is_marked_as_generated_for_its_concept(tmp_path):
     frame = pd.read_csv(io.StringIO(csv_text), sep=";", dtype=str)
     assert list(frame[LABEL]) == [URI_OPTICS, URI_ARTS]
     assert list(frame["generated_for"]) == list(frame[LABEL])
+
+
+def _formula_title(run_dir: Path) -> Path:
+    """Give the first sample a title a spreadsheet would run."""
+    path = run_dir / "samples.jsonl"
+    records = [json.loads(line) for line in path.read_text("utf-8").splitlines() if line.strip()]
+    records[0]["title"] = HYPERLINK
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
+                    encoding="utf-8")
+    return run_dir
+
+
+def _first_title(csv_text: str) -> str:
+    return str(pd.read_csv(io.StringIO(csv_text), sep=";", dtype=str,
+                           keep_default_na=False)[TITLE][0])
+
+
+def test_the_training_csv_keeps_a_formula_cell_exactly_as_it_is(tmp_path):
+    """This is what api_v3 trains on: a defusing apostrophe would be trained on
+    with it (api_v3's clean_text keeps it), so the training CSV never carries one."""
+    from app.exporter import load_samples, to_csv
+
+    run_dir = _formula_title(_write_run(tmp_path / "runs"))
+    assert _first_title(to_csv(load_samples(run_dir), parse_vocabulary(NESTED))) == HYPERLINK
+
+
+def test_the_spreadsheet_csv_defuses_a_formula_cell(tmp_path):
+    """The variant a person asks for to open the run in Excel or LibreOffice."""
+    from app.exporter import load_samples, to_csv
+
+    run_dir = _formula_title(_write_run(tmp_path / "runs"))
+    csv_text = to_csv(load_samples(run_dir), parse_vocabulary(NESTED), spreadsheet_safe=True)
+    assert _first_title(csv_text) == f"'{HYPERLINK}"
 
 
 def test_audit_markdown_contains_warning_and_stats(tmp_path):

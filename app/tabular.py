@@ -20,6 +20,8 @@ import zlib
 
 import pandas as pd
 
+from .spreadsheet import spreadsheet_csv
+
 SUPPORTED_READ = ("csv", "csv.gz", "json", "jsonl", "jsonl.gz")
 SUPPORTED_WRITE = ("csv", "csv.gz", "json", "jsonl")
 
@@ -290,11 +292,17 @@ def read_table(
     return frame
 
 
-def write_table(df: pd.DataFrame, *, fmt: str = "csv", separator: str = ";") -> bytes:
+def write_table(df: pd.DataFrame, *, fmt: str = "csv", separator: str = ";",
+                spreadsheet_safe: bool = False) -> bytes:
     """Serialize a frame into one of :data:`SUPPORTED_WRITE`.
 
     UTF-8 and Unix line endings throughout, so a file written on Windows and
     one written in the Linux container hash the same.
+
+    ``spreadsheet_safe`` writes the CSV formats so that no cell runs as a
+    formula in Excel or LibreOffice (:mod:`app.spreadsheet`) -- the variant for
+    a person, not for api_v3, which would train on the defusing apostrophe.
+    JSON and JSONL are unaffected: no spreadsheet reads a formula out of them.
 
     Raises ``ValueError`` for an unsupported format.
     """
@@ -305,7 +313,8 @@ def write_table(df: pd.DataFrame, *, fmt: str = "csv", separator: str = ";") -> 
     frame = df.fillna("").astype(str)
 
     if fmt.startswith("csv"):
-        text = frame.to_csv(sep=separator, index=False, lineterminator="\n")
+        text = (spreadsheet_csv(frame, sep=separator) if spreadsheet_safe
+                else frame.to_csv(sep=separator, index=False, lineterminator="\n"))
     elif fmt == "json":
         text = json.dumps(frame.to_dict("records"), ensure_ascii=False, indent=2)
     else:
