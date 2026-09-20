@@ -49,15 +49,23 @@ def holdout_split(
     for i, text in enumerate(texts):
         groups[text].append(i)
 
-    # The fraction is a fraction of the REAL rows: counting generated ones would ask
-    # for a holdout larger than the real data of that label can fill.
+    # A label's real rows, for the report of labels the marks left without a holdout.
     support: dict[str, int] = defaultdict(int)
     for row_labels, is_generated in zip(labels, generated, strict=True):
         if is_generated:
             continue
         for lab in set(row_labels):
             support[lab] += 1
-    target = {lab: max(1, round(holdout_fraction * count)) for lab, count in support.items()}
+    # The fraction is a fraction of the rows that MAY go to the holdout: counting the
+    # train-only ones -- marked, or sharing a text with a marked row -- asked the few
+    # free rows of a label for the share of all of them, and could take every one.
+    free: dict[str, int] = defaultdict(int)
+    for rows in groups.values():
+        if not any(train_only[i] for i in rows):
+            for i in rows:
+                for lab in set(labels[i]):
+                    free[lab] += 1
+    target = {lab: max(1, round(holdout_fraction * count)) for lab, count in free.items()}
 
     keys = sorted(groups)
     random.Random(seed).shuffle(keys)

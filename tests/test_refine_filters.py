@@ -77,6 +77,27 @@ def test_label_filter_rewrites_labels_and_drops_emptied_rows():
     assert new.iloc[0][LABEL] == "disc/1"  # 'other/9' stripped out
 
 
+def test_label_filter_keeps_the_display_names_in_step_and_counts_what_it_rewrote():
+    """The names of the labels it stripped stayed beside the ones it kept -- "Chemie,
+    Physik" next to one label, a wrong name wherever a prompt read it -- and a filter
+    that rewrote cells reported changed: 0 (review 2026-09-19, the cause of #3)."""
+    from app.refine.filters import run_filter
+
+    df = _df([
+        ("A", "text one", "kw", "disc/1,other/9"),
+        ("B", "text two", "kw", "disc/2"),
+        ("C", "text three", "kw", "other/8,disc/3"),
+    ])
+    df[f"{LABEL}_DISPLAYNAME"] = ["Chemie,Physik", "Politik, Gesellschaft", "Kunst,Musik,Sport"]
+
+    new, stats = run_filter("label_filter", df, {"substring": "disc/"}, _ctx())
+
+    assert new[f"{LABEL}_DISPLAYNAME"].tolist() == ["Chemie", "Politik, Gesellschaft", ""], (
+        "paired names follow their labels; a cell nothing was stripped from stays whole; "
+        "names that do not pair are not guessed")
+    assert stats["changed"] == 2
+
+
 def test_cap_per_label_balances_majority():
     from app.refine.filters import run_filter
 

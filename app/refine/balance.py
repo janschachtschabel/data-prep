@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import math
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import pandas as pd
@@ -30,7 +31,7 @@ from .balance_gates import (
     generate_for_label,
     pick_examples,
 )
-from .balance_prompt import PromptContext
+from .balance_prompt import PromptContext, entries_per_call
 from .fields import TextField, read_values, write_values
 from .prompt_context import FieldShape, contrast_labels, display_names, field_shapes
 from .provenance import (
@@ -108,7 +109,11 @@ def _prepare(
     )
 
 
-def _plan(prepared: _Prepared, target: int, batch_size: int, limit: int | None) -> dict:
+def _plan(prepared: _Prepared, target: int, batch_size: int, limit: int | None,
+          per_call: Callable[[str], int] | None = None) -> dict:
+    """``per_call`` says how many entries one call for a label asks for -- fewer than
+    ``batch_size`` where the answer would not fit the output cap -- so the batches, and
+    the call budget checked against them, are the ones the run makes."""
     per_label: dict[str, dict] = {}
     skipped: list[str] = []
     remaining = math.inf if limit is None else limit
@@ -128,7 +133,8 @@ def _plan(prepared: _Prepared, target: int, batch_size: int, limit: int | None) 
             "support": support,
             "deficit": deficit,
             "planned": planned,
-            "batches": math.ceil(planned / batch_size),
+            "batches": math.ceil(planned / (per_call(label) if per_call and planned
+                                             else batch_size)),
             "synthetic_share": round((synthetic + planned) / (support + planned), 3),
         }
     entries = per_label.values()
@@ -155,6 +161,7 @@ def plan_balance(
     label_separator: str = ",",
     batch_size: int = 10,
     limit: int | None = None,
+    examples_per_label: int = 4,
 ) -> dict:
     """What balancing to ``target_per_label`` would generate, and what it could cost.
 
@@ -164,8 +171,9 @@ def plan_balance(
     generated rows included. A label lifted from 3 to 100 is 97 % invented, and that
     belongs in front of the user before the run, not in a footnote after it.
     """
-    prepared = _prepare(df, fields, label_column, label_separator)
-    return _plan(prepared, target_per_label, batch_size, limit)
+    prepared, _, dataset_shapes = _read_frame(df, fields, label_column, label_separator)
+    return _plan(prepared, target_per_label, batch_size, limit,
+                 _fitting(prepared, fields, dataset_shapes, batch_size, examples_per_label))
 
 
 def _add_mark(existing: object, label: str, separator: str) -> str:
@@ -203,15 +211,40 @@ def _read_frame(
     return prepared, {fingerprint(row) for row in prepared.cells}, field_shapes(real, fields)
 
 
-def _context(prepared: _Prepared, label: str, usable: list[int], fields: list[TextField],
-             dataset_shapes: list[FieldShape | None]) -> PromptContext:
+def _context(prepared: _Prepared, label: str,
+             shapes: tuple[FieldShape | None, ...]) -> PromptContext:
     """What the prompt for ``label`` is told about the dataset (``prompt_context``)."""
     others, more = contrast_labels(label, prepared.rows_by_label, prepared.labels_of_row,
                                    prepared.names)
+    return PromptContext(label_name=prepared.names.get(label), others=tuple(others),
+                         more_others=more, shapes=shapes)
+
+
+def _label_inputs(prepared: _Prepared, label: str, fields: list[TextField],
+                  dataset_shapes: list[FieldShape | None], examples_per_label: int,
+                  ) -> tuple[list[int], list[dict], tuple[FieldShape | None, ...]]:
+    """The example rows (positions, and as ``{column: cell}``) and the field shapes
+    generation for ``label`` works from -- the same for the preview and the run."""
+    usable = [p for p in prepared.rows_by_label[label] if prepared.usable(p)]
+    positions = pick_examples(usable, prepared.cells, examples_per_label,
+                              touched={p for p in usable if any(prepared.completed[p])})
+    examples = [dict(zip((f.column for f in fields), prepared.cells[p], strict=True))
+                for p in positions]
     shapes = field_shapes([prepared.untouched(p) for p in usable], fields,
                           fallback=dataset_shapes)
-    return PromptContext(label_name=prepared.names.get(label), others=tuple(others),
-                         more_others=more, shapes=tuple(shapes))
+    return positions, examples, tuple(shapes)
+
+
+def _fitting(prepared: _Prepared, fields: list[TextField],
+             dataset_shapes: list[FieldShape | None], batch_size: int,
+             examples_per_label: int) -> Callable[[str], int]:
+    """Per label, the entries one call asks for (``entries_per_call``): its answer is
+    sized by the examples and the field shapes, never by the contrast list."""
+    def per_call(label: str) -> int:
+        _, examples, shapes = _label_inputs(prepared, label, fields, dataset_shapes,
+                                            examples_per_label)
+        return entries_per_call(examples, fields, batch_size, PromptContext(shapes=shapes))
+    return per_call
 
 
 async def balance_dataset(
@@ -242,7 +275,9 @@ async def balance_dataset(
     """
     prepared, seen, dataset_shapes = await asyncio.to_thread(
         _read_frame, df, fields, label_column, label_separator)
-    plan = _plan(prepared, target_per_label, batch_size, limit)
+    plan = await asyncio.to_thread(
+        _plan, prepared, target_per_label, batch_size, limit,
+        _fitting(prepared, fields, dataset_shapes, batch_size, examples_per_label))
     generated: list[dict] = []
     shown: list[tuple[int, str]] = []
     per_label: dict[str, dict] = {}
@@ -255,16 +290,13 @@ async def balance_dataset(
         synthetic = sum(1 for p in rows if not prepared.real[p])
         result = LabelResult()
         if entry["planned"] and stopped is None:
-            usable = [p for p in rows if prepared.usable(p)]
-            positions = pick_examples(usable, prepared.cells, examples_per_label,
-                                      touched={p for p in usable if any(prepared.completed[p])})
-            examples = [dict(zip((f.column for f in fields), prepared.cells[p], strict=True))
-                        for p in positions]
+            positions, examples, shapes = _label_inputs(prepared, label, fields, dataset_shapes,
+                                                        examples_per_label)
             result = await generate_for_label(
                 label, examples, fields=fields, wanted=entry["planned"],
                 avoid=[prepared.cells[p][0] for p in rows], seen=seen,
                 batch_size=batch_size, complete=complete, stop_on=stop_on,
-                context=_context(prepared, label, usable, fields, dataset_shapes),
+                context=_context(prepared, label, shapes),
             )
             if result.sent:  # a call that never went out showed nobody anything
                 shown.extend((p, label) for p in positions)

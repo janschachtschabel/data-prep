@@ -37,7 +37,9 @@ _WARNING_BLOCK = """## ⚠️ Nutzungshinweise (Pflicht)
 - Alle Zeilen tragen `source=synthetic` und `generated_for=<Konzept>` und sind
   PII-gescrubbt (E-Mail, Telefon, URL, Handle maskiert); Personennamen werden in
   v1 nicht erkannt. `generated_for` hält sie aus jedem Holdout von data-prep und
-  aus der Validierung von api_v3 heraus.
+  aus der Validierung von api_v3 heraus, solange der Datensatz genug echte Zeilen
+  zum Validieren hat. Ein reiner Lauf-Export hat keine: api_v3 misst dann über
+  alle Zeilen und sagt das (`validated_on: all_rows`).
 """
 
 

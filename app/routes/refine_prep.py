@@ -73,7 +73,8 @@ class CombineRequest(BaseModel):
 
 class SplitRequest(AnalyzeRequest):
     holdout_fraction: float = Field(default=0.15, gt=0.0, lt=0.9, description=(
-        "Share of each label's real (not generated) rows to hold out, at least one row; whole text groups move."))
+        "Share of each label's rows that may be held out (no AI mark, no text shared with a marked row), "
+        "at least one row; whole text groups move."))
     seed: int = Field(default=42, ge=0, description="Random seed: same seed and data, same split.")
     target: str = Field(max_length=MAX_NAME_BYTES, description=(
         "Base name of the two outputs `<target>_train` and `<target>_holdout`."))
@@ -116,7 +117,8 @@ class EnrichRequest(BaseModel):
     overwrite: bool = Field(default=False, description=DESC_OVERWRITE)
     # cap the LLM cost per call
     limit: int = Field(default=500, ge=1, le=5000, description=(
-        "Maximum LLM calls: one per row with a gap, in row order; later gaps stay open."))
+        "Maximum LLM calls: one per row with a gap, in row order; later gaps stay open, except a row "
+        "whose fields all match a row answered before -- it takes that answer, without a call."))
     llm_purpose: Literal["seeds", "bulk"] = Field(default="bulk", description=DESC_LLM_PURPOSE)
     # Refused as a field -- model text in a label cell is an invented label -- and named
     # in each prompt, so the added text fits the row's classification.
@@ -152,7 +154,7 @@ class EnrichRequest(BaseModel):
                 raise ValueError(
                     f"target_field {self.target_field!r} is not among the fields."
                 )
-            return [spec.to_field() for spec in self.fields], self.target_field
+            return [spec.to_field() for spec in self.fields], _markable(self.target_field)
         if self.mode is None:
             raise ValueError(
                 "Send either 'fields' with 'target_field', or 'mode' with the column names."
@@ -164,14 +166,26 @@ class EnrichRequest(BaseModel):
                       min_values=self.min_keywords, guidance=_WLO_KEYWORD_GUIDANCE),
         ]
         target = self.keyword_column if self.mode == "keywords" else self.description_column
-        return fields, target
+        return fields, _markable(target)
+
+
+def _markable(column: str) -> str:
+    """``column``, when ``enriched_fields`` can name it: that cell joins the columns it
+    names with "," and its readers strip each, so a comma or surrounding spaces would
+    read back as another column -- and the row lose its mark wherever it is checked per
+    column."""
+    if "," in column or column != column.strip():
+        raise ValueError(
+            f"Column {column!r} cannot be enriched: enriched_fields names columns joined by ',', "
+            "so the name must hold no comma and no leading or trailing spaces.")
+    return column
 
 
 @router.post("/{name}/split", summary="Stratified text-disjoint holdout split (train + holdout)")
 async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depends(get_settings)) -> dict:
     """Write `<target>_train` and `<target>_holdout`: text-disjoint (rows with the same cleaned text stay on
     one side) and stratified (text groups join the holdout in seeded order until each label has
-    `holdout_fraction` of its real rows). Rows with an AI mark (`generated_for`, `example_for`,
+    `holdout_fraction` of the rows it may hold out). Rows with an AI mark (`generated_for`, `example_for`,
     `enriched_fields`), and every row sharing its text with one, stay in training. Returns the counts,
     `labels_without_holdout` (labels this left without a holdout row; split before balancing to avoid
     them) and a label report of the training part.
@@ -252,7 +266,7 @@ async def enrich(
     """Fill the gaps of one field with the LLM, additively: a cell with fewer than `min_values` values is a
     gap, and a short list is extended, never replaced. Each prompt shows the row's other fields and names
     its labels (from `label_column`, by display name where known) and the field's typical length in the
-    rows people wrote, never above the 2,000-character answer cap; a length stated in the field's
+    rows people wrote, at most 1,500 characters (an answer value over 2,000 is dropped); a length stated in the field's
     `guidance` replaces it. Answers are PII-scrubbed; changed rows are marked in `enriched_fields`, which
     keeps them out of a holdout. Saves the result as `target`. Paid LLM calls; honours
     `X-LLM-Key`/`X-LLM-Model`. A budget cap mid-way keeps what was paid for (`stopped` says why).

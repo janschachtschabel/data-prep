@@ -22,10 +22,12 @@ from .balance_prompt import (
     BalanceItem,
     PromptContext,
     build_balance_prompt,
+    entries_per_call,
     output_budget,
     shown_cells,
 )
 from .fields import TextField, read_values, write_values
+from .prompt_context import MAX_VALUE_CHARS
 
 # The injected model call. Keyword arguments carry the per-batch output budget.
 Complete = Callable[..., Awaitable[BaseModel]]
@@ -41,7 +43,8 @@ EXTRA_BATCHES = 2
 
 
 def _no_discards() -> dict[str, int]:
-    return {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0}
+    return {"discarded_duplicate": 0, "discarded_incomplete": 0, "discarded_short": 0,
+            "discarded_long": 0}
 
 
 @dataclass
@@ -77,24 +80,28 @@ def fingerprint(cells: list[str]) -> str:
 def pick_examples(
     positions: list[int], cells: list[list[str]], k: int, touched: Collection[int] = (),
 ) -> list[int]:
-    """Up to ``k`` of ``positions``: complete rows first, rows an LLM completed
-    (``touched``) after the untouched ones, and within each the rows closest to the
-    median length of the label's complete rows; no row twice.
+    """Up to ``k`` of ``positions``: rows an LLM completed (``touched``) only when no
+    untouched row is left, complete rows first among each, and within those the rows
+    closest to the median length of the label's complete untouched rows; no row twice.
 
-    A row missing a field teaches the model nothing about that field, and a completed
-    row shows it the LLM's own words as a "real entry". Longest-first -- the rule before
-    -- showed a label's richest rows, and the generated rows came out longer and richer
-    than its real ones: a difference a classifier learns as a feature of the label. The
-    median is the complete rows' own: counted in, the shorter incomplete ones would pull
-    the choice toward the short end. Ties go to the longer row.
+    A completed row shows the model the LLM's own words as a "real entry", and a row
+    missing a field teaches it nothing about that field -- the first is the worse of the
+    two. Longest-first -- the rule before -- showed a label's richest rows, and the
+    generated rows came out longer and richer than its real ones: a difference a
+    classifier learns as a feature of the label. The median is the complete untouched
+    rows' own -- lacking those, the untouched rows': counted in, the shorter incomplete
+    ones would pull the choice toward the short end, and the completed ones toward the
+    LLM's lengths. Ties go to the longer row.
     """
     if not positions:
         return []
     size = {p: sum(map(len, cells[p])) for p in positions}
     complete = [p for p in positions if all(cells[p])]
-    median = statistics.median(size[p] for p in (complete or positions))
+    untouched = [p for p in positions if p not in touched]
+    basis = [p for p in complete if p not in touched] or untouched or complete or positions
+    median = statistics.median(size[p] for p in basis)
     chosen: dict[str, int] = {}
-    for position in sorted(positions, key=lambda p: (not all(cells[p]), p in touched,
+    for position in sorted(positions, key=lambda p: (p in touched, not all(cells[p]),
                                                      abs(size[p] - median), -size[p])):
         chosen.setdefault(fingerprint(cells[position]), position)
         if len(chosen) == k:
@@ -141,7 +148,8 @@ def _accept(item: BalanceItem, fields: list[TextField], seen: set[str],
     """The generated cells, or :class:`_Rejected` with the reason.
 
     Completeness first — every field must carry its ``min_values``, the dataset's
-    own definition of a gap — then length, then repetition.
+    own definition of a gap — then length, then repetition. Too long is a cell above
+    ``MAX_VALUE_CHARS``, the most an answer value may hold.
     """
     values = []
     for index, field in enumerate(fields):
@@ -153,6 +161,8 @@ def _accept(item: BalanceItem, fields: list[TextField], seen: set[str],
     cells = [write_values(parts, field) for parts, field in zip(values, fields, strict=True)]
     if any(len(cell) < floor for cell, floor in zip(cells, min_chars, strict=True)):
         raise _Rejected("discarded_short")
+    if any(len(cell) > MAX_VALUE_CHARS for cell in cells):
+        raise _Rejected("discarded_long")
     key = fingerprint(cells)
     if key in seen:
         raise _Rejected("discarded_duplicate")
@@ -183,11 +193,12 @@ async def generate_for_label(
     result = LabelResult()
     floors = _min_chars(examples, fields)
     _seed(seen, examples, fields)
-    attempts = math.ceil(wanted / batch_size) + EXTRA_BATCHES
+    per_call = entries_per_call(examples, fields, batch_size, context)
+    attempts = math.ceil(wanted / per_call) + EXTRA_BATCHES
 
     while len(result.accepted) < wanted and attempts:
         attempts -= 1
-        n = min(wanted - len(result.accepted), batch_size)
+        n = min(wanted - len(result.accepted), per_call)
         prompt = build_balance_prompt(label, examples, fields, n=n, avoid_titles=avoid,
                                       context=context)
         try:

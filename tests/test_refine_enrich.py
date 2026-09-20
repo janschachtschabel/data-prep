@@ -324,6 +324,34 @@ def test_an_answer_that_adds_nothing_new_is_not_counted():
     assert stats["enriched"] == 0
 
 
+def test_a_value_longer_than_an_answer_may_hold_is_dropped_alone():
+    """In the schema it failed the call, and a paid run with it; now only that value is
+    dropped (review 2026-09-19 #2)."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.prompt_context import MAX_VALUE_CHARS
+
+    df = pd.DataFrame([["Zahlen", "Rechnen lernen", "Mathe"],
+                       ["Brüche", "", "Bruch, Nenner, Zähler"]], columns=[TITLE, DESC, KEYW])
+
+    async def runaway(prompt, schema):
+        return schema(values=["x" * (MAX_VALUE_CHARS + 1), "Rechnen"])
+
+    async def runaway_only(prompt, schema):
+        return schema(values=["x" * (MAX_VALUE_CHARS + 1)])
+
+    keywords, _ = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=runaway))
+    descriptions, stats = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=DESC, complete=runaway_only))
+    second, _ = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=DESC, complete=runaway))
+
+    assert keywords.iloc[0][KEYW] == "Mathe, Rechnen"
+    assert descriptions.iloc[1][DESC] == "", "a single value too long leaves the cell as it was"
+    assert stats["enriched"] == 0
+    assert second.iloc[1][DESC] == "", "a single-valued field takes the first value, not a spare"
+
+
 def test_the_prompt_names_the_field_and_its_shape_even_without_guidance():
     """The UI sends no guidance unless someone types one, and the prompt never said
     which field to fill: the model got context lines and a PII rule, nothing else
@@ -358,6 +386,59 @@ def test_a_target_field_that_is_not_among_the_fields_is_a_bad_request(make_clien
 
     assert r.status_code == 400
     assert KEYW in r.json()["detail"]
+
+
+def test_a_target_its_mark_cannot_name_is_a_bad_request(make_client):
+    """enriched_fields joins column names with "," and its readers strip each: a target
+    named with a comma, or with spaces around it, read back as another column, and the
+    row lost its mark wherever it is checked per column (review 2026-09-19 #13)."""
+    client = make_client()
+    for column in ("Schlagwort, Thema", " Schlagwort"):
+        _import(client, pd.DataFrame([["Optik", "Licht", ""]], columns=[TITLE, DESC, column]))
+
+        by_fields = client.post("/refine/curated/enrich", headers=HEADERS, json={
+            "fields": [{"column": TITLE}, {"column": DESC}, {"column": column}],
+            "target_field": column, "target": "out"})
+        by_mode = client.post("/refine/curated/enrich", headers=HEADERS, json={
+            "mode": "keywords", "title_column": TITLE, "description_column": DESC,
+            "keyword_column": column, "target": "out"})
+
+        for r in (by_fields, by_mode):
+            assert r.status_code == 400, (column, r.text)
+            assert "enriched_fields" in r.json()["detail"]
+
+
+def test_a_long_list_answer_is_cut_where_it_is_read_not_refused():
+    """The schema capped an answer at 20 values while the prompt may state a typical
+    24-33: a model that followed it failed the call, and a paid run with it (review of
+    the fixes). The list is cut where the answer is read instead."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    tags = TextField(column=KEYW, separator=",", min_values=30)
+    df = pd.DataFrame([["Optik", ""]], columns=[TITLE, KEYW])
+
+    async def many(prompt, schema):
+        return schema(values=[f"wort{i}" for i in range(80)])
+
+    new, stats = asyncio.run(enrich_dataset(
+        df, fields=[TextField(column=TITLE), tags], target_field=KEYW, complete=many))
+
+    assert stats["enriched"] == 1
+    assert len(new.iloc[0][KEYW].split(", ")) == 50
+
+
+def test_a_mark_already_in_the_cell_is_not_added_twice():
+    """Written by another tool as "title, keywords", the cell got the same column again."""
+    from app.refine.enrich import enrich_dataset
+
+    df = pd.DataFrame([["Optik", "Licht", "", f" {TITLE} , {KEYW}"]],
+                      columns=[TITLE, DESC, KEYW, "enriched_fields"])
+
+    new, _ = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=_fake_keywords))
+
+    assert new.iloc[0]["enriched_fields"] == f"{TITLE},{KEYW}"
 
 
 def test_enrichment_refuses_fields_it_would_misuse(make_client):
@@ -483,6 +564,90 @@ def test_a_stop_keeps_the_rows_enriched_so_far():
     assert list(new["enriched_fields"]) == [KEYW, "", ""]
 
 
+def _twins() -> pd.DataFrame:
+    return pd.DataFrame([["Optik", "Licht und Linsen", ""],
+                         ["Mechanik", "Kraft und Hebel", ""],
+                         ["Optik", "Licht und Linsen", ""]], columns=[TITLE, DESC, KEYW])
+
+
+def test_exact_twins_are_enriched_alike_even_past_the_limit():
+    """Enriched apart, the untouched twin kept the text its enriched twin trains on, and
+    could validate on it: the holdout split and api_v3's dedupe group rows by their text,
+    and the enriched twin's no longer matched (review 2026-09-19 #4). A twin takes the
+    answer its first row got -- past `limit` too, and without a call of its own."""
+    from app.refine.enrich import enrich_dataset
+
+    calls: list[str] = []
+
+    async def complete(prompt, schema):
+        calls.append(prompt)
+        return schema(values=[f"Antwort {len(calls)}", "Licht", "Physik"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        _twins(), fields=_wlo_fields(), target_field=KEYW, complete=complete, limit=1))
+
+    assert len(calls) == 1
+    assert list(new[KEYW]) == ["Antwort 1, Licht, Physik", "", "Antwort 1, Licht, Physik"]
+    assert list(new["enriched_fields"]) == [KEYW, "", KEYW]
+    assert stats["enriched"] == 2
+
+
+def test_rows_alike_only_in_their_fields_but_filed_apart_are_no_twins():
+    """Twins share an answer because their prompts are the same -- and the prompt names
+    the row's labels. Three empty descriptions under Physik, Kunst and Geografie got one
+    call, and the Physik text went into all three (review of the fixes)."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    df = pd.DataFrame([["", "uri/phy", "Physik"], ["", "uri/kun", "Kunst"], ["", "uri/geo", "Geografie"]],
+                      columns=[DESC, LABEL, f"{LABEL}_DISPLAYNAME"])
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=[TextField(column=DESC)], target_field=DESC,
+                               complete=complete, label_column=LABEL))
+
+    assert len(prompts) == 3
+
+
+def test_twins_are_the_rows_the_split_takes_for_one_text():
+    """Markup and spacing that cleaning removes put two rows into one text group of the
+    split; enriched apart, one went to training and its twin could land in the holdout.
+    Each keeps its own existing values (review of the fixes)."""
+    from app.refine.enrich import enrich_dataset
+
+    df = pd.DataFrame([["<p>Optik</p>", "Licht und Linsen", "<b>Licht</b>"],
+                       ["Optik", "Licht  und Linsen", "Licht"]], columns=[TITLE, DESC, KEYW])
+    calls: list[str] = []
+
+    async def complete(prompt, schema):
+        calls.append(prompt)
+        return schema(values=["Linse", "Brechung"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=complete, limit=1))
+
+    assert len(calls) == 1 and stats["enriched"] == 2
+    assert list(new[KEYW]) == ["<b>Licht</b>, Linse, Brechung", "Licht, Linse, Brechung"]
+
+
+def test_a_stop_still_gives_a_twin_the_answer_its_first_row_got():
+    from app.refine.enrich import enrich_dataset
+
+    answered: list[str] = []
+
+    async def complete(prompt, schema):
+        if answered:
+            raise _Stop("token budget exhausted")
+        answered.append(prompt)
+        return schema(values=["Optik", "Licht", "Physik"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        _twins(), fields=_wlo_fields(), target_field=KEYW, complete=complete, stop_on=(_Stop,)))
+
+    assert stats["stopped"] == "token budget exhausted"
+    assert list(new["enriched_fields"]) == [KEYW, "", KEYW]
+
+
 def test_without_a_stop_signal_an_enrichment_error_still_propagates():
     import pytest
 
@@ -584,6 +749,23 @@ def test_the_prompt_names_the_rows_classification_as_people_read_it():
     assert "„Physik, Geografie“" in prompts[0]
     assert "uri/phy" not in prompts[0]
     assert "zu dieser Einordnung passen" in prompts[0]
+
+
+def test_the_added_text_fits_the_classification_without_naming_it():
+    """Told only that the addition should fit, the model wrote the classification in:
+    one of six enriched rows got "Sekundarstufe" as a keyword -- the label, in the
+    features of a row that trains it (review 2026-09-19 #6)."""
+    from app.refine.enrich import enrich_dataset
+    from app.refine.fields import TextField
+
+    df = pd.DataFrame([["Wasserkraft", "", "uri/phy", "Physik"]],
+                      columns=[TITLE, DESC, LABEL, f"{LABEL}_DISPLAYNAME"])
+    complete, prompts = _capture()
+
+    asyncio.run(enrich_dataset(df, fields=[TextField(column=TITLE), TextField(column=DESC)],
+                               target_field=DESC, complete=complete, label_column=LABEL))
+
+    assert "sie aber nicht selbst nennen" in prompts[0]
 
 
 def test_without_a_label_column_the_prompt_claims_no_classification():

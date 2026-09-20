@@ -211,6 +211,25 @@ def test_the_split_names_the_labels_whose_holdout_the_marks_emptied():
     assert "disc/A" not in set(holdout[LABEL])
 
 
+def test_the_holdout_share_is_a_share_of_the_rows_that_may_go_there():
+    """Counted over every real row, a label whose rows are mostly completed asked its
+    few free rows for the whole share: of 20 rows 16 completed, a quarter of 20 is 5,
+    and all 4 free rows went to the holdout -- none left to train on (review 2026-09-19
+    #12)."""
+    from app.refine.prep import holdout_split
+
+    rows = [[f"Titel A-{i}", f"Text A nummer {i}", "kw", "disc/A", KEYW if i < 16 else ""]
+            for i in range(20)]
+    rows += [[f"Titel B-{i}", f"Text B nummer {i}", "kw", "disc/B", ""] for i in range(20)]
+    df = pd.DataFrame(rows, columns=[TITLE, DESC, KEYW, LABEL, "enriched_fields"])
+
+    train, holdout, _ = holdout_split(df, COLS, LABEL, holdout_fraction=0.25, seed=1)
+
+    assert (holdout[LABEL] == "disc/A").sum() == 1, "a quarter of the 4 it may hold out"
+    assert ((train[LABEL] == "disc/A") & (train["enriched_fields"] == "")).sum() == 3
+    assert (holdout[LABEL] == "disc/B").sum() == 5
+
+
 def test_an_unmarked_split_names_no_label():
     from app.refine.prep import holdout_split
 

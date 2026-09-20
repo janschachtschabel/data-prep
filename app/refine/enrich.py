@@ -22,20 +22,20 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Annotated
 
 import pandas as pd
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field
 
 from ..pii import scrub
 from ..textnorm import split_labels
+from .analyze import _combined_texts
 from .fields import TextField, is_gap, merge_values, read_values, write_values
 from .prompt_context import (
     MAX_VALUE_CHARS,
-    NAME_CHARS,
     display_names,
     field_shapes,
     guidance_states_a_length,
+    label_name,
     one_line,
     typical_phrase,
 )
@@ -43,10 +43,11 @@ from .provenance import ENRICHED_FIELDS, GENERATED_FOR, enriched_columns, is_mar
 
 Complete = Callable[[str, type[BaseModel]], Awaitable[BaseModel]]
 
-# Bounded per value and per list: a model that runs away must not write a megabyte
-# into one cell. The bound is the prompts' own (MAX_VALUE_CHARS), so no stated typical
-# length ever asks for more than an answer may hold.
-Value = Annotated[str, StringConstraints(max_length=MAX_VALUE_CHARS)]
+# Bounded where the answer is read, not by its schema: a value over MAX_VALUE_CHARS is
+# dropped alone and a list is cut after _MAX_ANSWER_VALUES -- in the schema either failed
+# the call, and the run it was paid in. The answer's size is bounded by its output tokens.
+Value = str
+_MAX_ANSWER_VALUES = 50
 
 
 class FieldValues(BaseModel):
@@ -57,7 +58,7 @@ class FieldValues(BaseModel):
     all of them.
     """
 
-    values: list[Value] = Field(default_factory=list, max_length=20)
+    values: list[Value] = Field(default_factory=list)
 
 
 _PROMPT = """Kontext: Metadaten für ein Lernmaterial (Bildungsinhalt){classified}.
@@ -81,7 +82,7 @@ def _shape(target: TextField) -> str:
 
 
 def _mark(existing: str, field: str) -> str:
-    marks = [m for m in str(existing or "").split(",") if m.strip()]
+    marks = [m.strip() for m in str(existing or "").split(",") if m.strip()]
     if field not in marks:
         marks.append(field)
     return ",".join(marks)
@@ -120,13 +121,31 @@ def _read_context(
     return names, _typical_sentence(df, target)
 
 
+Twin = tuple[str, tuple[str, ...]]
+
+
+def _twins_and_gaps(df: pd.DataFrame, fields: list[TextField], target: TextField,
+                    label_column: str | None, separator: str) -> tuple[list[Twin], list[bool]]:
+    """Per row: what makes two rows twins, and whether its target cell is a gap.
+
+    Twins read as one text where the split and api_v3 read it -- the fields cleaned and
+    joined (``_combined_texts``) -- and carry the same labels, which their prompt names:
+    rows alike only in empty fields but filed apart are no twins. Read column by column,
+    off the event loop: per-row access on a large frame takes seconds."""
+    texts = _combined_texts(df, [field.column for field in fields])
+    labels = ([tuple(sorted(set(split_labels(cell, separator)))) for cell in df[label_column]]
+              if label_column is not None else [()] * len(df))
+    return (list(zip(texts, labels, strict=True)),
+            [is_gap(cell, target) for cell in df[target.column]])
+
+
 def _classification(row: pd.Series, label_column: str | None, separator: str,
                     names: dict[str, str]) -> str:
     """The row's labels as people read them, one line, for the prompt's first sentence."""
     if label_column is None:
         return ""
     labels = split_labels(row.get(label_column), separator)[:_MAX_LABELS]
-    return ", ".join(one_line(names.get(label, label), NAME_CHARS) for label in labels)
+    return ", ".join(label_name(label, names.get(label)) for label in labels)
 
 
 def _prompt_for(
@@ -150,7 +169,10 @@ def _prompt_for(
         context="\n".join(context), column=target.column, shape=_shape(target),
         typical=typical, existing=held,
         guidance=f"{target.guidance}\n" if target.guidance else "",
-        fits="Die Ergänzung soll zu dieser Einordnung passen.\n" if classified else "",
+        # Fitting it, not naming it: the label written into a row that trains it is a
+        # feature the real rows do not have.
+        fits=("Die Ergänzung soll zu dieser Einordnung passen, sie aber nicht selbst nennen.\n"
+              if classified else ""),
     )
 
 
@@ -188,39 +210,52 @@ async def enrich_dataset(
         _read_context, df, target, label_column, label_separator)
 
     new = df.copy()
-    if "enriched_fields" not in new.columns:
-        new["enriched_fields"] = ""
+    if ENRICHED_FIELDS not in new.columns:
+        new[ENRICHED_FIELDS] = ""
     else:
-        new["enriched_fields"] = new["enriched_fields"].fillna("")
+        new[ENRICHED_FIELDS] = new[ENRICHED_FIELDS].fillna("")
 
     enriched = 0
     calls = 0  # what `limit` caps: model calls, whether or not they changed a row
     stopped: str | None = None
-    for idx in new.index:
-        if calls >= limit:
-            break
-        cell = new.at[idx, target.column]
-        if not is_gap(cell, target):
+    # Twins -- one text to the split and api_v3, the same labels -- share one answer.
+    # Enriched apart, the untouched twin keeps the text its enriched twin trains on and
+    # may validate on it: the holdout split and api_v3's dedupe know a row by its text.
+    # So a twin takes the answer its first row got, past `limit` or a stop too, and
+    # without a call of its own; each row merges it with the values it holds itself.
+    twins, gaps = await asyncio.to_thread(_twins_and_gaps, df, fields, target,
+                                          label_column, label_separator)
+    answers: dict[Twin, list[str]] = {}
+    for idx, twin, gap in zip(new.index, twins, gaps, strict=True):
+        if not gap:
             continue
-        existing = read_values(cell, target)
-        try:
-            row = new.loc[idx]
-            prompt = _prompt_for(row, fields, target, existing, typical=typical,
-                                 classified=_classification(row, label_column, label_separator, names))
-            result = await complete(prompt, FieldValues)
-        except stop_on as signal:
-            stopped = str(signal) or signal.__class__.__name__
-            break
-        calls += 1
-        # Scrubbed per value, as the model returned it; a list value that still holds
-        # the separator ("Optik, Licht") is split so the merge can see both parts.
-        answered = [part for value in result.values  # type: ignore[attr-defined]
-                    for part in read_values(scrub(value)[0], target)]
-        merged = merge_values(existing, answered) if target.separator else answered[:1]
+        existing = read_values(new.at[idx, target.column], target)
+        if twin not in answers:
+            if calls >= limit or stopped is not None:
+                continue
+            try:
+                row = new.loc[idx]
+                prompt = _prompt_for(row, fields, target, existing, typical=typical,
+                                     classified=_classification(row, label_column,
+                                                                label_separator, names))
+                result = await complete(prompt, FieldValues)
+            except stop_on as signal:
+                stopped = str(signal) or signal.__class__.__name__
+                continue
+            calls += 1
+            # Scrubbed per value, as the model returned it; a list value that still holds
+            # the separator ("Optik, Licht") is split so the merge can see both parts. A
+            # single-valued field takes the first value -- a spare is no answer -- and a
+            # value too long is dropped.
+            parts = [part for value in result.values  # type: ignore[attr-defined]
+                     for part in read_values(scrub(value)[0], target)]
+            answers[twin] = [part for part in (parts if target.separator else parts[:1])
+                             if len(part) <= MAX_VALUE_CHARS][:_MAX_ANSWER_VALUES]
+        merged = merge_values(existing, answers[twin]) if target.separator else answers[twin]
         if not merged or merged == existing:
             continue  # nothing new: the cell stays as it was, and is not counted
         new.at[idx, target.column] = write_values(merged, target)
-        new.at[idx, "enriched_fields"] = _mark(new.at[idx, "enriched_fields"], target.column)
+        new.at[idx, ENRICHED_FIELDS] = _mark(new.at[idx, ENRICHED_FIELDS], target.column)
         enriched += 1
 
     return new, {"field": target.column, "rows": int(len(df)), "enriched": enriched,

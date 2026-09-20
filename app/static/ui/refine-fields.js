@@ -262,17 +262,18 @@ const RefineFields = (() => {
   /* What the checks threw away, summed over labels: those calls were paid for, and
      a result that only counts what was kept hides why a label is still short. */
   function discards(out, perLabel) {
-    const sum = { duplicate: 0, short: 0, incomplete: 0 };
+    const sum = { duplicate: 0, short: 0, long: 0, incomplete: 0 };
     for (const entry of Object.values(perLabel || {})) {
       sum.duplicate += entry.discarded_duplicate || 0;
       sum.short += entry.discarded_short || 0;
+      sum.long += entry.discarded_long || 0;
       sum.incomplete += entry.discarded_incomplete || 0;
     }
-    if (!(sum.duplicate + sum.short + sum.incomplete)) return;
+    if (!(sum.duplicate + sum.short + sum.long + sum.incomplete)) return;
     const line = document.createElement("p");
     line.className = "muted";
     line.textContent = I18n.t("js.refine.balanceDiscarded", {
-      duplicate: number(sum.duplicate), short: number(sum.short),
+      duplicate: number(sum.duplicate), short: number(sum.short), long: number(sum.long),
       incomplete: number(sum.incomplete),
     });
     out.appendChild(line);
