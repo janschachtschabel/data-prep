@@ -86,6 +86,33 @@ the `data-prep-data` volume (`/data`).
 GHCR on `main` and `vX.Y.Z` tags). Before a production build, pin the base
 image by digest (see the note at the top of the `Dockerfile`).
 
+### Running the published image
+
+Instead of building, pull what that workflow published — the package is public,
+so no `docker login` is needed:
+
+```bash
+docker run -d --name data-prep -p 127.0.0.1:8110:8110 \
+  -e DATAPREP_AUTH_KEY=your-key \
+  -v data-prep-data:/data \
+  ghcr.io/janschachtschabel/data-prep:main
+```
+
+The image points `DATAPREP_DATA_DIR` and `DATAPREP_RUNS_DIR` into `/data`
+itself, so that one volume keeps datasets, vocabularies, seeds and runs. Add
+`-e OPENAI_API_KEY=…` for a server-wide LLM key (without it the instance is
+"open": users bring their own key in the UI) and `-e DATAPREP_APIV3_KEY=…` for
+the api_v3 push and the label audit.
+
+`config.yaml` — LLM endpoints per purpose, run budgets, api_v3 target — ships
+**inside** the image. To change it, mount your own and point the app at it:
+`-v /path/to/config.yaml:/app/my-config.yaml -e DATAPREP_CONFIG_FILE=/app/my-config.yaml`.
+
+Tags: `main` (the newest commit on `main`) and `sha-<commit>` for an exact
+build; a `vX.Y.Z` release would add version tags. Pin `sha-<commit>` where a
+moving tag is not acceptable. The images are built for **linux/amd64** only —
+on arm64, build locally (`docker compose up -d --build`) or run under emulation.
+
 ## Tests, lint, types
 
 ```bash
