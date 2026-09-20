@@ -271,13 +271,13 @@ Semikolon-CSV, die api_v3 liest.
 **Zum Öffnen in Excel oder LibreOffice** gibt es den Haken „Formeln für
 Excel/LibreOffice entschärfen" (im Reiter „Läufe" den Knopf **CSV (Excel)**).
 Eine Zelle, die dort als **Formel** liefe — sie beginnt mit `=`, `+`, `-`, `@`,
-einem Tabulator oder einem Wagenrücklauf —, bekommt dann ein Apostroph davor,
+einem Tabulator oder einem Wagenrücklauf —, bekommt dann einen Apostroph davor,
 und jedes Feld wird in Anführungszeichen gesetzt. Aus einem geernteten Titel
 `=HYPERLINK("http://…";"hier klicken")` wird so sichtbarer Text statt eines
 Links, den ein Klick öffnet.
 
-Dieses Apostroph gehört danach **zum Text**: api_v3 würde es mittrainieren, und
-ein erneuter Import hier würde es behalten. Deshalb ist es nichts, was
+Dieser Apostroph gehört danach **zum Text**: api_v3 würde ihn mittrainieren, und
+ein erneuter Import hier würde ihn behalten. Deshalb ist es nichts, was
 stillschweigend passiert — die Datei heißt `<name>.spreadsheet.csv` und ist zum
 Lesen gedacht. Ohne Haken (und bei jedem Push) bleibt die CSV Zeichen für
 Zeichen die gespeicherte.

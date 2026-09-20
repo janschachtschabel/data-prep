@@ -26,6 +26,8 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Fremde Branches geprüft und nach `main` zusammengeführt (2026-09-20).** Zwei Branches aus anderen Sitzungen liefen unveröffentlicht neben `main` her: die 22 Review-Fixes an KI-Herkunft und Prompts sowie die Tabellen-Variante der CSV-Downloads (6 Commits). Beide wurden vorher unabhängig reviewt — keine kritischen oder schweren Befunde — und dann gemerged. Nachweis nach dem Merge: **847 Tests grün**, ruff sauber, mypy sauber (67 Dateien), `node tests/ui/balance_panel.check.js` bestanden. Direkt nachgezogen: die `limit`-Beschreibung der Anreicherung nennt jetzt die tatsächliche Zwillingsregel (gleicher bereinigter Text der `fields` **und** gleiche Labels), und „Apostroph“ ist maskulin (UI, Handbuch, dieser Datei). Offen aus den Reviews: Zwillinge werden nach den Anreicherungsfeldern gruppiert statt nach den Textspalten des Splits, weshalb README und CHANGELOG mehr versprechen, als der Code garantiert; der Haken „CSV (Excel)“ bleibt bei JSON/JSONL aktiv, ohne zu wirken; `routes/tables.py` steht bei 312 Zeilen.
+
 **Docker-Anleitung für das veröffentlichte Image (2026-09-20).** Die README zeigt jetzt `docker run` mit `ghcr.io/janschachtschabel/data-prep:main`: Volume `/data`, Auth- und LLM-Schlüssel, eigene `config.yaml` per Mount, dazu Tags und die Plattform (nur linux/amd64). Verifiziert mit einem Wegwerf-Container aus dem veröffentlichten Image (healthy, `/health` 200, `/data/datasets` und `/data/runs` angelegt); dass die eingebundene Konfigdatei wirklich gelesen wird, zeigt der Gegentest mit kaputter YAML — der Start bricht ab. Docker Hub ist weiterhin nirgends eingerichtet, nur GHCR.
 
 **CSV-Downloads: Variante für Tabellenkalkulationen (2026-09-20).** Plan:
@@ -37,7 +39,7 @@ aussehen. Neu: `?spreadsheet_safe=true` an beiden Downloads (UI: Knopf **CSV (Ex
 bei den Läufen, Haken im Tabellen-Export) schreibt die entschärfte Datei als
 `<name>.spreadsheet.csv` (Apostroph vor solchen Zellen, Kopfzeile eingeschlossen,
 jedes Feld gequotet). **Beide Pushes und die einfachen Downloads bleiben Byte für
-Byte unverändert** — das Apostroph gehört danach zum Text, api_v3 würde es
+Byte unverändert** — der Apostroph gehört danach zum Text, api_v3 würde ihn
 mittrainieren; Tests vergleichen den gepushten Körper mit dem Standard-Export.
 Neu `app/spreadsheet.py`; test-first (13 + 9 neue Tests). Nachweis: **807 Tests grün**,
 ruff sauber, mypy sauber (67 Dateien), `node --check` für die drei geänderten
@@ -45,7 +47,7 @@ JS-Dateien, dazu ein Live-Lauf auf Port 8117: Import einer Zelle
 `=HYPERLINK("http://evil.example","click")`, Standard-Download unverändert,
 `spreadsheet_safe=true` liefert `formel.spreadsheet.csv` mit `'=HYPERLINK…`.
 Unabhängiges Review danach: keine CRITICAL/MAJOR-Befunde; nachgezogen wurden die zu
-stark formulierte Quoting-Zusage (jetzt sagt sie, was bewiesen ist: das Apostroph deckt
+stark formulierte Quoting-Zusage (jetzt sagt sie, was bewiesen ist: der Apostroph deckt
 das erste Zeichen jeder Zelle, das Quoten nimmt nur die einfache Komma-Variante weg;
 +3 Tests), Literal-Bytes im Push-Test, der Dateiname `<name>.spreadsheet.<format>` und
 die Grenzen in den Nutzer-Dokus (Zahlen als Text, keine BOM). Offen: Jans Entscheidung

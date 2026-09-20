@@ -117,8 +117,9 @@ class EnrichRequest(BaseModel):
     overwrite: bool = Field(default=False, description=DESC_OVERWRITE)
     # cap the LLM cost per call
     limit: int = Field(default=500, ge=1, le=5000, description=(
-        "Maximum LLM calls: one per row with a gap, in row order; later gaps stay open, except a row "
-        "whose fields all match a row answered before -- it takes that answer, without a call."))
+        "Maximum LLM calls: one per row with a gap, in row order; later gaps stay open, except a "
+        "twin of a row answered before -- same text from `fields` (cleaned and joined) and the "
+        "same labels -- which takes that answer, without a call."))
     llm_purpose: Literal["seeds", "bulk"] = Field(default="bulk", description=DESC_LLM_PURPOSE)
     # Refused as a field -- model text in a label cell is an invented label -- and named
     # in each prompt, so the added text fits the row's classification.

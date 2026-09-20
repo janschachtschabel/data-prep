@@ -687,7 +687,7 @@ const I18n = (() => {
       "run.explain.exports": `<strong>CSV</strong> ist die Trainingsdatei für api_v3.
         <strong>CSV (Excel)</strong> enthält dieselben Zeilen zum Öffnen in Excel oder
         LibreOffice: Eine Zelle, die dort als Formel liefe (beginnend mit <code>=</code>,
-        <code>+</code>, <code>-</code> oder <code>@</code>), bekommt ein Apostroph davor. Dieses
+        <code>+</code>, <code>-</code> oder <code>@</code>), bekommt einen Apostroph davor. Dieser
         Apostroph gehört danach zum Text — die Datei ist zum Lesen, nicht für api_v3.`,
       "run.newrun.h": "Neuer Lauf",
       "run.seedset": "Seed-Set",
@@ -1106,7 +1106,7 @@ const I18n = (() => {
       "tables.export.separator": "Trennzeichen <span class=\"muted\">(CSV)</span>",
       "tables.download.btn": "Herunterladen",
       "tables.export.spreadsheet": `Formeln für Excel/LibreOffice entschärfen <span class="muted">(nur
-        CSV — das ergänzte Apostroph bleibt im Text, also nicht für api_v3)</span>`,
+        CSV — der ergänzte Apostroph bleibt im Text, also nicht für api_v3)</span>`,
       "tables.view.h": "Zeilen",
       "tables.search": "Suche <span class=\"muted\">(alle sichtbaren Spalten)</span>",
       "tables.columns": "Spalten zeigen <span class=\"muted\">(kommagetrennt; leer = alle)</span>",
