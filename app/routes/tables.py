@@ -30,7 +30,7 @@ from ..refine.view import page_rows
 from ..security import MAX_NAME_BYTES, read_upload_capped, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..tabular import SUPPORTED_READ, read_table, write_table
-from .refine import DESC_OVERWRITE, DESC_PREVIEW_TARGET, load_or_404, load_with_history_or_404
+from .refine import DESC_OVERWRITE, DESC_PREVIEW_TARGET, DatasetName, load_or_404, load_with_history_or_404
 
 # Chosen so a browser saves rather than renders, and so a gzipped export is
 # not silently decompressed by the transfer layer.
@@ -138,7 +138,7 @@ class OperationRequest(BaseModel):
 
 @router.post("/{name}/op", summary="Preview (no target) or apply (target) a table operation")
 async def run_operation(
-    name: str, req: OperationRequest, settings: Settings = Depends(get_settings)
+    name: DatasetName, req: OperationRequest, settings: Settings = Depends(get_settings)
 ) -> dict:
     """Run one table operation: `rules` (keep the rows the rules match), a column
     change (`select_columns`, `drop_columns`, `rename_columns`), or `dedupe_keys`
@@ -178,7 +178,7 @@ async def run_operation(
 
 @router.get("/{name}/profile", summary="Per-column fill rate, cardinality and ranges")
 async def profile_dataset(
-    name: str,
+    name: DatasetName,
     top_n: int = Query(default=10, ge=0, le=100, description="Most frequent values listed per column; 0 = none."),
     settings: Settings = Depends(get_settings),
 ) -> dict:
@@ -192,7 +192,7 @@ async def profile_dataset(
 
 @router.get("/{name}/download", summary="Download the dataset in a chosen format")
 async def download_dataset(
-    name: str,
+    name: DatasetName,
     format: str = Query(default="csv", max_length=20, description="`csv`, `csv.gz`, `json` or `jsonl`."),
     separator: str = Query(default=";", max_length=3, description="Field separator of the CSV formats."),
     spreadsheet_safe: bool = Query(default=False, description=(
@@ -230,7 +230,7 @@ async def download_dataset(
 
 @router.get("/{name}/duplicates", summary="How many rows share a key, and which")
 async def duplicates(
-    name: str,
+    name: DatasetName,
     keys: list[str] = Query(default=[], description="Key columns; repeat for a composite key"),
     examples: int = Query(default=5, ge=0, le=50, description="Repeated keys listed as examples; 0 = none."),
     settings: Settings = Depends(get_settings),
@@ -250,7 +250,7 @@ async def duplicates(
 
 
 @router.post("/{name}/join", summary="Report a join (no target) or run it (target)")
-async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_settings)) -> dict:
+async def join(name: DatasetName, req: JoinRequest, settings: Settings = Depends(get_settings)) -> dict:
     """Match ``right`` onto this dataset over one or more keys.
 
     Without a target this reports the CARDINALITY rather than a materialised
@@ -287,7 +287,7 @@ async def join(name: str, req: JoinRequest, settings: Settings = Depends(get_set
 
 @router.get("/{name}/rows", summary="Browse rows, paginated and searchable")
 async def rows(
-    name: str,
+    name: DatasetName,
     offset: int = Query(default=0, ge=0, description="Matching rows to skip (paging)."),
     limit: int = Query(default=50, ge=1, le=500, description="Page size: rows returned at most."),
     q: str = Query(default="", max_length=200, description=(
