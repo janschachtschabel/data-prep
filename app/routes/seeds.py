@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Path as PathParam
 from pydantic import BaseModel, Field
 
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, session_for
@@ -28,6 +30,11 @@ from ..terms import extract_candidates, refine_concept_terms
 from ..vocab import Vocabulary, parse_vocabulary
 
 router = APIRouter(prefix="/seeds", tags=["Seeds"], dependencies=[Depends(require_key)])
+
+# The seed-set name every seed route takes in its path.
+SeedSetName = Annotated[str, PathParam(description=(
+    "A seed set as `GET /seeds` lists it. A plain name: path characters, or more than 200 bytes, "
+    "are refused with 400; a name no seed set has answers 404."))]
 
 
 class BuildRequest(BaseModel):
@@ -159,7 +166,7 @@ async def build(req: BuildRequest, settings: Settings = Depends(get_settings)) -
 
 
 @router.get("/{name}", summary="Seed set details (all concepts and seeds)")
-async def detail(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def detail(name: SeedSetName, settings: Settings = Depends(get_settings)) -> dict:
     """The whole seed set: its parameters and, per concept URI, the seeds (each with its `source`:
     `distilled`, `bootstrap` or `manual`) and the term bank.
 
@@ -169,7 +176,7 @@ async def detail(name: str, settings: Settings = Depends(get_settings)) -> dict:
 
 @router.post("/{name}/bootstrap", summary="LLM-generate seeds for ONE concept (vocab-only anchor)")
 async def bootstrap(
-    name: str, req: BootstrapRequest,
+    name: SeedSetName, req: BootstrapRequest,
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
@@ -204,7 +211,7 @@ async def bootstrap(
 
 @router.post("/{name}/terms", summary="LLM-clean and extend a concept's term bank")
 async def refine_terms(
-    name: str, req: RefineTermsRequest,
+    name: SeedSetName, req: RefineTermsRequest,
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
@@ -241,7 +248,7 @@ async def refine_terms(
 
 
 @router.put("/{name}/concepts", summary="Replace the seeds of one concept (editor)")
-async def update_concept(name: str, req: ConceptSeedsPut, settings: Settings = Depends(get_settings)) -> dict:
+async def update_concept(name: SeedSetName, req: ConceptSeedsPut, settings: Settings = Depends(get_settings)) -> dict:
     """Replace one concept's seeds with the list sent, each marked `source=manual`; the term bank is kept.
 
     Errors: 400 for a concept not in the set; 404 for an unknown seed set."""
@@ -256,7 +263,7 @@ async def update_concept(name: str, req: ConceptSeedsPut, settings: Settings = D
 
 
 @router.delete("/{name}", summary="Delete a seed set")
-async def delete(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def delete(name: SeedSetName, settings: Settings = Depends(get_settings)) -> dict:
     """Delete the seed set. Runs made from it keep their samples and exports but can no longer be resumed.
 
     Errors: 404 when no seed set has that name."""

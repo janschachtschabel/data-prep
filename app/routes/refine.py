@@ -8,9 +8,11 @@ and the round-trips to api_v3) -- is :mod:`app.routes.refine_prep`.
 from __future__ import annotations
 
 import asyncio
+from typing import Annotated
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Path as PathParam
 from pydantic import BaseModel, Field
 
 from ..config import load_config
@@ -30,6 +32,12 @@ from ..security import MAX_NAME_BYTES, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 
 router = APIRouter(prefix="/refine", tags=["Refine"], dependencies=[Depends(require_key)])
+
+# The dataset name the refine routers take in their path, described once for all of
+# them (refine_prep and refine_balance import it).
+DatasetName = Annotated[str, PathParam(description=(
+    "A dataset stored in this app, as `GET /refine/datasets` lists it. A plain name: path "
+    "characters, or more than 200 bytes, are refused with 400; a name no dataset has answers 404."))]
 
 # Test seam: tests set this to a FakeEncoder so semantic dedupe never downloads
 # the real embedding model.
@@ -116,7 +124,7 @@ async def datasets(settings: Settings = Depends(get_settings)) -> dict:
 
 
 @router.post("/{name}/analyze", summary="Distribution, duplicates and PII overview")
-async def analyze_dataset(name: str, req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> dict:
+async def analyze_dataset(name: DatasetName, req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> dict:
     """Read-only overview: rows per label (and the labels under 10 rows), rows without text or label,
     exact duplicates of the cleaned text, text length (min, max, mean) and a PII scan per category.
 
@@ -134,7 +142,7 @@ async def analyze_dataset(name: str, req: AnalyzeRequest, settings: Settings = D
 
 
 @router.post("/{name}/preflight", summary="Simulate api_v3 preparation (effective training set)")
-async def preflight(name: str, req: PreflightRequest, settings: Settings = Depends(get_settings)) -> dict:
+async def preflight(name: DatasetName, req: PreflightRequest, settings: Settings = Depends(get_settings)) -> dict:
     """Replay api_v3's data preparation to the row: clean and join the text columns; drop rows without a
     label, too short or duplicated; then drop the labels below `min_samples` and the rows left without a
     learnable label. Returns the drops per reason, the resolved `min_samples`, `effective_rows` (what
@@ -156,7 +164,7 @@ async def preflight(name: str, req: PreflightRequest, settings: Settings = Depen
 
 
 @router.post("/{name}/filter", summary="Preview (no target) or apply (target) a filter")
-async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Depends(get_settings)) -> dict:
+async def filter_dataset(name: DatasetName, req: FilterRequest, settings: Settings = Depends(get_settings)) -> dict:
     """Run one label-layer filter. Row filters: `dedupe_exact` (cleaned text seen before),
     `dedupe_semantic` (cosine similarity to a kept row at or above `threshold`, via the configured
     embedding model), `length` (cleaned text outside `min`-`max` characters), `drop_no_label`,
@@ -196,7 +204,7 @@ async def filter_dataset(name: str, req: FilterRequest, settings: Settings = Dep
 
 
 @router.get("/{name}/ops", summary="Operation history (the applied refine chain)")
-async def dataset_ops(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def dataset_ops(name: DatasetName, settings: Settings = Depends(get_settings)) -> dict:
     """The steps that produced the dataset, oldest first, each with its operation, parameters, source and
     counts. An import starts an empty history; combine starts a new one.
 
@@ -207,7 +215,7 @@ async def dataset_ops(name: str, settings: Settings = Depends(get_settings)) -> 
 
 
 @router.delete("/{name}", summary="Delete a refine dataset")
-async def remove_dataset(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def remove_dataset(name: DatasetName, settings: Settings = Depends(get_settings)) -> dict:
     """Delete the dataset and its history; this cannot be undone.
 
     Errors: 404 for an unknown dataset."""

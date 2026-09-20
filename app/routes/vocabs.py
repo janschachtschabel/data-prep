@@ -9,9 +9,11 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import Path as PathParam
 from pydantic import BaseModel, Field
 
 from ..atomic import write_text_atomic
@@ -23,6 +25,12 @@ from ..vocab_formats import manual_to_jsonld
 from ..vocab_turtle import turtle_to_jsonld
 
 router = APIRouter(prefix="/vocabs", tags=["Vocabularies"], dependencies=[Depends(require_key)])
+
+# The vocabulary name both detail routes take in their path.
+VocabularyName = Annotated[str, PathParam(description=(
+    "A vocabulary as `GET /vocabs` lists it -- imported, fetched or entered by hand. A plain "
+    "name: path characters, or more than 200 bytes, are refused with 400; a name no vocabulary "
+    "has answers 404."))]
 
 
 _LABEL_FIELD = ("Optional dataset column these concepts label (e.g. `properties.ccm:taxonid`). "
@@ -220,7 +228,7 @@ async def fetch_vocab(req: FetchRequest, settings: Settings = Depends(get_settin
 
 
 @router.get("/{name}", summary="Vocabulary details with concept tree")
-async def vocab_detail(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def vocab_detail(name: VocabularyName, settings: Settings = Depends(get_settings)) -> dict:
     """The stored vocabulary: scheme URI, title, concept count, `label_field`, the languages of its labels
     and its concept tree as a flat list in depth-first order (`uri`, `label`, `depth`).
 
@@ -240,7 +248,7 @@ async def vocab_detail(name: str, settings: Settings = Depends(get_settings)) ->
 
 
 @router.delete("/{name}", summary="Delete a vocabulary")
-async def delete_vocab(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def delete_vocab(name: VocabularyName, settings: Settings = Depends(get_settings)) -> dict:
     """Delete the vocabulary. Seed sets and runs refer to it by name: they cannot be bootstrapped, run,
     resumed or exported until a vocabulary of that name is loaded again.
 

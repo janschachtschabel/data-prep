@@ -36,6 +36,7 @@ from .refine import (
     DESC_LLM_PURPOSE,
     DESC_OVERWRITE,
     AnalyzeRequest,
+    DatasetName,
     load_or_404,
     load_with_history_or_404,
 )
@@ -183,7 +184,7 @@ def _markable(column: str) -> str:
 
 
 @router.post("/{name}/split", summary="Stratified text-disjoint holdout split (train + holdout)")
-async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depends(get_settings)) -> dict:
+async def split_dataset(name: DatasetName, req: SplitRequest, settings: Settings = Depends(get_settings)) -> dict:
     """Write `<target>_train` and `<target>_holdout`: text-disjoint (rows with the same cleaned text stay on
     one side) and stratified (text groups join the holdout in seeded order until each label has
     `holdout_fraction` of the rows it may hold out). Rows with an AI mark (`generated_for`, `example_for`,
@@ -232,7 +233,7 @@ async def split_dataset(name: str, req: SplitRequest, settings: Settings = Depen
 
 
 @router.post("/{name}/label-audit", summary="Second opinion from api_v3 — divergence checklist")
-async def label_audit(name: str, req: LabelAuditRequest, settings: Settings = Depends(get_settings)) -> dict:
+async def label_audit(name: DatasetName, req: LabelAuditRequest, settings: Settings = Depends(get_settings)) -> dict:
     """Ask a trained api_v3 model (`/predict/batch`) about the first `limit` rows and flag each row whose
     top prediction reaches `confidence_threshold` while none of its labels is in the top `top_k`: a
     checklist for editors. Nothing is relabelled or written.
@@ -260,7 +261,7 @@ async def label_audit(name: str, req: LabelAuditRequest, settings: Settings = De
 
 @router.post("/{name}/enrich", summary="Additive LLM completion of missing fields (marked)")
 async def enrich(
-    name: str, req: EnrichRequest,
+    name: DatasetName, req: EnrichRequest,
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:
@@ -319,7 +320,7 @@ async def enrich(
 
 
 @router.post("/{name}/push", summary="Push a refine dataset to the configured api_v3")
-async def push_dataset(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def push_dataset(name: DatasetName, settings: Settings = Depends(get_settings)) -> dict:
     """Upload the whole dataset as `<name>.csv` (semicolon CSV) to `/datasets/import` of the api_v3
     configured in config.yaml (`api_v3.url`), with the key from the env variable it names.
 

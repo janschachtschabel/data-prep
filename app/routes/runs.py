@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Path as PathParam
 from pydantic import BaseModel, Field
 
 from .. import run_store
@@ -18,6 +19,12 @@ from ..settings import Settings, get_settings
 from ..vocab import Vocabulary, parse_vocabulary
 
 router = APIRouter(prefix="/runs", tags=["Runs"], dependencies=[Depends(require_key)])
+
+# The run id the run, review and export routers take in their path.
+RunId = Annotated[str, PathParam(description=(
+    "The id of a generation run: `POST /runs` returns it and `GET /runs` lists them. A plain "
+    "name: path characters, or more than 200 bytes, are refused with 400; an id no run has "
+    "answers 404."))]
 
 
 class Selection(BaseModel):
@@ -158,7 +165,7 @@ async def list_runs(
 
 
 @router.get("/{run_id}", summary="Run status with live counters")
-async def run_status(run_id: str, settings: Settings = Depends(get_settings)) -> dict:
+async def run_status(run_id: RunId, settings: Settings = Depends(get_settings)) -> dict:
     """The run's full state: its parameters (with the model actually used), status and message, live
     counters (samples kept per concept, discards per reason, failed batches) and LLM usage.
 
@@ -170,7 +177,7 @@ async def run_status(run_id: str, settings: Settings = Depends(get_settings)) ->
 
 
 @router.post("/{run_id}/cancel", summary="Cancel the active run (resumable later)")
-async def cancel_run(run_id: str, settings: Settings = Depends(get_settings)) -> dict:
+async def cancel_run(run_id: RunId, settings: Settings = Depends(get_settings)) -> dict:
     """Ask the active run to stop. Batches already sent finish and are kept; then the run ends as
     `cancelled` and can be resumed.
 
@@ -182,7 +189,7 @@ async def cancel_run(run_id: str, settings: Settings = Depends(get_settings)) ->
 
 @router.post("/{run_id}/resume", summary="Resume a paused, cancelled, failed, interrupted or completed run")
 async def resume_run(
-    run_id: str,
+    run_id: RunId,
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:

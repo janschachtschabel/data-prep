@@ -6,9 +6,10 @@ sample here reopens a slot that a subsequent resume refills.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import Path as PathParam
 from pydantic import BaseModel, Field
 
 from .. import run_store
@@ -16,8 +17,14 @@ from ..review import list_samples, update_status
 from ..runs import run_manager
 from ..security import require_key, safe_name
 from ..settings import Settings, get_settings
+from .runs import RunId
 
 router = APIRouter(prefix="/runs", tags=["Review"], dependencies=[Depends(require_key)])
+
+# The sample id the review route takes beside the run id.
+SampleId = Annotated[str, PathParam(description=(
+    "The id of one sample of that run, as `GET /runs/{run_id}/samples` lists it. An id the run "
+    "does not hold answers 404."))]
 
 
 class StatusUpdate(BaseModel):
@@ -35,7 +42,7 @@ def _run_dir_or_404(settings: Settings, run_id: str):
 
 @router.get("/{run_id}/samples", summary="Browse a run's samples (filterable, paginated)")
 async def samples(
-    run_id: str,
+    run_id: RunId,
     concept: str | None = Query(default=None, max_length=500, description=(
         "Only samples generated for this concept URI.")),
     status: str | None = Query(default=None, max_length=30, description=(
@@ -60,8 +67,8 @@ async def samples(
 
 @router.post("/{run_id}/samples/{sample_id}/status", summary="Approve/discard/reset one sample")
 async def set_status(
-    run_id: str,
-    sample_id: str,
+    run_id: RunId,
+    sample_id: SampleId,
     body: StatusUpdate,
     settings: Settings = Depends(get_settings),
 ) -> dict:

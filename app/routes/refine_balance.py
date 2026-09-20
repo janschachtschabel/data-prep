@@ -26,6 +26,7 @@ from .refine import (
     DESC_LABEL_SEPARATOR,
     DESC_LLM_PURPOSE,
     DESC_OVERWRITE,
+    DatasetName,
     load_with_history_or_404,
 )
 
@@ -73,7 +74,7 @@ class BalanceRequest(BaseModel):
 
 @router.post("/{name}/balance", summary="Generate the rows each short label is missing")
 async def balance(
-    name: str, req: BalanceRequest,
+    name: DatasetName, req: BalanceRequest,
     settings: Settings = Depends(get_settings),
     override: LlmOverride = Depends(llm_override),
 ) -> dict:

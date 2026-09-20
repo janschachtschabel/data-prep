@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import Path as PathParam
 
 from ..reference import (
     DEFAULT_LABEL_COLUMN,
@@ -23,6 +25,11 @@ from ..security import MAX_NAME_BYTES, read_upload_capped, refuse_existing, requ
 from ..settings import Settings, get_settings
 
 router = APIRouter(prefix="/references", tags=["References"], dependencies=[Depends(require_key)])
+
+# The reference-set name both detail routes take in their path.
+ReferenceName = Annotated[str, PathParam(description=(
+    "A reference set as `GET /references` lists it. A plain name: path characters, or more than "
+    "200 bytes, are refused with 400; a name no set has answers 404."))]
 
 
 def _paths(settings: Settings, name: str) -> tuple[Path, Path]:
@@ -105,7 +112,7 @@ async def import_reference(
 
 
 @router.get("/{name}", summary="Reference set details (groups, PII report)")
-async def reference_detail(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def reference_detail(name: ReferenceName, settings: Settings = Depends(get_settings)) -> dict:
     """The stored meta of a reference set: row count, text and label columns, PII report and the number
     of rows per label.
 
@@ -117,7 +124,7 @@ async def reference_detail(name: str, settings: Settings = Depends(get_settings)
 
 
 @router.delete("/{name}", summary="Delete a reference set")
-async def delete_reference(name: str, settings: Settings = Depends(get_settings)) -> dict:
+async def delete_reference(name: ReferenceName, settings: Settings = Depends(get_settings)) -> dict:
     """Delete the reference set. Seed sets distilled from it keep their seeds, but their runs fail on
     start or resume: the leakage check needs the reference. A default reference named in config.yaml is
     imported again from its source file at the next server start.

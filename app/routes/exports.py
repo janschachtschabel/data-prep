@@ -17,6 +17,7 @@ from ..exporter import audit_markdown, load_samples, to_csv, to_jsonl
 from ..security import require_key, safe_name
 from ..settings import Settings, get_settings
 from ..vocab import Vocabulary, parse_vocabulary
+from .runs import RunId
 
 router = APIRouter(prefix="/runs", tags=["Runs"], dependencies=[Depends(require_key)])
 
@@ -35,7 +36,7 @@ def _run_context(settings: Settings, run_id: str) -> tuple[dict, list[dict], Voc
 
 @router.get("/{run_id}/export.csv", summary="Download the run as api_v3 training CSV")
 async def export_csv(
-    run_id: str,
+    run_id: RunId,
     spreadsheet_safe: bool = Query(default=False, description=(
         "Write the variant for opening in Excel or LibreOffice: a cell that would run there as a "
         "formula gets an apostrophe in front and every field is quoted, and the file is offered as "
@@ -61,7 +62,7 @@ async def export_csv(
 
 
 @router.get("/{run_id}/export.jsonl", summary="Download the run as canonical JSONL")
-async def export_jsonl(run_id: str, settings: Settings = Depends(get_settings)) -> PlainTextResponse:
+async def export_jsonl(run_id: RunId, settings: Settings = Depends(get_settings)) -> PlainTextResponse:
     """The run's `passed` and `approved` samples, one JSON object per line with every stored field (e.g.
     id, texts, concept, status, meta), each marked `generated_for=<concept>` like the CSV rows.
 
@@ -75,7 +76,7 @@ async def export_jsonl(run_id: str, settings: Settings = Depends(get_settings)) 
 
 
 @router.get("/{run_id}/audit.md", summary="Audit report (Markdown, German)")
-async def audit(run_id: str, settings: Settings = Depends(get_settings)) -> PlainTextResponse:
+async def audit(run_id: RunId, settings: Settings = Depends(get_settings)) -> PlainTextResponse:
     """A report for editors (German): run parameters, the mandatory usage notes (evaluate on curated
     data only), exportable samples against the target, LLM usage, diversity (mean and maximum
     `sim_max`), discards per reason and samples per concept.
@@ -87,7 +88,7 @@ async def audit(run_id: str, settings: Settings = Depends(get_settings)) -> Plai
 
 
 @router.post("/{run_id}/push", summary="Push the CSV export to the configured api_v3")
-async def push(run_id: str, settings: Settings = Depends(get_settings)) -> dict:
+async def push(run_id: RunId, settings: Settings = Depends(get_settings)) -> dict:
     """Upload the CSV export as `<run_id>.csv` to `/datasets/import` of the api_v3 configured in
     config.yaml (`api_v3.url`), authenticated with the key from the env variable it names. The host must
     be on the fetch allowlist or localhost.
