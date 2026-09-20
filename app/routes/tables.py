@@ -195,6 +195,11 @@ async def download_dataset(
     name: str,
     format: str = Query(default="csv", max_length=20, description="`csv`, `csv.gz`, `json` or `jsonl`."),
     separator: str = Query(default=";", max_length=3, description="Field separator of the CSV formats."),
+    spreadsheet_safe: bool = Query(default=False, description=(
+        "CSV formats only: write the variant for opening in Excel or LibreOffice: a cell that would "
+        "run there as a formula gets an apostrophe in front and every field is quoted, and the file "
+        "is offered as `<name>.spreadsheet.csv`. Not for api_v3: the apostrophe becomes part of the "
+        "trained text.")),
     settings: Settings = Depends(get_settings),
 ) -> Response:
     """Export as CSV, CSV.gz, JSON or JSONL.
@@ -207,15 +212,19 @@ async def download_dataset(
     df = await load_or_404(settings, name)
     safe = safe_name(name, "dataset name")
     try:
-        body = await asyncio.to_thread(write_table, df, fmt=format, separator=separator)
+        body = await asyncio.to_thread(write_table, df, fmt=format, separator=separator,
+                                       spreadsheet_safe=spreadsheet_safe)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Named apart only where the flag changed something: JSON holds no formulas,
+    # and a name promising a defused file for one would be a lie.
+    stem = f"{safe}.spreadsheet" if spreadsheet_safe and format.startswith("csv") else safe
     return Response(
         content=body,
         media_type=_MEDIA_TYPES[format],
         # attachment, not inline: this is a file to save, and a browser would
         # otherwise render a multi-megabyte CSV as a wall of text.
-        headers={"Content-Disposition": f'attachment; filename="{safe}.{format}"'},
+        headers={"Content-Disposition": f'attachment; filename="{stem}.{format}"'},
     )
 
 
