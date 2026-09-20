@@ -226,13 +226,18 @@ const Tables = (() => {
   function download() {
     const name = current();
     if (!name) return;
+    const format = $("#tables-export-format").value;
+    // Only the CSV formats can carry a formula, so only they are defused -- and
+    // only then does the name say so.
+    const defused = $("#tables-export-spreadsheet").checked && format.startsWith("csv");
     const params = new URLSearchParams({
-      format: $("#tables-export-format").value,
+      format,
       separator: $("#tables-export-separator").value || ";",
     });
+    if (defused) params.set("spreadsheet_safe", "true");
     // Through Api so the key travels: a plain link would hit a 401.
     Api.download(`/refine/${encodeURIComponent(name)}/download?${params}`,
-                 `${name}.${$("#tables-export-format").value}`)
+                 `${name}${defused ? ".spreadsheet" : ""}.${format}`)
        .catch((err) => showError(err.message || I18n.t("js.tables.errDownload")));
   }
 

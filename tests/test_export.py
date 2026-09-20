@@ -24,6 +24,9 @@ DESC = "properties.cclom:general_description"
 KEYW = "properties.cclom:general_keyword"
 LABEL = "properties.ccm:taxonid"
 
+# A title as a harvested one can look: Excel and LibreOffice run it as a formula.
+HYPERLINK = '=HYPERLINK("http://evil.example","click")'
+
 
 def _write_run(runs_dir: Path, run_id: str = "run-1") -> Path:
     run_dir = runs_dir / run_id
@@ -132,6 +135,39 @@ def test_every_exported_row_is_marked_as_generated_for_its_concept(tmp_path):
     assert list(frame["generated_for"]) == list(frame[LABEL])
 
 
+def _formula_title(run_dir: Path) -> Path:
+    """Give the first sample a title a spreadsheet would run."""
+    path = run_dir / "samples.jsonl"
+    records = [json.loads(line) for line in path.read_text("utf-8").splitlines() if line.strip()]
+    records[0]["title"] = HYPERLINK
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
+                    encoding="utf-8")
+    return run_dir
+
+
+def _first_title(csv_text: str) -> str:
+    return str(pd.read_csv(io.StringIO(csv_text), sep=";", dtype=str,
+                           keep_default_na=False)[TITLE][0])
+
+
+def test_the_training_csv_keeps_a_formula_cell_exactly_as_it_is(tmp_path):
+    """This is what api_v3 trains on: a defusing apostrophe would be trained on
+    with it (api_v3's clean_text keeps it), so the training CSV never carries one."""
+    from app.exporter import load_samples, to_csv
+
+    run_dir = _formula_title(_write_run(tmp_path / "runs"))
+    assert _first_title(to_csv(load_samples(run_dir), parse_vocabulary(NESTED))) == HYPERLINK
+
+
+def test_the_spreadsheet_csv_defuses_a_formula_cell(tmp_path):
+    """The variant a person asks for to open the run in Excel or LibreOffice."""
+    from app.exporter import load_samples, to_csv
+
+    run_dir = _formula_title(_write_run(tmp_path / "runs"))
+    csv_text = to_csv(load_samples(run_dir), parse_vocabulary(NESTED), spreadsheet_safe=True)
+    assert _first_title(csv_text) == f"'{HYPERLINK}"
+
+
 def test_audit_markdown_contains_warning_and_stats(tmp_path):
     from app.exporter import audit_markdown, load_samples
 
@@ -208,6 +244,48 @@ def test_push_uploads_csv_to_configured_api_v3(make_client, tmp_path, monkeypatc
     assert captured["url"].endswith("/datasets/import")
     assert captured["key"] == "apiv3-secret"
     assert b"Optik Video" in captured["body"] and b"Verworfen" not in captured["body"]
+
+
+def test_the_spreadsheet_download_is_defused_and_named_apart(make_client, tmp_path, monkeypatch):
+    """A person opening the run in Excel asks for this variant; the name keeps it
+    apart from the training CSV, so neither file is uploaded in place of the other."""
+    client = _client_with_run(make_client, tmp_path, monkeypatch)
+    _formula_title(tmp_path / "runs" / "run-1")
+
+    r = client.get("/runs/run-1/export.csv?spreadsheet_safe=true", headers=HEADERS)
+    assert r.status_code == 200, r.text
+    assert _first_title(r.text) == f"'{HYPERLINK}"
+    assert "run-1.spreadsheet.csv" in r.headers["content-disposition"]
+
+
+def test_the_plain_download_and_the_push_carry_the_cell_as_it_is(
+    make_client, tmp_path, monkeypatch
+):
+    """Both are the api_v3 training file: byte for byte what the run holds."""
+    import app.apiv3 as apiv3
+    from app.exporter import load_samples, to_csv
+
+    client = _client_with_run(make_client, tmp_path, monkeypatch,
+                              api_v3_url="http://127.0.0.1:8021")
+    run_dir = _formula_title(tmp_path / "runs" / "run-1")
+
+    r = client.get("/runs/run-1/export.csv", headers=HEADERS)
+    assert _first_title(r.text) == HYPERLINK
+    assert "run-1.csv" in r.headers["content-disposition"]
+
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content
+        return httpx.Response(200, json={"stored": "run-1.csv"})
+
+    monkeypatch.setattr(apiv3, "_test_transport", httpx.MockTransport(handler))
+    assert client.post("/runs/run-1/push", headers=HEADERS).status_code == 200
+    # The literal bytes, not just "what to_csv returns": a regression inside the
+    # default branch would otherwise move both sides of the comparison together.
+    assert b'"=HYPERLINK(""http://evil.example"",""click"")"' in captured["body"]
+    assert b"'=HYPERLINK" not in captured["body"]
+    assert to_csv(load_samples(run_dir), parse_vocabulary(NESTED)).encode("utf-8") in captured["body"]
 
 
 def test_push_rejects_unconfigured_or_foreign_targets(make_client, tmp_path, monkeypatch):

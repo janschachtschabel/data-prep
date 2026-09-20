@@ -15,6 +15,7 @@ import pandas as pd
 
 from .refine.provenance import GENERATED_FOR
 from .samples import read_samples
+from .spreadsheet import spreadsheet_csv
 from .vocab import Vocabulary
 
 EXPORTABLE_STATUSES = ("passed", "approved")
@@ -57,13 +58,18 @@ def to_jsonl(samples: list[dict]) -> str:
                      for s in samples) + ("\n" if samples else "")
 
 
-def to_csv(samples: list[dict], vocab: Vocabulary, *, label_column: str = DEFAULT_LABEL_COL) -> str:
+def to_csv(samples: list[dict], vocab: Vocabulary, *, label_column: str = DEFAULT_LABEL_COL,
+           spreadsheet_safe: bool = False) -> str:
     """Semicolon/UTF-8 CSV in the api_v3 training schema; the concept URI lands
     in ``label_column`` and its display name (from the vocabulary) next to it.
 
     Every row is marked ``generated_for`` its concept. ``source`` says the same, but
     combine overwrites it with the name the user gives the source; the mark is what
     combine carries, the split keeps out of a holdout, and api_v3 never validates on.
+
+    ``spreadsheet_safe`` returns the variant for a person to open in Excel or
+    LibreOffice (:mod:`app.spreadsheet`). It is never what api_v3 gets: the
+    defusing apostrophe would end up in the trained text.
     """
     rows = [
         {
@@ -82,6 +88,8 @@ def to_csv(samples: list[dict], vocab: Vocabulary, *, label_column: str = DEFAUL
         columns=[TITLE_COL, DESC_COL, KEYW_COL, f"{label_column}_DISPLAYNAME", label_column, "source",
                  GENERATED_FOR],
     )
+    if spreadsheet_safe:
+        return spreadsheet_csv(frame, sep=";")
     return frame.to_csv(sep=";", index=False, lineterminator="\n")
 
 

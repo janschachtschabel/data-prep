@@ -330,3 +330,19 @@ def test_the_balance_help_names_what_a_generated_row_costs_in_honesty(make_clien
         assert help_text, f"refine.balance.help missing from the {language} table"
         assert "holdout" in help_text.group(1).lower(), \
             f"the {language} help does not mention the holdout guarantee"
+
+
+def test_the_exports_offer_a_variant_that_is_safe_to_open_in_a_spreadsheet(make_client):
+    """A harvested title like =HYPERLINK(…) runs as a formula when someone opens
+    the CSV in Excel. The defused file is offered BESIDE the training CSV, under
+    its own name, and the help says why it does not belong in api_v3."""
+    client = make_client(auth_key="secret-1")
+    html = client.get("/ui/").text
+    assert 'id="tables-export-spreadsheet"' in html
+    assert 'data-i18n="tables.export.spreadsheet"' in html
+    assert 'data-i18n="run.explain.exports"' in html
+
+    assert "spreadsheet_safe" in client.get("/ui/tables.js").text
+    runs_js = client.get("/ui/runs.js").text
+    assert "spreadsheet_safe=true" in runs_js
+    assert ".spreadsheet.csv" in runs_js

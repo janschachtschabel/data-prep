@@ -63,7 +63,9 @@ du dich normalerweise von links nach rechts.
 5. **Runs** → beim fertigen Lauf **CSV** oder **JSONL** herunterladen, **Audit**
    ansehen (enthält Pflicht-Hinweise zur Nutzung) oder **Push to api_v3**. Jede
    exportierte Zeile trägt `generated_for` — so erkennen der Split hier und das
-   Training in api_v3 sie auch nach dem Zusammenführen als KI-erzeugt.
+   Training in api_v3 sie auch nach dem Zusammenführen als KI-erzeugt. **CSV** ist
+   die Trainingsdatei für api_v3; **CSV (Excel)** enthält dieselben Zeilen zum
+   Öffnen in einer Tabellenkalkulation (siehe „Ausgeben").
 
 **Mit eigenen Daten (Hybrid):** Lade unter **References** eine kuratierte CSV
 hoch (wird beim Import automatisch von persönlichen Daten bereinigt) und wähle
@@ -265,6 +267,27 @@ Join abgelehnt statt versucht.
 
 CSV mit wählbarem Trennzeichen, gepackt, JSON oder JSONL. Die Vorgabe ist die
 Semikolon-CSV, die api_v3 liest.
+
+**Zum Öffnen in Excel oder LibreOffice** gibt es den Haken „Formeln für
+Excel/LibreOffice entschärfen" (im Reiter „Läufe" den Knopf **CSV (Excel)**).
+Eine Zelle, die dort als **Formel** liefe — sie beginnt mit `=`, `+`, `-`, `@`,
+einem Tabulator oder einem Wagenrücklauf —, bekommt dann ein Apostroph davor,
+und jedes Feld wird in Anführungszeichen gesetzt. Aus einem geernteten Titel
+`=HYPERLINK("http://…";"hier klicken")` wird so sichtbarer Text statt eines
+Links, den ein Klick öffnet.
+
+Dieses Apostroph gehört danach **zum Text**: api_v3 würde es mittrainieren, und
+ein erneuter Import hier würde es behalten. Deshalb ist es nichts, was
+stillschweigend passiert — die Datei heißt `<name>.spreadsheet.csv` und ist zum
+Lesen gedacht. Ohne Haken (und bei jedem Push) bleibt die CSV Zeichen für
+Zeichen die gespeicherte.
+
+Zwei Dinge dazu, damit nichts überrascht: Zahlen werden nicht ausgenommen — aus
+`-5` wird `'-5`, in Excel also linksbündiger Text statt einer Zahl. Und die
+Datei trägt **keine BOM**: Excel rät den Zeichensatz wie bei der normalen CSV
+auch, Umlaute können also verstümmelt ankommen. Wer sie sauber sehen will,
+öffnet die Datei in Excel über *Daten → Aus Text/CSV* (dort UTF-8 wählen) oder
+gleich in LibreOffice, das im Import-Dialog danach fragt.
 
 ## Wichtig zur Auswertung
 

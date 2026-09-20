@@ -28,6 +28,33 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 **Docker-Anleitung für das veröffentlichte Image (2026-09-20).** Die README zeigt jetzt `docker run` mit `ghcr.io/janschachtschabel/data-prep:main`: Volume `/data`, Auth- und LLM-Schlüssel, eigene `config.yaml` per Mount, dazu Tags und die Plattform (nur linux/amd64). Verifiziert mit einem Wegwerf-Container aus dem veröffentlichten Image (healthy, `/health` 200, `/data/datasets` und `/data/runs` angelegt); dass die eingebundene Konfigdatei wirklich gelesen wird, zeigt der Gegentest mit kaputter YAML — der Start bricht ab. Docker Hub ist weiterhin nirgends eingerichtet, nur GHCR.
 
+**CSV-Downloads: Variante für Tabellenkalkulationen (2026-09-20).** Plan:
+`docs/plan-2026-09-19-csv-formula-injection.md`. Vorbefund aus dem Review vom
+2026-09-19, dort bewusst offen gelassen, weil es eine Design-Entscheidung ist. Eine
+Zelle, die mit `=`, `+`, `-`, `@`, Tabulator oder Wagenrücklauf beginnt, läuft in
+Excel/LibreOffice als **Formel** (OWASP CSV Injection) — geerntete Titel können so
+aussehen. Neu: `?spreadsheet_safe=true` an beiden Downloads (UI: Knopf **CSV (Excel)**
+bei den Läufen, Haken im Tabellen-Export) schreibt die entschärfte Datei als
+`<name>.spreadsheet.csv` (Apostroph vor solchen Zellen, Kopfzeile eingeschlossen,
+jedes Feld gequotet). **Beide Pushes und die einfachen Downloads bleiben Byte für
+Byte unverändert** — das Apostroph gehört danach zum Text, api_v3 würde es
+mittrainieren; Tests vergleichen den gepushten Körper mit dem Standard-Export.
+Neu `app/spreadsheet.py`; test-first (13 + 9 neue Tests). Nachweis: **807 Tests grün**,
+ruff sauber, mypy sauber (67 Dateien), `node --check` für die drei geänderten
+JS-Dateien, dazu ein Live-Lauf auf Port 8117: Import einer Zelle
+`=HYPERLINK("http://evil.example","click")`, Standard-Download unverändert,
+`spreadsheet_safe=true` liefert `formel.spreadsheet.csv` mit `'=HYPERLINK…`.
+Unabhängiges Review danach: keine CRITICAL/MAJOR-Befunde; nachgezogen wurden die zu
+stark formulierte Quoting-Zusage (jetzt sagt sie, was bewiesen ist: das Apostroph deckt
+das erste Zeichen jeder Zelle, das Quoten nimmt nur die einfache Komma-Variante weg;
++3 Tests), Literal-Bytes im Push-Test, der Dateiname `<name>.spreadsheet.<format>` und
+die Grenzen in den Nutzer-Dokus (Zahlen als Text, keine BOM). Offen: Jans Entscheidung
+zur Vorgabe (Variante A umgesetzt = opt-in; B wäre entschärft als Vorgabe) — Umstellung
+wären zwei Zeilen in den Routen; BOM für die Excel-Variante (Import liest `utf-8`, nicht
+`utf-8-sig`). `app/routes/tables.py` ist durch diese Arbeit von 303 auf 312 Zeilen
+gewachsen — der offene Low-Punkt zum Aufteilen bleibt bestehen. Gemerged nach `main`,
+gepusht und im Container am 2026-09-20 (siehe oben).
+
 **API-Doku vollständig, anyio-Sicherheitsupdate, gepusht, Container neu gebaut (2026-09-19).** Alle 52 Endpunkte und jedes Anfragefeld (auch Query-, Form-, File- und Header-Parameter) sind in `/docs` englisch beschrieben; nur `SeedItem` bleibt bewusst ohne Feldbeschreibungen, weil es auch das Antwortschema des LLM ist. Nachweis: Ohne Beschreibungstexte ist das OpenAPI-Schema identisch zum Stand davor. anyio 4.14.1 → 4.14.2 (CVE-2026-63374, -64847, -63349): pip-audit hätte CI- und Docker-Workflow rot gemacht. Offen (Low): `routes/refine_prep.py` (368 Zeilen) und `routes/tables.py` (303) liegen durch die Beschreibungen über 300 Zeilen — aufteilen oder zu den bekannten Ausnahmen nehmen.
 
 **KI-Herkunft durchgängig, Prompts mit Datensatz-Kontext (2026-09-19).** Split hält jede KI-Markierung (auch `enriched_fields`) aus dem Holdout; Lauf-Exporte tragen `generated_for`; Balancing-Prompt nennt Label lesbar, Abgrenzungs-Label, Feldart und typische Länge, Beispiele typisch statt längste; Anreicherung nennt das Label der Zeile und die typische Länge; eine Zahl im Hinweis gewinnt. Gegenstück in api_v3: markierte Zeilen trainieren, validieren nie. Plan: `docs/plan-2026-09-19-ai-provenance-prompts.md`.

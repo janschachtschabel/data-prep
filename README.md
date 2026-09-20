@@ -139,7 +139,7 @@ anything has been decided about which column is the label. All of it is in the
 | Filter rows by column value; keep/drop/rename columns; remove duplicates by key | `POST /refine/{name}/op` |
 | Count duplicates over key columns (non-destructive) | `GET /refine/{name}/duplicates` |
 | Join two datasets on one or more keys | `POST /refine/{name}/join` |
-| Export as CSV (any separator), CSV.gz, JSON or JSONL | `GET /refine/{name}/download` |
+| Export as CSV (any separator), CSV.gz, JSON or JSONL — optionally defused for a spreadsheet | `GET /refine/{name}/download` |
 
 Three behaviours are worth knowing before relying on them:
 
@@ -191,6 +191,24 @@ it. Past five million rows the join is refused rather than attempted.
   characters, and Python's `re` has no timeout, so a hostile pattern pins one
   worker thread until it finishes. Accepted because every table endpoint sits
   behind the operator key; do not expose the rule builder to untrusted users.
+- **CSV downloads carry every cell as stored — a spreadsheet-safe variant is
+  offered beside them.** A cell beginning with `=`, `+`, `-`, `@`, a tab or a
+  carriage return is a formula to Excel and LibreOffice (OWASP CSV injection),
+  and harvested metadata can hold one: `=HYPERLINK("http://…","click")` in a
+  title is one click from an attacker's page. Both downloads therefore take
+  `?spreadsheet_safe=true` (UI: the **CSV (Excel)** button in Runs, the checkbox
+  in the table export). It puts an apostrophe before such a cell, headers
+  included, quotes every field, and offers the file as
+  `<name>.spreadsheet.<format>`. It is asked for, never the default: the
+  apostrophe is part of the text afterwards, and api_v3 would train on it. The
+  plain downloads and both api_v3 pushes stay byte-identical (pinned by tests).
+  What the apostrophe covers is the first character of every cell this app
+  writes; quoting every field additionally keeps a comma inside a value from
+  lying bare in front of a spreadsheet that splits on commas. Two properties of
+  that file are worth knowing before handing it on: a number written as text
+  (`-5` becomes `'-5`) and no BOM, so Excel still guesses the encoding of the
+  umlauts — the plain CSV has always behaved that way, and a BOM for this
+  variant alone is an open follow-up.
 - **Deliberate deviation from api_v3:** HTTPS URL fetch is allowed for
   vocabularies and the api_v3 push/predict — but only to an allowlist (default
   `vocabs.openeduhub.de` + the configured api_v3 host / localhost), with a size

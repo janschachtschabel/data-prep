@@ -17,6 +17,9 @@ KEYW = "properties.cclom:general_keyword"
 LABEL = "properties.ccm:taxonid"
 COLS = [TITLE, DESC, KEYW]
 
+# A title as harvested metadata can hold it: a spreadsheet runs it as a formula.
+HYPERLINK = '=HYPERLINK("http://evil.example","click")'
+
 
 def _dataset() -> pd.DataFrame:
     # 4 labels, each with several DISTINCT texts, so a stratified split can put
@@ -370,6 +373,28 @@ def test_push_route_uploads_refine_dataset(make_client, tmp_path, monkeypatch):
     assert captured["url"].endswith("/datasets/import")
     assert captured["key"] == "apiv3-secret"
     assert b"disc/A" in captured["body"]
+
+
+def test_push_sends_every_cell_exactly_as_it_is_stored(make_client, tmp_path, monkeypatch):
+    """A cell a spreadsheet would run as a formula is ordinary training text to
+    api_v3. Defusing it here would put the apostrophe into the trained text --
+    api_v3's clean_text keeps it -- so the push carries the dataset unchanged."""
+    import app.apiv3 as apiv3
+
+    client = _client_with_push(make_client, tmp_path, monkeypatch, "http://127.0.0.1:8021")
+    df = _dataset()
+    df.loc[0, TITLE] = HYPERLINK
+    assert _import(client, df, "formel").status_code == 200
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content
+        return httpx.Response(200, json={"status": "imported"})
+
+    monkeypatch.setattr(apiv3, "_test_transport", httpx.MockTransport(handler))
+    assert client.post("/refine/formel/push", headers=HEADERS).status_code == 200
+    assert b'"=HYPERLINK(""http://evil.example"",""click"")"' in captured["body"]
+    assert b"'=HYPERLINK" not in captured["body"]
 
 
 def test_push_of_a_name_api_v3_already_has_is_a_conflict_not_a_gateway_error(

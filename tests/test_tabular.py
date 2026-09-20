@@ -9,8 +9,10 @@ the filename is unhelpful or lies.
 from __future__ import annotations
 
 import gzip
+import io
 import json
 
+import pandas as pd
 import pytest
 
 from app.tabular import flatten_record, read_table, sniff_format, write_table
@@ -134,6 +136,18 @@ CSV_BYTES = b"id;title;keywords\n1;Bruchrechnen;Mathematik,Bruch\n2;Photosynthes
 JSON_BYTES = json.dumps(ROWS, ensure_ascii=False).encode("utf-8")
 JSONL_BYTES = b"\n".join(json.dumps(r, ensure_ascii=False).encode("utf-8") for r in ROWS)
 
+# A title as harvested metadata can hold it: Excel and LibreOffice run it.
+HYPERLINK = '=HYPERLINK("http://evil.example","click")'
+FORMULA_CSV = (
+    b'id;title;keywords\n1;"=HYPERLINK(""http://evil.example"",""click"")";Mathematik\n'
+)
+
+
+def _title_of(csv_text: str) -> str:
+    """The one title cell, read back the way any consumer of the file would."""
+    return str(pd.read_csv(io.StringIO(csv_text), sep=";", dtype=str,
+                           keep_default_na=False)["title"][0])
+
 
 class TestReadTable:
     def _assert_is_the_expected_frame(self, df):
@@ -242,6 +256,28 @@ class TestWriteTable:
     def test_an_unsupported_write_format_is_rejected_by_name(self):
         with pytest.raises(ValueError, match="jsonl.gz"):
             write_table(read_table(CSV_BYTES, fmt="csv"), fmt="jsonl.gz")
+
+    def test_the_default_csv_keeps_a_formula_cell_as_it_is(self):
+        """The default export is the file api_v3 reads and the workbench imports
+        back: it carries the cell as stored, spreadsheet or not."""
+        out = write_table(read_table(FORMULA_CSV, fmt="csv"), fmt="csv")
+        assert _title_of(out.decode("utf-8")) == HYPERLINK
+
+    def test_the_spreadsheet_csv_defuses_a_formula_cell(self):
+        out = write_table(read_table(FORMULA_CSV, fmt="csv"), fmt="csv", spreadsheet_safe=True)
+        assert _title_of(out.decode("utf-8")) == f"'{HYPERLINK}"
+
+    def test_the_gzipped_spreadsheet_csv_is_defused_too(self):
+        """Both CSV formats end up in a spreadsheet; only the packaging differs."""
+        out = write_table(read_table(FORMULA_CSV, fmt="csv"), fmt="csv.gz", spreadsheet_safe=True)
+        assert _title_of(gzip.decompress(out).decode("utf-8")) == f"'{HYPERLINK}"
+
+    @pytest.mark.parametrize("fmt", ["json", "jsonl"])
+    def test_json_output_is_the_same_with_or_without_the_flag(self, fmt):
+        """No spreadsheet reads a formula out of JSON, so the flag has nothing to
+        do there -- and JSON that is fed to a program must not gain apostrophes."""
+        frame = read_table(FORMULA_CSV, fmt="csv")
+        assert write_table(frame, fmt=fmt, spreadsheet_safe=True) == write_table(frame, fmt=fmt)
 
 
 def test_sniffing_inside_gzip_works_past_the_peek_window():
