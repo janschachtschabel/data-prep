@@ -26,9 +26,41 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Offene Punkte der beiden Reviews abgearbeitet (2026-09-21).** Drei der vier Befunde
+erledigt, der vierte war bereits entschieden.
+**(1) Zwillingsregel.** Der Code gruppiert Zwillinge nach dem bereinigten, verbundenen
+Text der Anreicherungs-`fields` **und** den Labels; README und CHANGELOG versprachen
+„ein Text für den Split". Der Schlüssel wurde nicht umgebaut — er ist der des Prompts,
+und der nennt die Labels —, sondern beide Dokumente nennen jetzt die Voraussetzung: Es
+deckt sich, solange die Textspalten des Splits unter den `fields` sind. Liest der Split
+**weniger** Spalten, hält er zwei Zeilen für einen Text, die die Anreicherung getrennt
+beantwortet; ein `limit` dazwischen lässt die unangetastete frei fürs Holdout — mit genau
+dem Text, auf dem ihre angereicherte Zwillingszeile trainiert. Test-first festgenagelt:
+`test_a_field_the_split_does_not_read_can_separate_twins` reproduziert das Leck.
+**(2) Token-Kosten in der Vorschau.** `entries_per_call` verkleinert Batches, damit die
+Antwort ins Ausgabelimit passt — ein Label mit drei langen Feldern fällt von 50 auf ~6
+Einträge je Aufruf, der Prompt geht also rund 8x öfter raus. Die Hilfe sagt das jetzt in
+beiden Sprachen: Die Aufruf-Zahl zeigt es, das Token-Budget nicht, und es wächst die
+Eingabeseite, nicht die Antworten.
+**(3) Haken „CSV (Excel)".** Bei JSON/JSONL ist er deaktiviert (Beschriftung mit
+ausgegraut, dieselbe Deckkraft 0.6 wie ein deaktivierter Knopf). Der gesetzte Haken
+überlebt den Umweg über JSON — ein stilles Zurücksetzen lieferte sonst eine unentschärfte
+CSV an jemanden, der die entschärfte wollte. Neu: `tests/ui/tables_export.check.js`
+(10 Checks) plus pytest-Hülle `tests/test_ui_tables_export.py`; gegen den Code vor dem Fix
+fällt er durch (B und F).
+**(4) `routes/tables.py` aufteilen — nicht gemacht.** Der Auftrag dieser Sitzung nannte
+den Punkt noch offen, Jans Entscheidung vom 2026-09-20 (Commit 2e431eb) steht dagegen:
+312 Zeilen mit einer Zuständigkeit bleiben. Der Split war probeweise fertig
+(`app/routes/tables_io.py` für Upload und Download, OpenAPI über alle 52 Operationen
+Zeichen für Zeichen identisch) und wurde wieder zurückgenommen; die Entscheidung gehört
+Jan, nicht dem Review-Zettel.
+Nachweis: **849 Tests grün**, ruff sauber, mypy sauber (67 Dateien), beide UI-Checks
+bestanden, dazu ein Live-Lauf auf Port 8111: Format JSON → Haken deaktiviert
+(`:disabled`), Beschriftung Deckkraft 0.6; zurück auf CSV → wieder aktiv, Haken erhalten.
+
 **Pfad-Parameter in `/docs` beschrieben (2026-09-20).** Alle 35 Pfad-Parameter tragen einen Text: Datensatz, Vokabular, Referenzsatz, Seed-Satz, Lauf-ID und Sample-ID, je mit ihren Fehlerbildern (400 für Pfadzeichen oder über 200 Bytes, 404 für einen Namen, den es nicht gibt). Jeder Router erklärt seinen Namen einmal als `Annotated`-Alias; wo zwei Router dieselbe Bedeutung teilen, wird der Alias importiert statt kopiert. Die sechs aus `routes/tables.py` kamen zuletzt dazu: sie benennen denselben Datensatz wie die `refine`-Endpunkte (gleicher Speicher, gleiches Präfix), also nehmen sie deren Alias statt einer zweiten Fassung. Nachweis: OpenAPI ohne Beschreibungstexte identisch zum Stand davor, 847 Tests grün, ruff und mypy sauber, UI-Check bestanden.
 
-**Fremde Branches geprüft und nach `main` zusammengeführt (2026-09-20).** Zwei Branches aus anderen Sitzungen liefen unveröffentlicht neben `main` her: die 22 Review-Fixes an KI-Herkunft und Prompts sowie die Tabellen-Variante der CSV-Downloads (6 Commits). Beide wurden vorher unabhängig reviewt — keine kritischen oder schweren Befunde — und dann gemerged. Nachweis nach dem Merge: **847 Tests grün**, ruff sauber, mypy sauber (67 Dateien), `node tests/ui/balance_panel.check.js` bestanden. Direkt nachgezogen: die `limit`-Beschreibung der Anreicherung nennt jetzt die tatsächliche Zwillingsregel (gleicher bereinigter Text der `fields` **und** gleiche Labels), und „Apostroph“ ist maskulin (UI, Handbuch, dieser Datei). Offen aus den Reviews: Zwillinge werden nach den Anreicherungsfeldern gruppiert statt nach den Textspalten des Splits, weshalb README und CHANGELOG mehr versprechen, als der Code garantiert; der Haken „CSV (Excel)“ bleibt bei JSON/JSONL aktiv, ohne zu wirken. Der dritte Befund — `routes/tables.py` bei 312 Zeilen — ist mit Jans Entscheidung vom 2026-09-20 erledigt: die Datei hat eine Zuständigkeit, diese Größe wird nicht geteilt.
+**Fremde Branches geprüft und nach `main` zusammengeführt (2026-09-20).** Zwei Branches aus anderen Sitzungen liefen unveröffentlicht neben `main` her: die 22 Review-Fixes an KI-Herkunft und Prompts sowie die Tabellen-Variante der CSV-Downloads (6 Commits). Beide wurden vorher unabhängig reviewt — keine kritischen oder schweren Befunde — und dann gemerged. Nachweis nach dem Merge: **847 Tests grün**, ruff sauber, mypy sauber (67 Dateien), `node tests/ui/balance_panel.check.js` bestanden. Direkt nachgezogen: die `limit`-Beschreibung der Anreicherung nennt jetzt die tatsächliche Zwillingsregel (gleicher bereinigter Text der `fields` **und** gleiche Labels), und „Apostroph“ ist maskulin (UI, Handbuch, dieser Datei). Offen aus den Reviews: Zwillinge werden nach den Anreicherungsfeldern gruppiert statt nach den Textspalten des Splits, weshalb README und CHANGELOG mehr versprechen, als der Code garantiert; der Haken „CSV (Excel)“ bleibt bei JSON/JSONL aktiv, ohne zu wirken — beides am 2026-09-21 erledigt (siehe oben). Der dritte Befund — `routes/tables.py` bei 312 Zeilen — ist mit Jans Entscheidung vom 2026-09-20 erledigt: die Datei hat eine Zuständigkeit, diese Größe wird nicht geteilt.
 
 **Docker-Anleitung für das veröffentlichte Image (2026-09-20).** Die README zeigt jetzt `docker run` mit `ghcr.io/janschachtschabel/data-prep:main`: Volume `/data`, Auth- und LLM-Schlüssel, eigene `config.yaml` per Mount, dazu Tags und die Plattform (nur linux/amd64). Verifiziert mit einem Wegwerf-Container aus dem veröffentlichten Image (healthy, `/health` 200, `/data/datasets` und `/data/runs` angelegt); dass die eingebundene Konfigdatei wirklich gelesen wird, zeigt der Gegentest mit kaputter YAML — der Start bricht ab. Docker Hub ist weiterhin nirgends eingerichtet, nur GHCR.
 

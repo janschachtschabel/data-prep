@@ -648,6 +648,43 @@ def test_a_stop_still_gives_a_twin_the_answer_its_first_row_got():
     assert list(new["enriched_fields"]) == [KEYW, "", KEYW]
 
 
+def test_a_field_the_split_does_not_read_can_separate_twins():
+    """The boundary of the twin rule, pinned so the docs cannot outgrow it.
+
+    Twins are keyed on the cleaned text of `fields` and the row's labels. A split
+    reading FEWER columns than enrichment therefore holds as one text rows that
+    enrichment answers apart, and `limit` (or a budget stop) between them enriches one
+    and leaves the other free: the untouched row carries exactly the text its enriched
+    mate now trains on. README and CHANGELOG name the precondition -- the split's text
+    columns among the enrichment `fields`, same labels -- rather than promise more.
+    """
+    from app.refine.enrich import enrich_dataset
+    from app.refine.prep import holdout_split
+
+    # One text to a split on title + keywords; two prompts to an enrichment that reads
+    # the description as well.
+    df = pd.DataFrame([["Optik", "Licht und Linsen", "", "uri/phy"],
+                       ["Optik", "Kraft und Hebel", "", "uri/phy"]],
+                      columns=[TITLE, DESC, KEYW, LABEL])
+
+    async def complete(prompt, schema):
+        return schema(values=["Linse", "Brechung", "Physik"])
+
+    new, stats = asyncio.run(enrich_dataset(
+        df, fields=_wlo_fields(), target_field=KEYW, complete=complete, limit=1))
+
+    assert stats["enriched"] == 1
+    assert list(new["enriched_fields"]) == [KEYW, ""]
+
+    # The filled cell moved the enriched row out of the text group it shared, so the
+    # split no longer sees one text -- and the free row lands in the holdout carrying
+    # the title its mate trains on.
+    train, holdout, _ = holdout_split(new, [TITLE, KEYW], LABEL, holdout_fraction=0.5)
+    assert list(train["enriched_fields"]) == [KEYW]
+    assert list(holdout["enriched_fields"]) == [""]
+    assert list(train[TITLE]) == list(holdout[TITLE]) == ["Optik"]
+
+
 def test_without_a_stop_signal_an_enrichment_error_still_propagates():
     import pytest
 

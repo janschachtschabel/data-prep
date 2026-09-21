@@ -248,8 +248,13 @@ Three properties make the result safe to train on:
 
 - Every generated row carries `generated_for`, every real row shown to the
   generator as an example carries `example_for`, and every real row enrichment
-  completed carries `enriched_fields` (the columns it filled; twins — one text to
-  the split, the same labels — are enriched alike). `POST /refine/{name}/split`
+  completed carries `enriched_fields` (the columns it filled; twins — rows alike
+  in the cleaned, joined text of the enrichment `fields` and in their labels — are
+  enriched alike, so neither `limit` nor a budget stop separates them). That covers
+  the split as long as the columns it reads are among those `fields`: a split reading
+  **fewer** columns holds as one text rows that enrichment answers apart, and a stop
+  between them leaves the untouched row free for the holdout carrying the text its
+  enriched mate trains on. `POST /refine/{name}/split`
   keeps all three on the **training**
   side, with every row sharing their text: a holdout containing generated text —
   or the real text it paraphrases, or a cell the LLM wrote — measures how well a

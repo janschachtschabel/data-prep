@@ -3,6 +3,35 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — what the two reviews left open (2026-09-21)
+
+### Fixed
+
+- **The spreadsheet checkbox goes dead where it does nothing.** `spreadsheet_safe` is a
+  CSV property — for JSON and JSONL the download ignores it — but the checkbox in the
+  table export stayed live and ticked there, so the file it offered was not the one the
+  tick promised. It is disabled for those formats now, its label greyed with it as a
+  disabled button is. The tick itself survives a detour through JSON: clearing it would
+  hand an undefused CSV back to someone who had asked for the defused one. Pinned by a
+  node harness that drives the real UI scripts (`tests/ui/tables_export.check.js`, ten
+  checks), which fails on the code before the fix.
+
+### Documentation
+
+- **The twin rule says what it guarantees.** The README and the entry below promised that
+  rows reading as one text *to the split* are enriched alike. The key is the
+  enrichment's: the cleaned, joined text of its `fields` and the row's labels. That
+  covers a split whose text columns are among those `fields`; a split reading FEWER
+  columns can still hold as one text two rows enrichment answers apart, and a `limit` or
+  a budget stop between them leaves the untouched row free for the holdout — carrying the
+  text its enriched mate now trains on. The boundary is a test
+  (`test_a_field_the_split_does_not_read_can_separate_twins`) rather than a promise.
+- **The balance preview help names the cost of a shrunk batch.** A label with long fields
+  gets fewer entries per call (`entries_per_call`), so the same rows take more calls — and
+  every call re-sends the whole prompt, its examples and up to 30 contrast labels
+  included. The call count in the preview showed that, the token budget did not. Said now
+  in both languages: what grows is the input side, not the answers.
+
 ## [Unreleased] — a CSV for Excel that runs nothing (2026-09-20)
 
 Plan: `docs/plan-2026-09-19-csv-formula-injection.md`.
@@ -91,11 +120,14 @@ Plan: `docs/plan-2026-09-19-ai-provenance-prompts.md`; api_v3 reads the same mar
 - **A batch asks for no more entries than its answer has room for.** Up to 50 long
   entries were cut off at the 16,000-token output cap. The preview now counts the calls
   of the batches that fit, and the call budget is checked against those.
-- **Twins are enriched alike** — rows that read as one text to the split (their fields,
-  cleaned and joined) and carry the same labels — past `limit` and after a stop too,
-  without a call of their own; each merges the answer with the values it holds. Enriched
-  apart, the untouched twin kept the text its enriched twin trains on and could land in
-  the holdout, or in api_v3's validation, beside it.
+- **Twins are enriched alike** — rows alike in the cleaned, joined text of the
+  enrichment `fields` and in their labels — past `limit` and after a stop too, without a
+  call of their own; each merges the answer with the values it holds. Enriched apart, the
+  untouched twin kept the text its enriched twin trains on and could land in the holdout,
+  or in api_v3's validation, beside it. The key is the enrichment's, not the split's: this
+  matches a split whose text columns are among those `fields`, while a split reading fewer
+  columns can still hold as one text two rows enrichment answers apart
+  (`test_a_field_the_split_does_not_read_can_separate_twins`).
 - **Display names by majority:** one mis-paired row, or a name cell `label_filter` left
   behind, no longer names a label wrongly in every prompt. `label_filter` keeps
   `<label>_DISPLAYNAME` in step with the labels it keeps (clearing names it cannot pair)

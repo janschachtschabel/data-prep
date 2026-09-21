@@ -124,6 +124,9 @@ label { display: block; font-weight: 600; margin: var(--s-3) 0 var(--s-1); }
    13px box itself is exempt as a user-agent control; the label is not. */
 label.check { display: flex; gap: var(--s-2); align-items: center; font-weight: 400;
               min-height: 24px; }
+/* The browser greys the box itself; without this the text beside it stays at full
+   contrast and the control still reads as available. Same 0.6 as button:disabled. */
+label.check:has(input:disabled) { opacity: 0.6; }
 /* select MUST be in this list — without an inherited colour a native select
    keeps the system default (dark) text, which is unreadable on the dark theme. */
 input, button, textarea, select { font: inherit; color: inherit; }

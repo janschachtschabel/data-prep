@@ -308,7 +308,10 @@ const I18n = (() => {
          when you split here. api_v3&rsquo;s own cross-validation during training still
          includes generated rows — judge a model by the holdout. Best: split first, then
          balance the _train part; the examples then come from rows the holdout never had,
-         and rare labels stay evaluable.`,
+         and rare labels stay evaluable. Long fields mean fewer entries per call, so the
+         same rows take more calls — and every call re-sends the whole prompt, its
+         examples and contrast labels included. The call count in the preview says so,
+         the token budget does not: what grows is the input side, not the answers.`,
       "refine.balance.target": "Rows per label (minimum)",
       "refine.balance.limit": "Generate at most",
       "refine.balance.name": "New dataset name",
@@ -913,7 +916,11 @@ const I18n = (() => {
          aus dem Holdout. Die Kreuzvalidierung von api_v3 beim Training bezieht erzeugte
          Zeilen trotzdem ein — beurteile ein Modell am Holdout. Am besten erst aufteilen und
          dann den _train-Teil auffüllen: Die Beispiele stammen dann aus Zeilen, die der
-         Holdout nie hatte, und seltene Label bleiben auswertbar.`,
+         Holdout nie hatte, und seltene Label bleiben auswertbar. Lange Felder bedeuten
+         weniger Einträge je Aufruf, also mehr Aufrufe für dieselben Zeilen — und jeder
+         Aufruf schickt den ganzen Prompt erneut, samt Beispielen und Kontrast-Labeln.
+         Die Zahl der Aufrufe in der Vorschau zeigt das, das Token-Budget nicht: Es
+         wächst die Eingabeseite, nicht die Antworten.`,
       "refine.balance.target": "Zeilen je Label (mindestens)",
       "refine.balance.limit": "Höchstens erzeugen",
       "refine.balance.name": "Name des neuen Datensatzes",

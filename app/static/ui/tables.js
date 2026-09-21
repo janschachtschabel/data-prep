@@ -223,13 +223,25 @@ const Tables = (() => {
     }
   }
 
+  // Only the CSV formats can carry a formula, so only they are defused.
+  function csvChosen() {
+    return $("#tables-export-format").value.startsWith("csv");
+  }
+
+  /* `spreadsheet_safe` is ignored for JSON and JSONL, so the checkbox is not left
+     live and doing nothing there. Its state is kept rather than cleared: a box
+     silently unticked by a detour through JSON would hand back an undefused CSV
+     to someone who had asked for the defused one. */
+  function syncSpreadsheetBox() {
+    $("#tables-export-spreadsheet").disabled = !csvChosen();
+  }
+
   function download() {
     const name = current();
     if (!name) return;
     const format = $("#tables-export-format").value;
-    // Only the CSV formats can carry a formula, so only they are defused -- and
-    // only then does the name say so.
-    const defused = $("#tables-export-spreadsheet").checked && format.startsWith("csv");
+    // What is defused and what the file name says stay one decision.
+    const defused = $("#tables-export-spreadsheet").checked && csvChosen();
     const params = new URLSearchParams({
       format,
       separator: $("#tables-export-separator").value || ";",
@@ -266,6 +278,8 @@ const Tables = (() => {
     });
     $("#tables-profile-btn").addEventListener("click", loadProfile);
     $("#tables-download-btn").addEventListener("click", download);
+    $("#tables-export-format").addEventListener("change", syncSpreadsheetBox);
+    syncSpreadsheetBox();
   }
 
   init();

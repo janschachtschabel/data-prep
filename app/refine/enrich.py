@@ -128,10 +128,13 @@ def _twins_and_gaps(df: pd.DataFrame, fields: list[TextField], target: TextField
                     label_column: str | None, separator: str) -> tuple[list[Twin], list[bool]]:
     """Per row: what makes two rows twins, and whether its target cell is a gap.
 
-    Twins read as one text where the split and api_v3 read it -- the fields cleaned and
-    joined (``_combined_texts``) -- and carry the same labels, which their prompt names:
-    rows alike only in empty fields but filed apart are no twins. Read column by column,
-    off the event loop: per-row access on a large frame takes seconds."""
+    Twins carry the same text across ``fields`` -- cleaned and joined, as the split and
+    api_v3 read text (``_combined_texts``) -- and the same labels, which their prompt
+    names: rows alike only in empty fields but filed apart are no twins. The key is this
+    enrichment's, so it matches a split reading these columns or more; a split reading
+    FEWER can hold as one text two rows answered apart (README names the precondition).
+    Read column by column, off the event loop: per-row access on a large frame takes
+    seconds."""
     texts = _combined_texts(df, [field.column for field in fields])
     labels = ([tuple(sorted(set(split_labels(cell, separator)))) for cell in df[label_column]]
               if label_column is not None else [()] * len(df))
@@ -218,7 +221,7 @@ async def enrich_dataset(
     enriched = 0
     calls = 0  # what `limit` caps: model calls, whether or not they changed a row
     stopped: str | None = None
-    # Twins -- one text to the split and api_v3, the same labels -- share one answer.
+    # Twins -- the same text across `fields`, the same labels -- share one answer.
     # Enriched apart, the untouched twin keeps the text its enriched twin trains on and
     # may validate on it: the holdout split and api_v3's dedupe know a row by its text.
     # So a twin takes the answer its first row got, past `limit` or a stop too, and
