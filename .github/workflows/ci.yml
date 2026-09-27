@@ -4,8 +4,9 @@ name: CI — Lint, Types, Tests & Image
 # them: `build` needs `api`, so no image is ever built from code that failed the gates.
 #
 # One workflow, one gate. docker.yml used to run the same suite a second time in front of its
-# build; on a private repository the Actions minutes are the account's, and on 2026-09-27 they
-# ran out (tests/test_ci_workflows.py pins both properties).
+# build -- roughly a third of every push's CI time, which ran the account's Actions minutes out
+# on 2026-09-27, while the repository was still private (tests/test_ci_workflows.py pins both
+# properties).
 #
 # When does the image build run?
 #   - every push to main  → image tags `main` + `sha-<git-sha>`

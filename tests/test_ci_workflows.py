@@ -1,11 +1,12 @@
 """The CI runs its gate once per event, and never publishes an image without it.
 
 Two workflows ran the same gate on every push and pull request -- ci.yml, and docker.yml's
-`test` job in front of the image build. On a private repository the Actions minutes are the
-account's, shared by every private repository, and they ran out on 2026-09-27: GitHub stopped
-starting the jobs at all. The second copy existed for one invariant -- an image is only built
-from code that passed the gate, release tags included -- and that invariant is kept by the
-dependency between the jobs instead of by running the suite twice.
+`test` job in front of the image build: roughly a third of every push's CI time. While the
+repository was private, those minutes were the account's, shared by every private repository,
+and they ran out on 2026-09-27: GitHub stopped starting the jobs at all. The second copy
+existed for one invariant -- an image is only built from code that passed the gate, release
+tags included -- and that invariant is kept by the dependency between the jobs instead of by
+running the suite twice.
 """
 
 from __future__ import annotations

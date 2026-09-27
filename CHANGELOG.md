@@ -16,7 +16,9 @@ Keep a Changelog; the project is pre-1.0 and versions track milestones.
   `ci.yml` unchanged and `needs` its gate, and `ci.yml` now also runs on `vX.Y.Z` tags --
   the reason `docker.yml` had a gate of its own. The gate in front of an image got
   stricter, not weaker: it now includes the coverage floor and the OpenAPI smoke.
-  `tests/test_ci_workflows.py` pins one gate per event and no image without it.
+  `tests/test_ci_workflows.py` pins one gate per event and no image without it. The
+  repository has been public since the same day, which makes its Actions minutes free; the
+  single gate stays for the CI time it saves.
 
 ## [Unreleased] — what the two reviews left open (2026-09-21)
 

@@ -41,7 +41,7 @@ the exported CSVs.
 
 ## Deployment
 - Docker: `Dockerfile` (python:3.12-slim, non-root, healthcheck, single worker, port 8110) · local: `docker compose up -d` (keys via `.env`). Pin the base image by digest before a production build.
-- CI/CD: one GitHub Actions workflow, `.github/workflows/ci.yml` — the gate (ruff + mypy + pytest under the coverage floor + pip-audit + OpenAPI smoke), then the image build & push to GHCR, which `needs` the gate. One gate per event on purpose: the Actions minutes of a private repo are the account's (`tests/test_ci_workflows.py`). Install target is the version-pinned `requirements.lock` (hash-pinning is a follow-up).
+- CI/CD: one GitHub Actions workflow, `.github/workflows/ci.yml` — the gate (ruff + mypy + pytest under the coverage floor + pip-audit + OpenAPI smoke), then the image build & push to GHCR, which `needs` the gate. One gate per event on purpose: a second copy cost roughly a third of every push's CI time and, while the repo was private, ran the account's Actions minutes out (2026-09-27; `tests/test_ci_workflows.py`). Install target is the version-pinned `requirements.lock` (hash-pinning is a follow-up).
 
 ## Coding workflow (better-coding skills)
 
