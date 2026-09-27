@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, session_for
 from ..reference import load_reference
-from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
+from ..security import MAX_NAME_BYTES, refuse_existing, require_key, safe_name
 from ..seeds import (
     SeedItem,
     bootstrap_concept,
@@ -28,6 +28,7 @@ from ..seeds import (
 from ..settings import Settings, get_settings
 from ..terms import extract_candidates, refine_concept_terms
 from ..vocab import Vocabulary, parse_vocabulary
+from .llm_headers import llm_override
 
 router = APIRouter(prefix="/seeds", tags=["Seeds"], dependencies=[Depends(require_key)])
 

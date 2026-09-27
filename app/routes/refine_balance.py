@@ -18,9 +18,10 @@ from ..llm import BudgetExceeded, LlmConfigError, LlmError, LlmOverride, call_pr
 from ..refine.apply import replaces_another
 from ..refine.balance import balance_dataset, plan_balance
 from ..refine.store import commit, in_store
-from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
+from ..security import MAX_NAME_BYTES, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from .field_spec import FieldSpec, check_fields
+from .llm_headers import llm_override
 from .refine import (
     DEFAULT_LABEL_COLUMN,
     DESC_LABEL_SEPARATOR,

@@ -11,36 +11,12 @@ from __future__ import annotations
 import ipaddress
 import secrets
 
-from fastapi import Depends, Header, HTTPException, Request, Security, UploadFile
+from fastapi import Depends, HTTPException, Request, Security, UploadFile
 from fastapi.security import APIKeyHeader
 
-from .llm import LlmOverride
 from .settings import Settings, get_settings
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-def llm_override(
-    x_llm_key: str | None = Header(
-        default=None, alias="X-LLM-Key",
-        description="Optional LLM API key for this request; wins over the server's env key. Kept in "
-        "memory only, never stored or logged: a run holds it until it stops, so a resume must send it again.",
-    ),
-    x_llm_model: str | None = Header(
-        default=None, alias="X-LLM-Model",
-        description="Optional model for this request, replacing the one config.yaml sets for the "
-        "purpose. The endpoint (base_url) always stays the configured one.",
-    ),
-) -> LlmOverride:
-    """Extract per-request LLM credentials from headers (open-instance mode).
-
-    ``X-LLM-Key`` / ``X-LLM-Model`` let a caller drive the LLM with their own
-    key + model without any server-wide env key. Both are optional; empty
-    strings collapse to ``None`` so the endpoint falls back to config + env.
-    The key is a secret — it lives only for the duration of the request (and,
-    for a background run, in memory), never persisted or logged.
-    """
-    return LlmOverride(api_key=x_llm_key or None, model=x_llm_model or None)
 
 
 def require_key(
@@ -100,10 +76,31 @@ def _is_loopback_client(request: Request) -> bool:
 # that carries a name uses this as its character cap; this check is the real one.
 MAX_NAME_BYTES = 200
 
+# Windows resolves these to devices rather than files, with or without an extension: a
+# dataset named `nul` writes to the bit bucket, reads back empty, and every store reports
+# success. The Linux image is unaffected — this is for the dev server, which runs on Windows.
+# COM10 and up are ordinary names; only the single digits are devices.
+_WINDOWS_DEVICES = frozenset(
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+    | {f"COM{digit}" for digit in "123456789"}
+    | {f"LPT{digit}" for digit in "123456789"}
+)
+
+
+def _is_windows_device(name: str) -> bool:
+    """Whether Windows would read this name as a device.
+
+    The comparison is the stem — everything before the first dot — because `nul.csv` is the
+    same device as `nul`, and trailing spaces and dots are ignored by the Win32 path parser,
+    so `nul ` and `nul.` are too. Matching a prefix instead would cost `conference`.
+    """
+    stem = name.split(".", 1)[0].rstrip(" ")
+    return stem.upper() in _WINDOWS_DEVICES
+
 
 def safe_name(name: str, kind: str = "name") -> str:
-    """Validate a user-supplied name, rejecting path-traversal characters and
-    names too long for a file name."""
+    """Validate a user-supplied name, rejecting path-traversal characters, names too long
+    for a file name, and names Windows reads as a device."""
     if len(name.encode("utf-8")) > MAX_NAME_BYTES:
         raise HTTPException(
             status_code=400, detail=f"Invalid {kind}: longer than {MAX_NAME_BYTES} bytes."
@@ -119,6 +116,11 @@ def safe_name(name: str, kind: str = "name") -> str:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid {kind}: {name!r}. Must not contain path characters (/, \\, ..).",
+        )
+    if _is_windows_device(name):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {kind}: {name!r} is a reserved device name on Windows.",
         )
     return name
 

@@ -25,10 +25,11 @@ from ..refine.fields import TextField
 from ..refine.label_audit import audit_predictions
 from ..refine.prep import balance_report, holdout_split
 from ..refine.store import commit, dataset_path, in_store
-from ..security import MAX_NAME_BYTES, llm_override, refuse_existing, require_key, safe_name
+from ..security import MAX_NAME_BYTES, refuse_existing, require_key, safe_name
 from ..settings import Settings, get_settings
 from ..textnorm import split_labels
 from .field_spec import FieldSpec, check_fields
+from .llm_headers import llm_override
 from .refine import (
     DEFAULT_LABEL_COLUMN,
     DEFAULT_TEXT_COLUMNS,

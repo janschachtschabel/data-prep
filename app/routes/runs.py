@@ -13,10 +13,11 @@ from ..config import load_config
 from ..llm import LlmOverride
 from ..planning import build_plan, estimate, resolve_corridor
 from ..runs import run_manager
-from ..security import MAX_NAME_BYTES, llm_override, require_key, safe_name
+from ..security import MAX_NAME_BYTES, require_key, safe_name
 from ..seeds import load_seed_set
 from ..settings import Settings, get_settings
 from ..vocab import Vocabulary, parse_vocabulary
+from .llm_headers import llm_override
 
 router = APIRouter(prefix="/runs", tags=["Runs"], dependencies=[Depends(require_key)])
 
