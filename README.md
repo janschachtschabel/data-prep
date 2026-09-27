@@ -62,8 +62,12 @@ Open the admin UI at **http://127.0.0.1:8110/ui** and sign in with
 `DATAPREP_AUTH_KEY`. If no key is configured, auth is disabled for loopback
 clients only — requests from a non-loopback address are refused (set a key for
 remote use).
-API docs are at `/docs`. See [docs/ui-guide.md](docs/ui-guide.md) for a
-German, non-technical walkthrough.
+API docs are at `/docs`. The paths carry **no version prefix** — there is no `/v1`,
+so a breaking change to a route breaks that route. The only client is this app's own
+UI, and the api_v3 traffic goes the other way, so a version shim would be a
+compatibility promise with nobody to keep it for; a second client would have to
+change that first. See [docs/ui-guide.md](docs/ui-guide.md) for a German,
+non-technical walkthrough.
 
 ## Deployment (Docker)
 
@@ -80,6 +84,25 @@ docker compose down           # add -v to also delete the datasets/runs volume
 Behind a reverse proxy the client peer is the proxy, so a `DATAPREP_AUTH_KEY`
 is **required** (keyless mode only serves loopback). Persistent state lives in
 the `data-prep-data` volume (`/data`).
+
+**Back that volume up.** It holds everything the app cannot recreate — uploaded
+datasets, parsed vocabularies, LLM-paid seeds, finished runs and their samples — and
+nothing in this repository copies it anywhere. A backup is a `tar` out of a throwaway
+container; a restore is the same command inwards:
+
+```bash
+docker compose stop                      # a run writing mid-tar lands half-written
+docker run --rm -v data-prep-data:/data -v "$PWD:/backup" alpine \
+  tar czf /backup/data-prep-$(date +%F).tar.gz -C /data .
+docker compose start
+
+# restore into an empty volume
+docker run --rm -v data-prep-data:/data -v "$PWD:/backup" alpine \
+  tar xzf /backup/data-prep-2026-09-27.tar.gz -C /data
+```
+
+Stopping first is what makes the copy consistent: the stores are atomic against a
+crash (write a temp file, rename), not against a reader that copies while they rename.
 
 `.github/workflows/` holds two GitHub Actions: **ci.yml** (ruff + mypy + pytest
 + OpenAPI smoke on every push/PR) and **docker.yml** (gated build & push to

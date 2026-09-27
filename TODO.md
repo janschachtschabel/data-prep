@@ -26,6 +26,47 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Die vierzehn offenen Low-Befunde des September-Audits abgearbeitet (2026-09-27).** Sechs
+behoben, drei ohne Änderung geschlossen, einer teils Entscheidung, vier bewusst
+zurückgestellt — Buchführung je Befund in `docs/audits/2026-09-11-audit.md`, Abschnitt „The
+fourteen Low findings". Jeder Befund wurde zuerst gegen den heutigen Code geprüft, denn der
+Audit ist sechzehn Tage und zwei Features alt: drei Befunde waren längst erledigt, und einer
+maß sich genau umgekehrt zur Schätzung.
+**L4.** `safe_name` weist Windows-Gerätenamen ab (`con`, `nul`, `com1`, `conout$`, auch mit
+Endung oder nachgestelltem Punkt/Leerzeichen). Der Audit schlug „worth a comment" vor; das
+greift zu kurz, weil der Dev-Server auf Windows läuft: ein Datensatz namens `nul` schreibt
+ins Nichts, liest leer zurück, **und jeder Store meldet Erfolg**. Zehn Fälle rot→grün, plus
+ein Präzisionstest (`conference`, `com10`, `auxiliary` bleiben gültig — nur COM1–COM9 sind
+Geräte).
+**A4.** `llm_override` liegt jetzt in `app/routes/llm_headers.py`, Muster `field_spec.py`
+(Modul unter `routes/`, kein Router). `app/llm.py` war kein Ziel: es kennt FastAPI nicht, ein
+`Header(...)` dort hätte das Domänenmodul ans Framework gebunden. Gepinnt per
+Frischinterpreter-Probe (`import app.security` darf `app.llm` nicht laden) statt per
+AST-Walk, der den transitiven Pfad nicht sieht und `TYPE_CHECKING`-Imports mitzählt.
+**P4.** Der Upload-Scrub läuft spaltenweise statt Zelle für Zelle. **Die Audit-Schätzung lag
+falsch herum:** gemessen über 30k×3 kostete `df.at` 3,97 s, die Regex-Arbeit allein aber nur
+1,43 s — zwei Drittel der Wartezeit war Frame-Zugriff, nicht die „~0,5 s fine at this size".
+Jetzt 1,85 s. Äquivalenz per Differenztest, der die alte Schleife im Wortlaut trägt, zweifach
+mutationsgeprüft (pro Spalte statt pro Zeile zählen; die `isinstance`-Wache weglassen, an der
+NaN-Zellen hängen).
+**T2.** Coverage ist gemessen statt behauptet — der Audit konnte keine Zahl nennen: **95 %**
+(4125 Statements, 187 fehlend). `coverage[toml]` in den Dev-Requirements, Konfiguration in
+`pyproject.toml`, `fail_under = 92` als echtes Gate im CI-Testschritt.
+**API3 + Dep4.** Doku: kein Versionsprefix, mit Begründung statt nur Feststellung; und
+Backup/Restore für das `data-prep-data`-Volume — bisher war `down -v` die einzige dort
+dokumentierte Operation, also löschen.
+**A2** war teils von selbst behoben (`routes/refine.py` 304→224, `runs.py` 339→211), teils
+Entscheidung: `routes/tables.py` ist als vierte Ausnahme in CLAUDE.md benannt.
+**Zurückgestellt:** P3 und Dep3 stellt der Audit selbst zurück; D3 ist in README und
+CLAUDE.md als Follow-up benannt; D4 ist entschieden statt offen — `pip-audit` über den Lock
+meldet keine bekannten Lücken, `model2vec` 0.8.2→0.9.0 verändert die Encoder-Ausgabe und
+damit jede gemessene Dedupe-Schwelle, `openai` 2.45→3.x ist ein Major.
+Nebenbefund: die Audit-Zeile „tracked in TODO.md" traf nicht zu — diese Datei führt die Ids
+des **Juli**-Audits, die vierzehn trug nichts. Deshalb steht die Buchführung im Audit selbst.
+Nachweis: **862 Tests grün**, Coverage **95 %** gegen Floor 92, ruff sauber, mypy sauber
+(68 Dateien — eine mehr, das neue `routes/llm_headers.py`).
+
+
 **Offene Punkte der beiden Reviews abgearbeitet (2026-09-21).** Drei der vier Befunde
 erledigt, der vierte war bereits entschieden.
 **(1) Zwillingsregel.** Der Code gruppiert Zwillinge nach dem bereinigten, verbundenen

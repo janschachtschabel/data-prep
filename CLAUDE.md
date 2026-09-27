@@ -27,7 +27,7 @@ the exported CSVs.
 ## Conventions (mirror api_v3 unless stated otherwise)
 - Code/comments/docs English; comments explain *why*, not *what*. UI help texts and the user guide are German.
 - Test-first for logic: failing test → implement → green. Never weaken a test to pass.
-- Files < ~300 lines, split by responsibility. Routes stay thin (auth, validation, HTTP mapping) and delegate to core modules. Known exceptions, tracked in TODO.md: `static/ui/i18n.js` (a dictionary), `static/ui/refine.js`, `tabular.py`.
+- Files < ~300 lines, split by responsibility. Routes stay thin (auth, validation, HTTP mapping) and delegate to core modules. Known exceptions, tracked in TODO.md: `static/ui/i18n.js` (a dictionary), `static/ui/refine.js`, `tabular.py`, and `routes/tables.py` — 312 lines with one responsibility, where the split was built and deliberately withdrawn (2026-09-20).
 - No pickle. Secrets only via env; never logged, never committed. Errors never swallowed.
 - **LLM key/model may also come per request** (`X-LLM-Key` / `X-LLM-Model` headers → `LlmOverride`) so an instance can run with NO server-wide KI key ("open" mode). The request key wins over `api_key_env`; it is held in memory only (for a background run too) and NEVER persisted to `state.json` or logged. `base_url` stays operator-controlled (no per-request override → no SSRF). Absent the headers, the env key is the fallback (backward compatible).
 - User-supplied names go through `security.safe_name`; the API key compares in constant time.
