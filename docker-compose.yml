@@ -1,5 +1,5 @@
-# Local run setup. For production, pull the image from GHCR (see the docker
-# workflow) and put a reverse proxy with TLS in front.
+# Local run setup. For production, pull the image from GHCR (built by the `build`
+# job in .github/workflows/ci.yml) and put a reverse proxy with TLS in front.
 #
 # Quick start:
 #   cp .env.example .env       # set DATAPREP_AUTH_KEY (OPENAI_API_KEY optional)

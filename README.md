@@ -104,9 +104,10 @@ docker run --rm -v data-prep-data:/data -v "$PWD:/backup" alpine \
 Stopping first is what makes the copy consistent: the stores are atomic against a
 crash (write a temp file, rename), not against a reader that copies while they rename.
 
-`.github/workflows/` holds two GitHub Actions: **ci.yml** (ruff + mypy + pytest
-+ OpenAPI smoke on every push/PR) and **docker.yml** (gated build & push to
-GHCR on `main` and `vX.Y.Z` tags). Before a production build, pin the base
+`.github/workflows/ci.yml` is the one GitHub Action: its gate (ruff + mypy +
+pytest under the coverage floor + pip-audit + OpenAPI smoke) runs on every push,
+PR and `vX.Y.Z` tag, and the image build & push to GHCR runs behind it, on
+`main` and on tags (a PR only builds). Before a production build, pin the base
 image by digest (see the note at the top of the `Dockerfile`).
 
 ### Running the published image

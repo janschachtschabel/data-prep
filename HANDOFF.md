@@ -93,7 +93,7 @@ Fünf Verbesserungspakete auf v1 + Feedback-Runde + **Begriffs-Bank** (Term Bank
 
 - **Sprachumschalter:** komplette Oberfläche DE/EN — statisch **und dynamisch** (siehe Nachtrag Punkt 5). Weitere Sprachen = ein weiterer Dictionary-Block in `i18n.js`.
 - v2-Kandidaten (im Plan): spaCy-NER-PII, Parquet, LLM-Umschreiben kuratierter Texte, Multi-User/Rollen.
-- Ohne Codebezug (beim Betreiber): Repo anlegen, Image bauen + hochladen (GHCR via `docker.yml`), deployen; Basis-Image vor Prod per Digest pinnen (Hinweis oben im `Dockerfile`).
+- Ohne Codebezug (beim Betreiber): Repo anlegen, Image bauen + hochladen (GHCR via `ci.yml`, Job `build`), deployen; Basis-Image vor Prod per Digest pinnen (Hinweis oben im `Dockerfile`).
 
 ## Nachtrag (2026-07-16) — Audit abgearbeitet + Deployment-Gerüst
 

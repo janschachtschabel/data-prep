@@ -3,6 +3,21 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — one gate per push (2026-09-27)
+
+### Changed
+
+- **The CI runs its gate once and builds the image behind it.** `ci.yml` and `docker.yml`
+  both ran the full gate on every push and pull request, so roughly a third of each push's
+  Actions minutes went to running the same suite twice. On a private repository those
+  minutes are the account's, shared with every other private repository, and on
+  2026-09-27 GitHub stopped starting the jobs at all ("recent account payments have
+  failed or your spending limit needs to be increased"). The image job moved into
+  `ci.yml` unchanged and `needs` its gate, and `ci.yml` now also runs on `vX.Y.Z` tags --
+  the reason `docker.yml` had a gate of its own. The gate in front of an image got
+  stricter, not weaker: it now includes the coverage floor and the OpenAPI smoke.
+  `tests/test_ci_workflows.py` pins one gate per event and no image without it.
+
 ## [Unreleased] — what the two reviews left open (2026-09-21)
 
 ### Fixed

@@ -1,19 +1,33 @@
-name: CI — Lint, Types & Tests
+name: CI — Lint, Types, Tests & Image
 
-# The three quality gates (see CLAUDE.md) plus an OpenAPI smoke check.
-# Runs on every push + PR to main.
+# The quality gates (see CLAUDE.md) plus an OpenAPI smoke check, and the image build behind
+# them: `build` needs `api`, so no image is ever built from code that failed the gates.
+#
+# One workflow, one gate. docker.yml used to run the same suite a second time in front of its
+# build; on a private repository the Actions minutes are the account's, and on 2026-09-27 they
+# ran out (tests/test_ci_workflows.py pins both properties).
+#
+# When does the image build run?
+#   - every push to main  → image tags `main` + `sha-<git-sha>`
+#   - git tags vX.Y.Z     → additionally `X.Y.Z`, `X.Y`, `X` + `latest`
+#   - every PR            → build only (smoke test, no push)
+#   - manual (workflow_dispatch)
 
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']
   pull_request:
     branches: [main]
   workflow_dispatch:
 
+# Default to read-only; the `build` job elevates to packages/attestations itself.
 permissions:
   contents: read
 
 env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
   # Node 24 as the default runtime for JavaScript-based actions — Node 20
   # is removed from GitHub runners from Q3 2026 on.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -69,3 +83,80 @@ jobs:
               assert any(p.startswith(prefix) for p in paths), f"no {prefix} routes registered"
           print(f"OK: {len(paths)} endpoints in schema")
           PY
+
+  build:
+    needs: api
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # For build provenance / attestations
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Branch builds: branch name as tag (main → main)
+            type=ref,event=branch
+            # PR builds: pr-N
+            type=ref,event=pr
+            # Semver tags from vX.Y.Z: X.Y.Z, X.Y, X (and latest)
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # Short git SHA as a tag, always
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=data-prep
+            org.opencontainers.image.description=Dataset workshop for WLO training data (synthetic generation + refine toolbox, CPU-only, torch-free)
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          # linux/amd64 is enough for now — arm64 would double the build time
+          # under QEMU. For arm64 add: platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Sign build provenance (Sigstore via OIDC)
+          provenance: true
+          sbom: true
+
+      - name: Image summary
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## Published image" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
