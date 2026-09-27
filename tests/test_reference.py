@@ -45,6 +45,59 @@ def test_ingest_scrubs_all_text_columns_and_groups_labels():
     assert meta["group_counts"] == {URI_A: 3, URI_B: 1}
 
 
+def _scrub_cell_by_cell(df, text_columns):
+    """The ingest scrub as it stood before it was vectorized (audit P4).
+
+    Written out here on purpose: a differential test that calls the implementation to produce
+    its own expectation proves nothing. This is the `df.at` loop, transcribed step for step —
+    including that a cell is written back ONLY when something was found, and that the report
+    records once per ROW, merged across all text columns.
+    """
+    from app.pii import PiiReport, scrub
+
+    df = df.copy()
+    report = PiiReport()
+    for idx in df.index:
+        row_found: dict[str, int] = {}
+        for col in text_columns:
+            value = df.at[idx, col]
+            if isinstance(value, str) and value:
+                cleaned, found = scrub(value)
+                if found:
+                    df.at[idx, col] = cleaned
+                    for category, count in found.items():
+                        row_found[category] = row_found.get(category, 0) + count
+        report.record(row_found)
+    return df, report.as_dict()
+
+
+def test_the_vectorized_scrub_matches_the_cell_by_cell_one():
+    """Same frame, same report, for every shape the old loop had a branch for: PII in one
+    column, in two (one row, merged counts), a clean row, an empty cell, and a missing cell —
+    which `dtype=str` leaves as NaN, so the `isinstance(value, str)` guard is load-bearing."""
+    import io
+
+    import pandas as pd
+
+    from app.reference import DEFAULT_TEXT_COLUMNS, ingest_reference
+
+    rows = [
+        f"Optik;Fragen an a@b.de;Licht;{URI_A}",                    # one column
+        f"Mechanik 030/123456;Auch hier c@d.de;Kraft;{URI_A}",      # two columns, one row
+        f"Sauber;Nichts drin;Photosynthese;{URI_B}",                # clean
+        f"Leer;;Stichwort;{URI_B}",                                 # empty -> NaN with dtype=str
+        f"Drei;e@f.de und 030/9;https://example.org/x;{URI_A}",     # three categories
+    ]
+    raw = (CSV_HEADER + "\n".join(rows) + "\n").encode("utf-8")
+
+    produced, meta = ingest_reference(raw, name="differential")
+    parsed = pd.read_csv(io.BytesIO(raw), sep=";", dtype=str, encoding="utf-8")
+    expected, expected_report = _scrub_cell_by_cell(parsed, DEFAULT_TEXT_COLUMNS)
+
+    assert produced.equals(expected), f"frames diverged:\n{produced}\n{expected}"
+    assert meta["pii"] == expected_report
+
+
 def test_list_exposes_column_mapping(make_client):
     """The reference list must show which columns feed title/description/keywords
     and the label — so the field mapping is visible in the UI, not guessed."""

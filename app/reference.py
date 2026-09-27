@@ -36,6 +36,15 @@ DEFAULT_TEXT_COLUMNS = (
 DEFAULT_LABEL_COLUMN = "properties.ccm:taxonid"
 
 
+def _scrub_cell(value: object) -> tuple[str, dict[str, int]] | None:
+    """``scrub`` for one cell, or None where there is nothing to scrub.
+
+    A cell can be absent: the upload is parsed with ``dtype=str``, which leaves a missing
+    field as NaN rather than an empty string, so the type check is load-bearing.
+    """
+    return scrub(value) if isinstance(value, str) and value else None
+
+
 def references_dir(settings: Settings) -> Path:
     directory = settings.data_dir / "references"
     directory.mkdir(parents=True, exist_ok=True)
@@ -102,19 +111,26 @@ def ingest_reference(
     if missing:
         raise ValueError(f"Missing required columns: {', '.join(missing)}.")
 
-    # Input scrub, cell by cell; the label column stays untouched (URIs would
-    # otherwise be masked as URLs).
+    # Input scrub, one column at a time; the label column stays untouched (URIs would
+    # otherwise be masked as URLs). Per column rather than per cell because `df.at` was the
+    # majority of the cost, not the regex: over a 30k x 3 frame shaped like the default
+    # reference, 3.97 s cell by cell against 1.43 s for the scrubbing itself, so two thirds
+    # of the wait was frame access. The report still counts once per ROW, merged across the
+    # text columns, which is what the per-row dicts collect before it is filled.
     report = PiiReport()
-    for idx in df.index:
-        row_found: dict[str, int] = {}
-        for col in text_columns:
-            value = df.at[idx, col]
-            if isinstance(value, str) and value:
-                cleaned, found = scrub(value)
-                if found:
-                    df.at[idx, col] = cleaned
-                    for category, count in found.items():
-                        row_found[category] = row_found.get(category, 0) + count
+    per_row: list[dict[str, int]] = [{} for _ in range(len(df))]
+    for col in text_columns:
+        results = df[col].map(_scrub_cell)
+        scrubbed = []
+        for position, (result, value) in enumerate(zip(results, df[col], strict=True)):
+            if result is None or not result[1]:
+                scrubbed.append(value)   # nothing found: the cell keeps its own object
+                continue
+            scrubbed.append(result[0])
+            for category, count in result[1].items():
+                per_row[position][category] = per_row[position].get(category, 0) + count
+        df[col] = scrubbed
+    for row_found in per_row:
         report.record(row_found)
 
     group_counts: dict[str, int] = {}
