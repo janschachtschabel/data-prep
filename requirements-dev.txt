@@ -6,3 +6,8 @@ types-PyYAML>=6.0
 # Supply-chain gate: checks requirements.lock against the advisory database in
 # CI (audit 2026-09-11, D1). Dev-only; never installed into the image.
 pip-audit>=2.7
+# Coverage measurement (audit 2026-09-11, T2): the audit could not state a figure
+# because nothing measured one. The floor lives in pyproject [tool.coverage.report]
+# and is the actual gate -- deleting a guard together with its test stays green on
+# pytest alone. Dev-only as well.
+coverage[toml]>=7.6

@@ -11,3 +11,6 @@ runs/
 .env.*
 !.env.example
 *.egg-info/
+# Coverage data (audit T2). The measurement is a gate, its data file is a build artifact.
+.coverage
+.coverage.*
