@@ -25,6 +25,20 @@ def test_clean_text_matches_api_v3_rules():
     assert clean_text(None) == ""
 
 
+def test_clean_text_matches_api_v3_cleaning_version_2():
+    """api_v3 trains new models with cleaning version 2 (its audit of 2026-09-30, T09): a tag
+    starts with `<` and a letter, `/`, `!` or `?`, so a bare `<` ... `>` pair is prose. Its
+    patterns also stopped scanning across their own opening delimiter (2026-09-20), which
+    keeps a stray `<` or `[` in front of real markup. The expected values are api_v3's own."""
+    from app.textnorm import clean_text
+
+    assert clean_text("x < y gilt: Wenn a > b") == "x < y gilt: Wenn a b"
+    assert clean_text("Preis &lt; 5 Euro <br> Menge &gt; 3 Stück") == "Preis < 5 Euro Menge 3 Stück"
+    assert clean_text("a < b <i>c</i>") == "a < b c"
+    assert clean_text("[a [b](c)") == "[a b"
+    assert clean_text("[t](http://x.de/a(b)) Rest") == "[t](http://x.de/a(b)) Rest"
+
+
 def test_split_labels_respects_separator():
     from app.textnorm import split_labels
 
