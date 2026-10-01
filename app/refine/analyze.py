@@ -3,6 +3,8 @@ the training preflight that mirrors api_v3's effective-row computation."""
 
 from __future__ import annotations
 
+from collections import Counter
+
 import pandas as pd
 
 from ..pii import PiiReport, scrub
@@ -96,10 +98,14 @@ def training_preflight(
 ) -> dict:
     """Simulate api_v3's data preparation and report the EFFECTIVE training set.
 
-    Mirrors api_v3 exactly: clean + combine, min-length/no-label/duplicate row
-    filter, ``auto_min_samples``, then drop rare label columns and the rows that
-    lose their last label. The ``effective_rows`` figure matches api_v3's
-    training log to ±0.
+    Mirrors api_v3's loader and ``prepare_targets``: clean + combine; drop the rows
+    too short, without a label (container values do not count) or repeating an
+    earlier row as its vectorizer sees it; ``auto_min_samples``; then keep the
+    labels with ``min_samples`` rows with AND without them, dropping the rows left
+    without one, until nothing changes. ``effective_rows`` matches the rows api_v3
+    trains on to ±0 for an unweighted run. api_v3 repeats columns by its
+    ``text_column_weights`` (title and keywords twice by default) before the length
+    and duplicate checks, which this does not; on data_30k.csv that moved no row.
     """
     _require_columns(df, text_columns, label_column)
     texts = _combined_texts(df, text_columns)
@@ -128,12 +134,8 @@ def training_preflight(
 
     n_kept = len(kept_labels)
     resolved_min = auto_min_samples(n_kept, min_samples)
-    counts: dict[str, int] = {}
-    for labs in kept_labels:
-        for lab in set(labs):
-            counts[lab] = counts.get(lab, 0) + 1
-    learnable = {lab for lab, c in counts.items() if c >= resolved_min}
-    effective = sum(1 for labs in kept_labels if any(lab in learnable for lab in labs))
+    counts = Counter(lab for labs in kept_labels for lab in set(labs))
+    learnable, effective = _learnable(kept_labels, resolved_min)
 
     return {
         "raw_rows": int(len(df)),
@@ -143,5 +145,29 @@ def training_preflight(
         "learnable_labels": len(learnable),
         "effective_rows": effective,
         "per_label_effective": {lab: counts[lab] for lab in sorted(learnable)},
-        "labels_below_min": {lab: counts[lab] for lab, c in counts.items() if lab not in learnable},
+        "labels_below_min": {lab: c for lab, c in counts.items() if c < resolved_min},
+        # Enough rows, too few without the label: api_v3 logs and records these as ubiquitous.
+        "ubiquitous_labels": {lab: c for lab, c in counts.items()
+                              if c >= resolved_min and lab not in learnable},
     }
+
+
+def _learnable(label_lists: list[list[str]], min_samples: int) -> tuple[set[str], int]:
+    """The labels api_v3's ``prepare_targets`` trains, and how many rows keep one of them.
+
+    A label needs ``min_samples`` rows WITH it and as many WITHOUT it: one on every row teaches
+    nothing (api_v3's audit of 2026-09-30, T01). The rows left without a learnable label go, and
+    that repeats until nothing changes, because those rows were negatives of the labels that
+    stay. A dropped row never held a label that is still learnable, so the counts of the
+    learnable labels are the ones over all kept rows.
+    """
+    rows = [set(labs) for labs in label_lists]
+    labels: set[str] = set().union(*rows)
+    while True:
+        counts = Counter(lab for labs in rows for lab in labs & labels)
+        keep = {lab for lab in labels
+                if counts[lab] >= min_samples and len(rows) - counts[lab] >= min_samples}
+        left = [labs for labs in rows if labs & keep]
+        if keep == labels and len(left) == len(rows):
+            return keep, len(rows)
+        labels, rows = keep, left

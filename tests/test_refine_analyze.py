@@ -60,6 +60,10 @@ def _preflight_csv() -> bytes:
         ";a;;subject/A",                          # combined cleaned text "a" (<5) -> dropped
         f"Titel A;{good} eins;kw;subject/A",      # exact duplicate of row 1 -> dropped
         f"Titel E;{good} fuenf;kw;",              # no label -> dropped
+        # C gives A the rows WITHOUT it that api_v3 asks for (T01), and A gives C its own.
+        f"Titel F;{good} sechs;kw;subject/C",
+        f"Titel G;{good} sieben;kw;subject/C",
+        f"Titel H;{good} acht;kw;subject/C",
     ]
     return (CSV_HEADER + "\n".join(rows) + "\n").encode("utf-8")
 
@@ -74,17 +78,18 @@ def test_preflight_effective_count_and_breakdown():
         label_separator=",", label_filter="subject/",
         min_text_length=5, drop_duplicates=True, min_samples=3,
     )
-    assert report["raw_rows"] == 7
-    assert report["kept_after_cleaning"] == 4  # A,A,A,B survive short/dup/no-label filters
+    assert report["raw_rows"] == 10
+    assert report["kept_after_cleaning"] == 7  # A,A,A,B,C,C,C survive short/dup/no-label filters
     assert report["min_samples"] == 3
-    # Only A reaches 3 occurrences; B (1) is dropped, and its row loses its only
-    # label -> effective training rows = 3.
-    assert report["effective_rows"] == 3
-    assert report["learnable_labels"] == 1
+    # A and C reach 3 occurrences with 4 rows without each; B (1) is dropped, and its row
+    # loses its only label -> effective training rows = 6 (api_v3's prepare_targets agrees).
+    assert report["effective_rows"] == 6
+    assert report["learnable_labels"] == 2
     assert report["dropped"]["too_short"] == 1
     assert report["dropped"]["duplicate"] == 1
     assert report["dropped"]["no_label"] == 1
-    assert report["per_label_effective"] == {"subject/A": 3}
+    assert report["per_label_effective"] == {"subject/A": 3, "subject/C": 3}
+    assert report["labels_below_min"] == {"subject/B": 1}
 
 
 def test_preflight_drops_container_labels_like_api_v3():
@@ -99,11 +104,13 @@ def test_preflight_drops_container_labels_like_api_v3():
     good = "Ein ausreichend langer Beispieltext zum Thema"
     rows = [f"Titel {i};{good} {i};kw;{root}120" for i in range(3)]
     rows += [f"Titel X;{good} x;kw;{root}", f"Titel Y;{good} y;kw;{root},{root}120"]
+    # Two rows of another concept, so 120 is not on every kept row (which api_v3 drops, T01).
+    rows += [f"Titel Z{i};{good} z{i};kw;{root}130" for i in range(2)]
     df = read_csv((CSV_HEADER + "\n".join(rows) + "\n").encode("utf-8"))
     report = training_preflight(df, [TITLE, DESC, KEYW], LABEL, label_separator=",", min_samples=2)
 
     assert report["dropped"]["no_label"] == 1
-    assert report["per_label_effective"] == {f"{root}120": 4}
+    assert report["per_label_effective"] == {f"{root}120": 4, f"{root}130": 2}
     assert root not in report["labels_below_min"]
 
 
@@ -128,6 +135,32 @@ def test_preflight_dedupes_the_way_api_v3s_vectorizer_sees_text():
 
     assert report["dropped"]["duplicate"] == 1
     assert report["kept_after_cleaning"] == 2
+
+
+def test_preflight_learnable_needs_rows_with_and_without_the_label_like_api_v3():
+    """api_v3 (its audit of 2026-09-30, T01) trains a label only with ``min_samples`` rows WITH
+    it and as many WITHOUT it -- one on every row teaches nothing -- and repeats that until
+    nothing changes, since dropping the rows left without a label takes negatives away from the
+    labels that stay. The expected values are api_v3's ``prepare_targets`` answers."""
+    from app.refine.analyze import training_preflight
+    from app.refine.store import read_csv
+
+    def preflight(cells: list[str]) -> dict:
+        good = "Ein ausreichend langer Beispieltext zum Thema"
+        rows = [f"Titel {i};{good} {i};kw;{cell}" for i, cell in enumerate(cells)]
+        df = read_csv((CSV_HEADER + "\n".join(rows) + "\n").encode("utf-8"))
+        return training_preflight(df, [TITLE, DESC, KEYW], LABEL, label_separator=",", min_samples=5)
+
+    on_every_row = preflight(["A,B"] * 10 + ["A,C"] * 20)
+    assert on_every_row["per_label_effective"] == {"B": 10, "C": 20}
+    assert on_every_row["effective_rows"] == 30
+    assert on_every_row["ubiquitous_labels"] == {"A": 30}
+    assert on_every_row["labels_below_min"] == {}
+
+    cascade = preflight(["A,B"] * 10 + ["A"] * 20)
+    assert cascade["learnable_labels"] == 0
+    assert cascade["effective_rows"] == 0
+    assert cascade["ubiquitous_labels"] == {"A": 30, "B": 10}
 
 
 def test_preflight_auto_min_samples_used_when_unspecified():
@@ -203,9 +236,11 @@ def test_store_roundtrip_and_analyze_route(make_client, tmp_path):
     assert r.status_code == 200, r.text
     assert r.json()["exact_duplicate_rows"] == 1
 
+    # min_samples 1: of the three kept rows two carry A, and at 2 api_v3 would also need two
+    # rows WITHOUT it (T01) -- this smoke test is about the route, not that rule.
     r = client.post("/refine/curated/preflight",
                     json={"text_columns": [TITLE, DESC, KEYW], "label_column": LABEL,
-                          "min_samples": 2},
+                          "min_samples": 1},
                     headers=HEADERS)
     assert r.status_code == 200, r.text
     assert r.json()["effective_rows"] >= 1
