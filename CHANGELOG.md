@@ -3,6 +3,33 @@
 All notable changes to data-prep are documented here. Format loosely follows
 Keep a Changelog; the project is pre-1.0 and versions track milestones.
 
+## [Unreleased] — the preflight follows api_v3 again (2026-10-01)
+
+### Fixed
+
+- **The training preflight predicts api_v3's training set again, to the row.** It mirrors
+  api_v3's preparation, and api_v3 had moved on since the mirror was written: its tag and
+  Markdown-link patterns stopped scanning across their own opening delimiter (2026-09-20);
+  container labels, a value ending in `/`, stopped counting (2026-09-08); and its audit of
+  2026-09-30 made cleaning version 2 treat only `<` plus a letter, `/`, `!` or `?` as a tag
+  (T09), dedupes texts as its vectorizer sees them -- lower-cased, accents stripped (T07) --
+  and trains a label only with `min_samples` rows WITH it and as many without, repeated until
+  nothing changes (T01). `textnorm` mirrors cleaning version 2, `dedupe_key` and
+  `is_container_label`; `textnorm.split_labels` still keeps container values, because
+  data-prep rewrites label cells and pairs them with display names by position. The report
+  gains `ubiquitous_labels`. Measured on `data_30k.csv`: 25,066 effective rows and 47
+  labels, identical to api_v3's own preparation (the preflight said 25,068); a differential
+  run against api_v3's functions over that file and 200,000 random strings finds no
+  difference in cleaning, dedupe key or labels, where the old copy differed on 89,140 texts.
+- **A blank `min_samples` means 20, api_v3's default.** `/train` applies 20 when the field
+  is left out -- its own UI leaves a blank field out -- and scales automatically only for an
+  explicit `null`; the preflight scaled for both. The route defaults to 20, `null` keeps the
+  automatic value, and the field's label says so in both languages.
+
+Not replayed, both measured without effect on `data_30k.csv`: api_v3's column weights
+(title and keywords twice by default) and the strings pandas reads as missing (`NA`,
+`null`, ...), which data-prep's store keeps as text.
+
 ## [Unreleased] — one gate per push (2026-09-27)
 
 ### Changed

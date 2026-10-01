@@ -26,6 +26,20 @@ vor Abschlussmeldung `/better-coding-verify`. Nach jedem Paket diese Datei aktua
 
 ## Aktueller Stand
 
+**Preflight folgt api_v3 wieder (2026-10-01).** Nach api_v3s Audit vom 2026-09-30 (Branch
+`fix/audit-2026-09-30`) stimmte die Vorab-Prüfung nicht mehr mit api_v3s Aufbereitung
+überein — und war schon vorher abgedriftet (Muster 2026-09-20, Container-Labels und
+Default `min_samples` 2026-09-08). Nachgezogen, je test-first und als eigener Commit:
+Reinigungsversion 2 samt engerer Muster in `textnorm.clean_text`; Container-Labels zählen im
+Preflight nicht (`split_labels` behält sie, weil Filter Label-Zellen umschreiben und Namen
+positionsweise paaren); Dubletten wie der Vectorizer sie sieht (`textnorm.dedupe_key`); ein
+Label braucht `min_samples` Zeilen mit **und** ohne sich, wiederholt bis stabil (neues Feld
+`ubiquitous_labels`); leeres `min_samples` = 20 wie in api_v3, `null` = automatisch.
+Erwartungswerte jeweils von api_v3s eigenen Funktionen. Gemessen auf `data_30k.csv`: 25.066
+effektive Zeilen, 47 Labels — identisch mit api_v3 (vorher 25.068). Differenztest gegen api_v3
+über die Datei + 200.000 Zufallsstrings: 0 Abweichungen (alte Fassung: 89.140). Nicht
+gespiegelt, auf `data_30k.csv` ohne Wirkung gemessen: Spaltengewichte und pandas' NA-Strings.
+
 **Die vierzehn offenen Low-Befunde des September-Audits abgearbeitet (2026-09-27).** Sechs
 behoben, drei ohne Änderung geschlossen, einer teils Entscheidung, vier bewusst
 zurückgestellt — Buchführung je Befund in `docs/audits/2026-09-11-audit.md`, Abschnitt „The
