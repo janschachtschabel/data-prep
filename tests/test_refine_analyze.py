@@ -87,6 +87,26 @@ def test_preflight_effective_count_and_breakdown():
     assert report["per_label_effective"] == {"subject/A": 3}
 
 
+def test_preflight_drops_container_labels_like_api_v3():
+    """A value ending in `/` names a vocabulary, not a concept, and api_v3 drops it before it
+    trains (since 2026-09-08): a row whose only label it is has no label there. The preflight
+    drops it the same way. ``textnorm.split_labels`` keeps it, because data-prep rewrites
+    label cells and pairs them with display names by position."""
+    from app.refine.analyze import training_preflight
+    from app.refine.store import read_csv
+
+    root = "http://w3id.org/openeduhub/vocabs/discipline/"
+    good = "Ein ausreichend langer Beispieltext zum Thema"
+    rows = [f"Titel {i};{good} {i};kw;{root}120" for i in range(3)]
+    rows += [f"Titel X;{good} x;kw;{root}", f"Titel Y;{good} y;kw;{root},{root}120"]
+    df = read_csv((CSV_HEADER + "\n".join(rows) + "\n").encode("utf-8"))
+    report = training_preflight(df, [TITLE, DESC, KEYW], LABEL, label_separator=",", min_samples=2)
+
+    assert report["dropped"]["no_label"] == 1
+    assert report["per_label_effective"] == {f"{root}120": 4}
+    assert root not in report["labels_below_min"]
+
+
 def test_preflight_auto_min_samples_used_when_unspecified():
     from app.refine.analyze import training_preflight
     from app.refine.store import read_csv

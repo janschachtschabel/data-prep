@@ -49,7 +49,16 @@ def clean_text(value: object) -> str:
 
 
 def split_labels(value: object, separator: str = ",") -> list[str]:
-    """Split a multilabel cell into trimmed, non-empty labels (api_v3 semantics)."""
+    """Split a multilabel cell into trimmed, non-empty labels (api_v3 semantics), every value
+    kept. api_v3's own ``split_labels`` also drops container values; data-prep rewrites label
+    cells and pairs them with display names by position, so it has to see every value, and
+    the training preflight applies ``is_container_label`` itself."""
     if value is None or value == "" or (isinstance(value, float) and math.isnan(value)):
         return []
     return [part.strip() for part in str(value).split(separator) if part.strip()]
+
+
+def is_container_label(label: str) -> bool:
+    """A value ending in ``/`` names a namespace -- "members of" a vocabulary -- rather than a
+    concept, and api_v3 never trains it (its ``label_names.is_container_label``)."""
+    return label.endswith("/")

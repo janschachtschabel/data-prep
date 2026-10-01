@@ -6,7 +6,7 @@ from __future__ import annotations
 import pandas as pd
 
 from ..pii import PiiReport, scrub
-from ..textnorm import clean_text, split_labels
+from ..textnorm import clean_text, is_container_label, split_labels
 
 
 def auto_min_samples(n_samples: int, override: int | None = None) -> int:
@@ -103,7 +103,8 @@ def training_preflight(
     """
     _require_columns(df, text_columns, label_column)
     texts = _combined_texts(df, text_columns)
-    label_lists = [split_labels(cell, label_separator) for cell in df[label_column]]
+    label_lists = [[lab for lab in split_labels(cell, label_separator) if not is_container_label(lab)]
+                   for cell in df[label_column]]
     if label_filter:
         label_lists = [[x for x in labs if label_filter in x] for labs in label_lists]
 
