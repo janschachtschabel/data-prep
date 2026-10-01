@@ -32,7 +32,7 @@ _MD_MARK_RE = re.compile(r"[*_`~#>]+")
 _WS_RE = re.compile(r"\s+")
 # The Combining Diacritical Marks block: every Latin accent decomposes (NFKD) into its letter
 # plus one of these, which is what api_v3's vectorizer (strip_accents="unicode") removes.
-_COMBINING_MARKS_RE = re.compile("[̀-ͯ]+")
+_COMBINING_MARKS_RE = re.compile("[\u0300-\u036f]+")
 
 
 def clean_text(value: object) -> str:
