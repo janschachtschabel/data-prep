@@ -6,7 +6,7 @@ from __future__ import annotations
 import pandas as pd
 
 from ..pii import PiiReport, scrub
-from ..textnorm import clean_text, is_container_label, split_labels
+from ..textnorm import clean_text, dedupe_key, is_container_label, split_labels
 
 
 def auto_min_samples(n_samples: int, override: int | None = None) -> int:
@@ -110,7 +110,7 @@ def training_preflight(
 
     dropped = {"too_short": 0, "no_label": 0, "duplicate": 0}
     kept_labels: list[list[str]] = []
-    seen: set[str] = set()
+    seen: set[bytes] = set()
     for text, labels in zip(texts, label_lists, strict=False):
         if not labels:
             dropped["no_label"] += 1
@@ -118,10 +118,12 @@ def training_preflight(
         if len(text) < min_text_length:
             dropped["too_short"] += 1
             continue
-        if drop_duplicates and text in seen:
-            dropped["duplicate"] += 1
-            continue
-        seen.add(text)
+        if drop_duplicates:
+            key = dedupe_key(text)
+            if key in seen:
+                dropped["duplicate"] += 1
+                continue
+            seen.add(key)
         kept_labels.append(labels)
 
     n_kept = len(kept_labels)

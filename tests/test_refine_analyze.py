@@ -107,6 +107,29 @@ def test_preflight_drops_container_labels_like_api_v3():
     assert root not in report["labels_below_min"]
 
 
+def test_preflight_dedupes_the_way_api_v3s_vectorizer_sees_text():
+    """api_v3 compares cleaned texts as its vectorizer sees them -- lower-cased, accents
+    stripped (its audit of 2026-09-30, T07): "BRUCHRECHNUNG FÜR EINSTEIGER" beside
+    "Bruchrechnung für Einsteiger" is one row there. Compared exactly, the preflight kept both.
+    The key equalities are api_v3's own answers."""
+    from app.refine.analyze import training_preflight
+    from app.refine.store import read_csv
+    from app.textnorm import dedupe_key
+
+    assert dedupe_key("Bruchrechnung für Einsteiger") == dedupe_key("BRUCHRECHNUNG FÜR EINSTEIGER")
+    assert dedupe_key("Café") == dedupe_key("cafe")
+    assert dedupe_key("Bruchrechnung") != dedupe_key("Brüche")
+
+    rows = ["Bruchrechnung für Einsteiger;Brüche addieren und kürzen;kw;subject/A",
+            "BRUCHRECHNUNG FÜR EINSTEIGER;BRÜCHE ADDIEREN UND KÜRZEN;KW;subject/A",
+            "Geometrie;Flächen und Winkel berechnen;kw;subject/A"]
+    df = read_csv((CSV_HEADER + "\n".join(rows) + "\n").encode("utf-8"))
+    report = training_preflight(df, [TITLE, DESC, KEYW], LABEL, label_separator=",", min_samples=1)
+
+    assert report["dropped"]["duplicate"] == 1
+    assert report["kept_after_cleaning"] == 2
+
+
 def test_preflight_auto_min_samples_used_when_unspecified():
     from app.refine.analyze import training_preflight
     from app.refine.store import read_csv

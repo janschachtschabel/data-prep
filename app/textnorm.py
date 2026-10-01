@@ -15,9 +15,11 @@ because everything data-prep prepares is meant for a new training.
 
 from __future__ import annotations
 
+import hashlib
 import html
 import math
 import re
+import unicodedata
 
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 # A tag starts with `<` and a letter, `/`, `!` or `?`, as HTML requires, so `x < y ... a > b`
@@ -28,6 +30,9 @@ _HTML_TAG_RE = re.compile(r"<[A-Za-z/!?][^<>]*>")
 _MD_LINK_RE = re.compile(r"!?\[([^\[\]]*)\]\([^()]*\)")
 _MD_MARK_RE = re.compile(r"[*_`~#>]+")
 _WS_RE = re.compile(r"\s+")
+# The Combining Diacritical Marks block: every Latin accent decomposes (NFKD) into its letter
+# plus one of these, which is what api_v3's vectorizer (strip_accents="unicode") removes.
+_COMBINING_MARKS_RE = re.compile("[̀-ͯ]+")
 
 
 def clean_text(value: object) -> str:
@@ -46,6 +51,18 @@ def clean_text(value: object) -> str:
     text = _MD_MARK_RE.sub("", text)
     text = _CONTROL_RE.sub("", text)
     return _WS_RE.sub(" ", text).strip()
+
+
+def dedupe_key(text: str) -> bytes:
+    """The identity of a cleaned text as api_v3's dedupe sees it: two texts are duplicates when
+    its vectorizer cannot tell them apart, because it lower-cases and strips accents
+    (``dataset_load.dedupe_key``, audit 2026-09-30, T07). A 16-byte digest, as there: the
+    caller keeps one key per kept row, not a second copy of every text. Marks outside the Latin
+    block (other scripts' accents) stay, so such variants are not duplicates."""
+    lowered = text.lower()
+    if not lowered.isascii():
+        lowered = _COMBINING_MARKS_RE.sub("", unicodedata.normalize("NFKD", lowered))
+    return hashlib.blake2b(lowered.encode("utf-8"), digest_size=16).digest()
 
 
 def split_labels(value: object, separator: str = ",") -> list[str]:
