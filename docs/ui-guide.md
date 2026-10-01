@@ -82,8 +82,8 @@ Bereich **Operations** aus und trage bei Bedarf die Textspalten/Label-Spalte ein
   Felder, gefundene persönliche Daten.
 - **Training preflight** — simuliert die Aufbereitung der Trainings-API und zeigt
   die *tatsächliche* Trainingsmenge je Label vorab. So siehst du vorher, warum
-  aus z. B. 32.728 Zeilen nur 25.068 werden (Dubletten, zu kurze Texte, seltene
-  Labels).
+  aus z. B. 32.728 Zeilen nur 25.066 werden (Dubletten, zu kurze Texte, seltene
+  Labels und solche auf fast jeder Zeile).
 - **Filter** — eine Operation wählen (Dubletten entfernen, Längenkorridor,
   Label-Filter, pro Label begrenzen, Markup säubern, persönliche Daten maskieren
   oder entfernen). **Preview** zeigt die Wirkung, ohne etwas zu schreiben;

@@ -145,11 +145,14 @@ async def analyze_dataset(name: DatasetName, req: AnalyzeRequest, settings: Sett
 
 @router.post("/{name}/preflight", summary="Simulate api_v3 preparation (effective training set)")
 async def preflight(name: DatasetName, req: PreflightRequest, settings: Settings = Depends(get_settings)) -> dict:
-    """Replay api_v3's data preparation to the row: clean and join the text columns; drop rows without a
-    label, too short or duplicated; then drop the labels below `min_samples` and the rows left without a
-    learnable label. Returns the drops per reason, the resolved `min_samples`, `effective_rows` (what
-    api_v3 would train on), the learnable labels with their counts and the labels below the minimum.
-    Read-only.
+    """Replay api_v3's data preparation to the row: clean and join the text columns as its cleaning
+    version 2 does; drop rows without a label (a container value, ending in `/`, is none), too short,
+    or repeating an earlier row as its vectorizer sees it (case and accents aside); then keep the labels
+    with `min_samples` rows WITH them and as many without, dropping the rows left without a learnable
+    label, until nothing changes. Returns the drops per reason, the resolved `min_samples`,
+    `effective_rows` (what api_v3 would train on), the learnable labels with their counts, the labels
+    below the minimum and the ubiquitous ones (too few rows without them). Read-only. api_v3's column
+    weights are not replayed.
 
     Errors: 400 for missing columns; 404 for an unknown dataset."""
     df = await load_or_404(settings, name)
