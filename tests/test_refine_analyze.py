@@ -219,6 +219,23 @@ def test_refine_routes_require_auth(make_client):
     assert client.get("/refine/datasets").status_code == 401
 
 
+def test_preflight_route_defaults_min_samples_like_api_v3(make_client):
+    """api_v3's /train applies 20 when `min_samples_per_label` is left out -- its own UI leaves a
+    blank field out -- and scales it with the dataset only for an explicit null (since
+    2026-09-08). The preflight still treated "left out" as the automatic value."""
+    client = make_client()
+    assert _import(client, _preflight_csv()).status_code == 200
+    body = {"text_columns": [TITLE, DESC, KEYW], "label_column": LABEL}
+
+    omitted = client.post("/refine/curated/preflight", json=body, headers=HEADERS)
+    auto = client.post("/refine/curated/preflight", json={**body, "min_samples": None},
+                       headers=HEADERS)
+
+    assert omitted.status_code == 200, omitted.text
+    assert omitted.json()["min_samples"] == 20
+    assert auto.json()["min_samples"] == 2  # api_v3's automatic value under 1,000 rows
+
+
 def test_store_roundtrip_and_analyze_route(make_client, tmp_path):
     client = make_client()
 

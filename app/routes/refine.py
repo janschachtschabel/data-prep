@@ -76,9 +76,11 @@ class PreflightRequest(AnalyzeRequest):
         "Rows whose cleaned text has fewer characters are dropped; set as in api_v3's training config."))
     drop_duplicates: bool = Field(default=True, description=(
         "Drop rows whose cleaned text repeats an earlier row; set as in api_v3's training config."))
-    min_samples: int | None = Field(default=None, ge=1, le=10000, description=(
-        "Rows a label needs to be learnable; omitted = api_v3's automatic value (2, 5, 20 or 35 for "
-        "under 1k, 10k, 50k or more kept rows)."))
+    min_samples: int | None = Field(default=20, ge=1, le=10000, description=(
+        "Rows a label needs, with it and as many without it, to be learnable. Omitted = 20, what "
+        "api_v3's /train applies when the field is left out (its config.yaml may set another "
+        "value -- send that one); null = api_v3's automatic value (2, 5, 20 or 35 for under 1k, "
+        "10k, 50k or more kept rows), which /train applies to an explicit null."))
 
 
 class FilterRequest(BaseModel):
